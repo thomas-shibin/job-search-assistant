@@ -1,0 +1,41 @@
+:root {
+  color-scheme: light dark;
+  --border: #d0d0d0;
+  --accent: #2f6f4f;
+  --danger: #b00020;
+}
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  margin: 0;
+  line-height: 1.5;
+}
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.topbar .brand { font-weight: bold; text-decoration: none; color: inherit; }
+.topbar nav a { margin-left: 1rem; text-decoration: none; }
+main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
+.flash { background: #eef6ee; border: 1px solid var(--accent); padding: 0.5rem 1rem; margin-bottom: 1rem; }
+table.job-table { width: 100%; border-collapse: collapse; }
+table.job-table th, table.job-table td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
+.filters { display: flex; gap: 1rem; align-items: end; margin-bottom: 1rem; }
+.filters label { display: flex; flex-direction: column; font-size: 0.85rem; }
+.status-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 0.75rem;
+  background: #eee;
+  font-size: 0.8rem;
+}
+.score-grid { display: flex; flex-wrap: wrap; gap: 0.5rem 1.5rem; list-style: none; padding: 0; }
+.actions { margin: 1rem 0; display: flex; gap: 0.5rem; }
+.actions button { padding: 0.4rem 0.8rem; }
+.bullet-diffs { list-style: disc; padding-left: 1.5rem; }
+.bullet-diffs li.rejected { background: #fff6f6; }
+.rejection-note { font-size: 0.8rem; color: var(--danger); }
+ins { background: #dbf5db; text-decoration: none; }
+del { background: #fbdada; color: #7a1f1f; }

@@ -26,6 +26,13 @@ search_profiles:
       - "Senior Backend Engineer"
       - "Senior Java Developer"
       - "Staff Software Engineer"
+    # Automated discovery (Milestone 12), on top of manual `discover`: public,
+    # unauthenticated job-board APIs. Board tokens/company slugs are the same
+    # ones in the company's careers-page URL, e.g. boards.greenhouse.io/<token>
+    # or jobs.lever.co/<company>. Empty by default -- scheduler.enabled and
+    # `run`/`serve` only ever poll what's listed here.
+    greenhouse_boards: []
+    lever_companies: []
 
   - name: "Ontario Backend"
     enabled: true
@@ -73,6 +80,19 @@ matching:
     location: 5
     domain_experience: 5
     education: 5
+
+# AI-based job-requirement extraction (Milestone 5). Disabled by default so
+# `analyze` never makes a billed call until you opt in here and set
+# OPENAI_API_KEY in .env. Set provider to "mock" to exercise this pipeline
+# stage with a free, deterministic heuristic instead of a real API call.
+ai:
+  enabled: false
+  provider: openai
+  model: gpt-4o-mini
+  # Off by default: the deterministic, templated explanation (see "Analyzing
+  # jobs" in the README) is free and reproducible. Turning this on replaces
+  # it with an AI-polished version, at the cost of one extra call per job.
+  generate_match_explanations: false
 
 resume:
   optimize_keywords: true

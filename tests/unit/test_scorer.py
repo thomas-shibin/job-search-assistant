@@ -8,6 +8,7 @@ from datetime import date
 
 import pytest
 
+from app.ai.base import ExtractedJobRequirements
 from app.config.schema import MatchingConfig, MatchingWeights, SearchProfile
 from app.matching.scorer import NO_REQUIREMENT_SCORE, UNKNOWN_FIT_SCORE, score_job
 from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
@@ -189,3 +190,94 @@ def test_seniority_mismatch_scores_lower_than_exact_match():
     senior_score = score_job(senior_candidate, job, None, _config()).seniority_score
     junior_score = score_job(junior_candidate, job, None, _config()).seniority_score
     assert senior_score > junior_score
+
+
+# --- Milestone 5: AI-extracted requirements extend, never override, the
+# deterministic signals above. `requirements=None` (the default, exercised by
+# every test above) must remain byte-for-byte identical to pre-Milestone-5
+# behavior -- these tests only cover the additive `requirements is not None`
+# path.
+
+
+def test_extracted_skill_not_in_configured_lists_is_recognized():
+    # "Terraform" isn't in the candidate's configured required/preferred
+    # lists at all -- exactly the gap Milestone 5's docstring says AI
+    # extraction closes (see app/matching/scorer.py module docstring).
+    candidate = _candidate(["Java", "Spring Boot", "Distributed Systems", "Terraform"])
+    job = _job("Senior Backend Engineer", STRONG_JOB_DESCRIPTION + " Also requires Terraform.")
+    requirements = ExtractedJobRequirements(required_skills=["Terraform"])
+
+    without_ai = score_job(candidate, job, None, _config())
+    with_ai = score_job(candidate, job, None, _config(), requirements)
+
+    assert "Terraform" not in without_ai.strong_matches
+    assert "Terraform" in with_ai.strong_matches
+
+
+def test_extracted_required_skill_missing_from_candidate_is_critical_missing():
+    candidate = _candidate(["Java", "Spring Boot", "Distributed Systems"])
+    job = _job("Senior Backend Engineer", STRONG_JOB_DESCRIPTION + " Also requires Terraform.")
+    requirements = ExtractedJobRequirements(required_skills=["Terraform"])
+
+    breakdown = score_job(candidate, job, None, _config(), requirements)
+
+    assert "Terraform" in breakdown.critical_missing_requirements
+
+
+def test_extracted_years_used_only_when_text_has_no_generic_years_pattern():
+    candidate = _candidate(
+        ["Java"],
+        employments=[Employment(company="X", title="Senior Backend Engineer", start_date=date(2023, 1, 1), is_current=True)],
+    )
+    job = _job("Senior Backend Engineer", "Join our team working with Java. No prior experience number stated.")
+
+    without_ai = score_job(candidate, job, None, _config())
+    with_ai = score_job(candidate, job, None, _config(), ExtractedJobRequirements(min_years_experience=10))
+
+    assert without_ai.experience_score == NO_REQUIREMENT_SCORE
+    assert with_ai.experience_score < 100  # candidate has ~2 years, well under the extracted 10
+
+
+def test_extracted_years_does_not_override_explicit_text_years():
+    candidate = _candidate(
+        ["Java"],
+        employments=[Employment(company="X", title="Senior Backend Engineer", start_date=date(2019, 1, 1), is_current=True)],
+    )
+    job = _job("Senior Backend Engineer", STRONG_JOB_DESCRIPTION)  # states "5+ years" explicitly
+
+    # A conflicting extraction (e.g. a provider hallucination) must not
+    # override what the posting's own text explicitly says.
+    breakdown = score_job(candidate, job, None, _config(), ExtractedJobRequirements(min_years_experience=20))
+
+    assert breakdown.experience_score == 100
+
+
+def test_extracted_seniority_used_only_when_title_has_no_keyword():
+    candidate = _candidate(
+        ["Java"],
+        employments=[Employment(company="X", title="Senior Backend Engineer", start_date=date(2019, 1, 1), is_current=True)],
+    )
+    job = _job("Backend Engineer II", STRONG_JOB_DESCRIPTION)  # title carries no seniority keyword
+
+    without_ai = score_job(candidate, job, None, _config())
+    with_ai = score_job(candidate, job, None, _config(), ExtractedJobRequirements(seniority_level="senior"))
+
+    assert without_ai.seniority_score == UNKNOWN_FIT_SCORE
+    assert with_ai.seniority_score == 100
+
+
+def test_extracted_remote_type_used_only_when_job_remote_type_is_unset():
+    job = Job(
+        id=1, source="manual", source_url="https://example.com", company="Example Corp",
+        title="Senior Backend Engineer", location=None, remote_type=None,
+        description=STRONG_JOB_DESCRIPTION, status=JobStatus.DISCOVERED,
+        fingerprint="fp", description_hash="dh",
+    )
+    candidate = _candidate(["Java", "Spring Boot", "Distributed Systems", "AWS", "Kubernetes"])
+    sp = SearchProfile(name="Remote", address_profile="bc", locations=["Remote Canada"])
+
+    without_ai = score_job(candidate, job, sp, _config())
+    with_ai = score_job(candidate, job, sp, _config(), ExtractedJobRequirements(remote_type_detected="remote"))
+
+    assert without_ai.location_score == 0
+    assert with_ai.location_score == 100

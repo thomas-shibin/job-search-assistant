@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ detail.job.title }} - Job Application Assistant{% endblock %}
+{% block content %}
+<p><a href="/">&larr; Back to jobs</a></p>
+<h1>{{ detail.job.title }} @ {{ detail.job.company }}</h1>
+<p>
+  <span class="status-badge status-{{ detail.job.status.value }}">{{ detail.job.status.value }}</span>
+  {% if detail.job.location %}&middot; {{ detail.job.location }}{% endif %}
+  {% if detail.job.remote_type %}&middot; {{ detail.job.remote_type }}{% endif %}
+  &middot; <a href="{{ detail.job.source_url }}" target="_blank" rel="noopener">source posting</a>
+</p>
+
+<section class="actions">
+  {% for action in actions %}
+  <form method="post" action="/jobs/{{ detail.job.id }}/{{ action.path }}" style="display:inline">
+    <button type="submit">{{ action.label }}</button>
+  </form>
+  {% endfor %}
+</section>
+
+{% if detail.match_analysis %}
+<section>
+  <h2>Match: {{ detail.match_analysis.overall_score }}/100</h2>
+  <ul class="score-grid">
+    <li>Technical: {{ detail.match_analysis.technical_score }}</li>
+    <li>Experience: {{ detail.match_analysis.experience_score }}</li>
+    <li>Title: {{ detail.match_analysis.title_score }}</li>
+    <li>Seniority: {{ detail.match_analysis.seniority_score }}</li>
+    <li>Platform: {{ detail.match_analysis.platform_score }}</li>
+    <li>Location: {{ detail.match_analysis.location_score }}</li>
+    <li>Domain: {{ detail.match_analysis.domain_score }}</li>
+    <li>Education: {{ detail.match_analysis.education_score }}</li>
+  </ul>
+  <p>{{ detail.match_analysis.explanation }}</p>
+  {% if detail.match_analysis.critical_missing_requirements %}
+    <p><strong>Missing required:</strong> {{ detail.match_analysis.critical_missing_requirements | join(", ") }}</p>
+  {% endif %}
+</section>
+{% else %}
+<p><em>Not analyzed yet.</em></p>
+{% endif %}
+
+{% if detail.tailored_resume %}
+<section>
+  <h2>Tailored resume ({{ detail.tailored_resume.validation_status }})</h2>
+  {% if detail.tailored_resume.docx_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.docx">Download DOCX</a></p>{% endif %}
+  {% if detail.tailored_resume.pdf_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.pdf">Download PDF</a></p>{% endif %}
+
+  <h3>Summary</h3>
+  <p>{{ detail.tailored_resume.summary_text }}</p>
+
+  <h3>Skills</h3>
+  <p>{{ detail.tailored_resume.skills_order | join(", ") }}</p>
+
+  <h3>Bullet changes vs. base resume</h3>
+  <ul class="bullet-diffs">
+    {% for diff in detail.bullet_diffs %}
+    <li class="{{ 'rejected' if not diff.validation_passed }}">
+      {{ diff.source_text | worddiff(diff.generated_text) | safe }}
+      {% if not diff.validation_passed %}
+        <div class="rejection-note">Kept original wording &mdash; {{ diff.rejection_reason }}</div>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<p><em>No tailored resume generated yet. Run: <code>python cli.py generate-resume {{ detail.job.id }}</code></em></p>
+{% endif %}
+{% endblock %}

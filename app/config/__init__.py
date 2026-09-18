@@ -1,6 +1,7 @@
 from app.config.loader import ConfigError, load_config, validate_config
 from app.config.schema import (
     AddressProfile,
+    AIConfig,
     AppConfig,
     CandidateConfig,
     MatchingConfig,
@@ -18,6 +19,7 @@ __all__ = [
     "SearchProfile",
     "MatchingConfig",
     "MatchingWeights",
+    "AIConfig",
     "ResumeConfig",
     "NotificationsConfig",
     "SchedulerConfig",

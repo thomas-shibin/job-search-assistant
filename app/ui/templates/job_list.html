@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Jobs - Job Application Assistant{% endblock %}
+{% block content %}
+<h1>Jobs</h1>
+
+<form method="get" action="/" class="filters">
+  <label>Status
+    <select name="status">
+      <option value="" {% if not status %}selected{% endif %}>All</option>
+      {% for s in statuses %}
+        <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label>Min score
+    <input type="number" name="min_score" min="0" max="100" value="{{ min_score or '' }}">
+  </label>
+  <button type="submit">Filter</button>
+</form>
+
+<table class="job-table">
+  <thead>
+    <tr>
+      <th>Company</th>
+      <th>Title</th>
+      <th>Status</th>
+      <th>Score</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in jobs %}
+    <tr>
+      <td>{{ row.job.company }}</td>
+      <td><a href="/jobs/{{ row.job.id }}">{{ row.job.title }}</a></td>
+      <td><span class="status-badge status-{{ row.job.status.value }}">{{ row.job.status.value }}</span></td>
+      <td>{{ row.score if row.score is not none else "-" }}</td>
+      <td><a href="/jobs/{{ row.job.id }}">View</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5">No jobs match these filters.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

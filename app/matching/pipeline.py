@@ -2,10 +2,15 @@
 sections 9/10/14/22): the one place `MatchAnalysis` rows get created and
 `Job.status` advances from DISCOVERED -> ANALYZED -> (optionally) QUALIFIED.
 
-No AI call happens here -- see docs/ARCHITECTURE.md's deterministic-vs-AI
-table. Milestone 5 adds AI-based requirement extraction *before* this stage
-(populating `JobRequirements`), which this pipeline will start consuming once
-it exists; scoring itself stays deterministic either way.
+Scoring itself stays deterministic (see docs/ARCHITECTURE.md's
+deterministic-vs-AI table) -- but as of Milestone 5, when `config.ai.enabled`,
+AI-based requirement extraction runs first (`app/ai/service.py`, cached so an
+unchanged job is never re-billed) and its output extends what the scorer can
+recognize beyond the user's configured skill lists. `config.ai.
+generate_match_explanations` (off by default) optionally replaces the
+deterministic explanation text with an AI-polished version; if that call
+fails, the deterministic explanation is kept rather than failing the whole
+analysis, since it's polish, not a required input.
 """
 from __future__ import annotations
 
@@ -14,9 +19,14 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.ai.base import AIProvider
+from app.ai.factory import build_ai_provider
+from app.ai.service import get_or_extract_requirements
+from app.ai.settings import AISettings
 from app.config.schema import AppConfig, SearchProfile
 from app.ingestion.filters import FilterResult, check_hard_filters
 from app.matching.scorer import MatchScoreBreakdown, score_job
+from app.models.ai_usage import AICallLog
 from app.models.candidate import CandidateProfile
 from app.models.job import Job, JobStatus, JobStatusHistory
 from app.models.matching import MatchAnalysis
@@ -51,13 +61,26 @@ def _transition(session: Session, job: Job, to_status: JobStatus, reason: str) -
     )
 
 
-def analyze_job(session: Session, job: Job, config: AppConfig) -> AnalyzeResult:
+def _get_ai_provider(config: AppConfig, ai_provider: AIProvider | None) -> AIProvider | None:
+    if ai_provider is not None:
+        return ai_provider
+    if config.ai.enabled or config.ai.generate_match_explanations:
+        return build_ai_provider(config.ai, AISettings())
+    return None
+
+
+def analyze_job(session: Session, job: Job, config: AppConfig, ai_provider: AIProvider | None = None) -> AnalyzeResult:
     """Run hard filters then, if they pass, deterministic scoring for `job`.
 
     A job that fails a hard filter is left at its current status with no
     `MatchAnalysis` row -- filtering is a "don't spend effort on this yet"
     signal, not a user decision, so it does not move the job to a terminal
     state like SKIPPED (only the user does that, per spec section 15).
+
+    `ai_provider` lets a caller (e.g. the CLI, batching over many jobs) build
+    one `AIProvider` instance up front and reuse it; passing `None` builds
+    one from `config.ai` on demand (and only if `config.ai.enabled` or
+    `config.ai.generate_match_explanations` actually needs one).
     """
     candidate = (
         session.query(CandidateProfile)
@@ -77,7 +100,37 @@ def analyze_job(session: Session, job: Job, config: AppConfig) -> AnalyzeResult:
         session.commit()
         return AnalyzeResult(job=job, filter_result=filter_result, breakdown=None, qualified=False)
 
-    breakdown = score_job(candidate, job, search_profile, config.matching)
+    provider = _get_ai_provider(config, ai_provider)
+
+    requirements = None
+    if config.ai.enabled:
+        requirements, cache_hit = get_or_extract_requirements(session, job, provider, config.ai.provider)
+        log_event(
+            logger, "JOB_REQUIREMENTS_READY", job_id=job.id, provider=config.ai.provider, cache_hit=cache_hit
+        )
+
+    breakdown = score_job(candidate, job, search_profile, config.matching, requirements)
+
+    if config.ai.generate_match_explanations:
+        try:
+            polished = provider.generate_match_explanation(breakdown)
+        except Exception:
+            polished = None
+            logger.warning("AI match-explanation polish failed for job_id=%s; keeping deterministic text", job.id)
+        if polished:
+            breakdown = breakdown.model_copy(update={"explanation": polished})
+            usage = getattr(provider, "last_usage", None)
+            session.add(
+                AICallLog(
+                    provider=config.ai.provider,
+                    operation="generate_match_explanation",
+                    job_id=job.id,
+                    tokens_in=usage.tokens_in if usage else None,
+                    tokens_out=usage.tokens_out if usage else None,
+                    estimated_cost=usage.estimated_cost if usage else None,
+                    cache_hit=False,
+                )
+            )
 
     session.add(
         MatchAnalysis(

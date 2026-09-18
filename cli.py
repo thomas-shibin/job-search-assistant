@@ -77,7 +77,7 @@ def import_resume_cmd(
     resume_path: Path,
     force: bool = typer.Option(False, "--force", help="Re-import even if content is unchanged"),
 ) -> None:
-    """Parse a base resume DOCX into the structured candidate profile."""
+    """Parse a base resume (.docx or .pdf) into the structured candidate profile."""
     configure_logging()
 
     if not resume_path.exists():
@@ -211,9 +211,11 @@ def analyze(
 ) -> None:
     """Run hard filters and deterministic scoring on discovered jobs.
 
-    AI-based requirement extraction (Milestone 5) is not yet part of this
-    pipeline -- see docs/ARCHITECTURE.md for what this milestone can and
-    can't detect in a job posting today.
+    If config.yaml's `ai.enabled` is true, AI-based requirement extraction
+    (Milestone 5) runs first and extends what the deterministic scorer can
+    recognize beyond your configured skill lists -- disabled by default so
+    this never makes a billed call unless you opt in. See "Analyzing jobs" in
+    the README.
     """
     configure_logging()
 
@@ -233,9 +235,19 @@ def analyze(
             typer.echo(f"  - {err}", err=True)
         raise typer.Exit(code=1)
 
+    from app.ai.factory import AIProviderConfigError, build_ai_provider
+    from app.ai.settings import AISettings
     from app.database.session import SessionLocal
     from app.matching.pipeline import NoActiveCandidateProfileError, analyze_job
     from app.models.job import Job, JobStatus
+
+    ai_provider = None
+    if config.ai.enabled or config.ai.generate_match_explanations:
+        try:
+            ai_provider = build_ai_provider(config.ai, AISettings())
+        except AIProviderConfigError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1)
 
     session = SessionLocal()
     try:
@@ -255,7 +267,7 @@ def analyze(
         filtered_count = 0
         for job in jobs:
             try:
-                result = analyze_job(session, job, config)
+                result = analyze_job(session, job, config, ai_provider=ai_provider)
             except NoActiveCandidateProfileError as exc:
                 typer.echo(str(exc), err=True)
                 raise typer.Exit(code=1)
@@ -275,21 +287,216 @@ def analyze(
 
 
 @app.command("generate-resume")
-def generate_resume(job_id: int) -> None:
-    """Generate a tailored resume for a qualified job."""
-    _not_implemented("generate-resume", 6)
+def generate_resume(
+    job_id: int,
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+) -> None:
+    """Generate a tailored, truthfulness-validated resume (DOCX, and PDF if LibreOffice
+    is available) for a job, and organize its artifact bundle under data/applications/.
+    """
+    configure_logging()
+
+    if not config_path.exists():
+        typer.echo(f"Config file not found: {config_path}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        config = load_config(config_path)
+    except ConfigError as exc:
+        typer.echo("Configuration is INVALID:", err=True)
+        for err in exc.errors:
+            typer.echo(f"  - {err}", err=True)
+        raise typer.Exit(code=1)
+
+    from app.ai.factory import AIProviderConfigError
+    from app.database.session import SessionLocal
+    from app.models.job import Job
+    from app.resume.pipeline import generate_resume_bundle
+    from app.resume.tailor import NoActiveCandidateProfileError
+
+    session = SessionLocal()
+    try:
+        job = session.get(Job, job_id)
+        if job is None:
+            typer.echo(f"No job found with id={job_id}", err=True)
+            raise typer.Exit(code=1)
+
+        try:
+            result = generate_resume_bundle(session, job, config)
+        except NoActiveCandidateProfileError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1)
+        except AIProviderConfigError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1)
+
+        typer.echo(f"Generated tailored resume for job {job_id}: {result.tailor_result.docx_path}")
+        typer.echo(f"  Validation status: {result.tailor_result.tailored_resume.validation_status}")
+        if result.pdf_path:
+            typer.echo(f"  PDF: {result.pdf_path}")
+        else:
+            typer.echo(f"  PDF conversion skipped: {result.pdf_error}", err=True)
+        typer.echo(f"  Artifact bundle: {result.artifact_set.folder_path}")
+        typer.echo(f"  Job {job_id} is now READY_FOR_REVIEW.")
+    finally:
+        session.close()
+
+
+def _job_action_command(action_name: str, help_text: str):
+    """Builds a `jobassistant <action> JOB_ID` CLI command around one
+    `app.applications.state_machine` transition function -- these all share
+    the same shape (load job, apply transition, report old/new status).
+    """
+
+    def command(job_id: int) -> None:
+        configure_logging()
+
+        from app.applications import state_machine
+        from app.database.session import SessionLocal
+        from app.models.job import Job
+
+        transition_fn = getattr(state_machine, action_name)
+
+        session = SessionLocal()
+        try:
+            job = session.get(Job, job_id)
+            if job is None:
+                typer.echo(f"No job found with id={job_id}", err=True)
+                raise typer.Exit(code=1)
+
+            from_status = job.status
+            try:
+                transition_fn(session, job)
+            except state_machine.InvalidTransitionError as exc:
+                typer.echo(str(exc), err=True)
+                raise typer.Exit(code=1)
+
+            typer.echo(f"Job {job_id}: {from_status.value} -> {job.status.value}")
+        finally:
+            session.close()
+
+    command.__doc__ = help_text
+    return command
+
+
+app.command("approve")(_job_action_command("approve", "Approve a reviewed job's tailored resume."))
+app.command("skip")(_job_action_command("skip", "Skip a job (stop pursuing it)."))
+app.command("mark-applied")(_job_action_command("mark_applied", "Mark a job as applied to."))
+app.command("mark-interview")(_job_action_command("mark_interview", "Mark a job as in the interview stage."))
+app.command("mark-offer")(_job_action_command("mark_offer", "Mark a job as having received an offer."))
+app.command("mark-rejected")(_job_action_command("mark_rejected", "Mark a job as rejected."))
+app.command("archive")(_job_action_command("archive", "Archive a job (fully done, no further action)."))
+
+
+@app.command("open-application")
+def open_application(job_id: int) -> None:
+    """Open the job's source URL in your browser and mark it APPLICATION_OPENED.
+
+    This is the one step that touches the source platform (LinkedIn, a careers
+    page, etc.) -- and it opens a normal browser tab for you to apply manually,
+    exactly the same as clicking the link yourself. Nothing is scripted there.
+    """
+    configure_logging()
+
+    import webbrowser
+
+    from app.applications import state_machine
+    from app.database.session import SessionLocal
+    from app.models.job import Job
+
+    session = SessionLocal()
+    try:
+        job = session.get(Job, job_id)
+        if job is None:
+            typer.echo(f"No job found with id={job_id}", err=True)
+            raise typer.Exit(code=1)
+
+        try:
+            state_machine.mark_application_opened(session, job)
+        except state_machine.InvalidTransitionError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1)
+
+        webbrowser.open(job.source_url)
+        typer.echo(f"Opened {job.source_url} -- job {job_id} is now APPLICATION_OPENED.")
+    finally:
+        session.close()
 
 
 @app.command()
-def run() -> None:
-    """Run the full discover -> analyze -> tailor pipeline once."""
-    _not_implemented("run", 11)
+def run(
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+) -> None:
+    """Run the full discover -> analyze -> tailor pipeline once (Milestone 11)."""
+    configure_logging()
+
+    if not config_path.exists():
+        typer.echo(f"Config file not found: {config_path}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        config = load_config(config_path)
+    except ConfigError as exc:
+        typer.echo("Configuration is INVALID:", err=True)
+        for err in exc.errors:
+            typer.echo(f"  - {err}", err=True)
+        raise typer.Exit(code=1)
+
+    from app.database.session import SessionLocal
+    from app.scheduler.run import run_once
+
+    session = SessionLocal()
+    try:
+        summary = run_once(session, config)
+    finally:
+        session.close()
+
+    typer.echo(
+        f"Run complete: {summary.jobs_discovered} discovered, {summary.jobs_new} new, "
+        f"{summary.jobs_qualified} qualified, {summary.jobs_tailored} tailored, "
+        f"{summary.source_failures} source failure(s)."
+    )
+    if summary.source_failures:
+        raise typer.Exit(code=1)
 
 
 @app.command()
-def serve() -> None:
-    """Start the dashboard web server and scheduler."""
-    _not_implemented("serve", 11)
+def serve(
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8000, "--port"),
+) -> None:
+    """Start the dashboard web server, plus the background scheduler if
+    config.yaml's scheduler.enabled is true (Milestone 11).
+    """
+    configure_logging()
+
+    if not config_path.exists():
+        typer.echo(f"Config file not found: {config_path}", err=True)
+        raise typer.Exit(code=1)
+
+    try:
+        config = load_config(config_path)
+    except ConfigError as exc:
+        typer.echo("Configuration is INVALID:", err=True)
+        for err in exc.errors:
+            typer.echo(f"  - {err}", err=True)
+        raise typer.Exit(code=1)
+
+    import uvicorn
+
+    from app.scheduler.background import start_background_scheduler
+
+    background_scheduler = None
+    if config.scheduler.enabled:
+        background_scheduler = start_background_scheduler(config, config_path)
+        typer.echo(f"Background scheduler started (every {config.scheduler.interval_minutes} minutes).")
+
+    try:
+        uvicorn.run("main:app", host=host, port=port)
+    finally:
+        if background_scheduler is not None:
+            background_scheduler.shutdown(wait=False)
 
 
 def main() -> None:

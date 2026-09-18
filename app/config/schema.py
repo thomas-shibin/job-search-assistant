@@ -20,6 +20,12 @@ class SearchProfile(BaseModel):
     locations: list[str] = Field(default_factory=list)
     address_profile: str
     titles: list[str] = Field(default_factory=list)
+    # Automated discovery (Milestone 12): board tokens/company slugs for the public,
+    # documented Greenhouse/Lever job-board APIs -- see docs/ARCHITECTURE.md, "Job
+    # Source Risk Assessment". Empty by default; manual `discover` always works
+    # regardless of these being set.
+    greenhouse_boards: list[str] = Field(default_factory=list)
+    lever_companies: list[str] = Field(default_factory=list)
 
 
 class MatchingWeights(BaseModel):
@@ -57,6 +63,24 @@ class MatchingConfig(BaseModel):
     weights: MatchingWeights = Field(default_factory=MatchingWeights)
 
 
+class AIConfig(BaseModel):
+    """Controls Milestone 5's AI-based job-requirement extraction (spec §19 cost
+    control): off by default so `analyze` never makes a billed call until the
+    user opts in and provides an API key.
+    """
+
+    enabled: bool = False
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+    generate_match_explanations: bool = False
+
+    @model_validator(mode="after")
+    def provider_is_known(self) -> "AIConfig":
+        if self.provider not in ("openai", "mock"):
+            raise ValueError(f"ai.provider must be 'openai' or 'mock', got '{self.provider}'")
+        return self
+
+
 class ResumeConfig(BaseModel):
     optimize_keywords: bool = True
     reorder_bullets: bool = True
@@ -81,6 +105,7 @@ class AppConfig(BaseModel):
     address_profiles: dict[str, AddressProfile] = Field(default_factory=dict)
     search_profiles: list[SearchProfile] = Field(default_factory=list)
     matching: MatchingConfig = Field(default_factory=MatchingConfig)
+    ai: AIConfig = Field(default_factory=AIConfig)
     resume: ResumeConfig = Field(default_factory=ResumeConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)

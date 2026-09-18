@@ -1,4 +1,4 @@
-"""Deterministic parsing of a base resume (.docx) into the structured
+"""Deterministic parsing of a base resume (.docx or .pdf) into the structured
 CandidateProfile ground truth.
 
 No AI calls happen here. Per the truthfulness guardrail (spec section 8), the
@@ -6,6 +6,15 @@ structured data produced by this module is the single source of truth every
 later AI-generated resume claim must trace back to, so this parser favors
 "store it somewhere, even unstructured" over silently discarding anything it
 can't confidently classify.
+
+.docx and .pdf inputs both get converted into a common intermediate
+representation (``LineInfo``) before section-detection/job-entry parsing runs,
+so that logic is written once and shared across formats. PDF extraction is
+inherently lossier than docx: there is no bold/paragraph-style signal, so
+heading detection for PDFs falls back to short-line + ALL-CAPS/known-alias
+heuristics only. Resumes with unusual PDF layouts (multi-column, heavy use of
+tables/text-boxes) may land more content in ``raw_unparsed_sections`` than an
+equivalent docx would.
 """
 from __future__ import annotations
 
@@ -14,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+import pdfplumber
 from docx import Document
 from sqlalchemy.orm import Session
 
@@ -38,9 +48,15 @@ SECTION_ALIASES: dict[str, tuple[str, ...]] = {
         "work experience",
         "employment history",
     ),
-    "skills": ("skills", "technical skills", "core competencies", "technologies", "key skills"),
+    "skills": (
+        "skills", "technical skills", "core competencies", "technologies",
+        "key skills", "core skills",
+    ),
     "education": ("education",),
-    "certifications": ("certifications", "certificates", "licenses", "licenses and certifications"),
+    "certifications": (
+        "certifications", "certificates", "licenses", "licenses and certifications",
+        "certifications & training", "certifications and training",
+    ),
     "projects": ("projects", "personal projects", "key projects", "notable projects"),
 }
 
@@ -51,13 +67,33 @@ _MONTHS = {
     "october": 10, "nov": 11, "november": 11, "dec": 12, "december": 12,
 }
 
-_DATE_TOKEN = r"[A-Za-z]+\.?\s+\d{4}|\d{4}|present|current"
+# Dash-like separators seen across resume exports, including the fullwidth
+# hyphen-minus (U+FF0D) some PDF generators substitute for a plain "-".
+_DASH_CHARS = "-–—－"
+_DASH_ALT = rf"[{_DASH_CHARS}]|to"
+_DATE_TOKEN = r"[A-Za-z]+\.?\s+\d{4}|\d{1,2}/\d{4}|\d{4}|present|current"
 _DATE_RANGE_RE = re.compile(
-    rf"(?P<start>{_DATE_TOKEN})\s*(?:-|–|—|to)\s*(?P<end>{_DATE_TOKEN})",
+    rf"(?P<start>{_DATE_TOKEN})\s*(?:{_DASH_ALT})\s*(?P<end>{_DATE_TOKEN})",
     re.IGNORECASE,
 )
 _TRAILING_YEAR_RE = re.compile(r"(19|20)\d{2}\s*$")
 _BULLET_CHARS = ("•", "-", "*", "‣", "●", "◦", "·")
+
+
+def _is_bullet_prefixed(text: str) -> bool:
+    """True if ``text`` starts with a bullet glyph.
+
+    PDF exports of a Word bulleted list commonly render the bullet as a
+    Wingdings glyph that lands in the Unicode Private Use Area (e.g. "•"
+    becomes U+F0B7) rather than a normal bullet character, so that range is
+    treated as a bullet prefix too, in addition to the common ASCII/Unicode
+    bullet characters.
+    """
+    stripped = text.lstrip()
+    if not stripped:
+        return False
+    first = stripped[0]
+    return first in _BULLET_CHARS or 0xE000 <= ord(first) <= 0xF8FF
 _TITLE_KEYWORDS = (
     "engineer", "developer", "manager", "architect", "lead", "director",
     "analyst", "scientist", "consultant", "specialist", "administrator",
@@ -113,11 +149,16 @@ class ParsedResume:
 
 
 @dataclass
-class _Para:
+class LineInfo:
+    """One logical line of resume text plus format-agnostic hints.
+
+    docx and PDF extraction both converge on this shape so that section
+    detection, job-entry parsing, and bullet collection are written once.
+    """
+
     text: str
-    is_heading_style: bool
-    is_bullet_style: bool
-    is_bold_whole_line: bool
+    is_heading_hint: bool
+    is_bullet_hint: bool
 
 
 @dataclass
@@ -127,8 +168,9 @@ class ImportResult:
     counts: dict[str, int]
 
 
-def _extract_paragraphs(doc: Document) -> list[_Para]:
-    paragraphs: list[_Para] = []
+def _extract_docx_lines(path: Path) -> list[LineInfo]:
+    doc = Document(str(path))
+    lines: list[LineInfo] = []
     for p in doc.paragraphs:
         text = p.text.strip()
         if not text:
@@ -136,23 +178,44 @@ def _extract_paragraphs(doc: Document) -> list[_Para]:
         style_name = (p.style.name or "") if p.style else ""
         runs = [r for r in p.runs if r.text.strip()]
         is_bold_whole_line = bool(runs) and all(r.bold for r in runs)
-        paragraphs.append(
-            _Para(
-                text=text,
-                is_heading_style=style_name.lower().startswith("heading"),
-                is_bullet_style="list" in style_name.lower(),
-                is_bold_whole_line=is_bold_whole_line,
-            )
+        is_heading_style = style_name.lower().startswith("heading")
+        is_bullet_hint = "list" in style_name.lower()
+        is_heading_hint = not is_bullet_hint and (
+            is_heading_style or (len(text) <= 40 and (text.isupper() or is_bold_whole_line))
         )
-    return paragraphs
+        lines.append(LineInfo(text=text, is_heading_hint=is_heading_hint, is_bullet_hint=is_bullet_hint))
+    return lines
 
 
-def _is_section_boundary(p: _Para) -> bool:
-    if p.is_heading_style:
-        return True
-    if p.is_bullet_style:
+def _looks_like_heading_text(text: str) -> bool:
+    """Format-agnostic heading heuristic: short line that's either ALL CAPS
+    or an exact (case-insensitive) match against a known section alias.
+
+    Used as the sole heading signal for PDFs (no style/bold metadata
+    available) and as a fallback signal for docx.
+    """
+    if len(text) > 40:
         return False
-    return len(p.text) <= 40 and (p.text.isupper() or p.is_bold_whole_line)
+    return bool(text.isupper()) or _match_section_key(text) is not None
+
+
+def _extract_pdf_lines(path: Path) -> list[LineInfo]:
+    lines: list[LineInfo] = []
+    with pdfplumber.open(str(path)) as pdf:
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            for raw_line in text.split("\n"):
+                line = raw_line.strip()
+                if not line:
+                    continue
+                is_bullet_hint = _is_bullet_prefixed(line)
+                is_heading_hint = not is_bullet_hint and _looks_like_heading_text(line)
+                lines.append(LineInfo(text=line, is_heading_hint=is_heading_hint, is_bullet_hint=is_bullet_hint))
+    return lines
+
+
+def _is_section_boundary(p: LineInfo) -> bool:
+    return p.is_heading_hint
 
 
 def _match_section_key(header_text: str) -> str | None:
@@ -165,9 +228,8 @@ def _match_section_key(header_text: str) -> str | None:
 
 def _strip_bullet_char(text: str) -> str:
     stripped = text.strip()
-    for ch in _BULLET_CHARS:
-        if stripped.startswith(ch):
-            return stripped[len(ch):].strip()
+    if stripped and (stripped[0] in _BULLET_CHARS or 0xE000 <= ord(stripped[0]) <= 0xF8FF):
+        return stripped[1:].strip()
     return stripped
 
 
@@ -180,15 +242,28 @@ def _parse_month_year(token: str) -> date | None:
         month = _MONTHS.get(m.group(1).lower())
         if month:
             return date(int(m.group(2)), month, 1)
+    m = re.fullmatch(r"(\d{1,2})/(\d{4})", token)
+    if m and 1 <= int(m.group(1)) <= 12:
+        return date(int(m.group(2)), int(m.group(1)), 1)
     return None
 
 
 def _split_title_company(remainder: str) -> tuple[str, str]:
-    for delim_pattern in (r"\|", r"[–—]", r","):
+    for delim_pattern in (r"\|", rf"[{_DASH_CHARS}]", r","):
         parts = re.split(delim_pattern, remainder, maxsplit=1)
         if len(parts) == 2 and parts[0].strip() and parts[1].strip():
-            return parts[0].strip(" -–—"), parts[1].strip(" -–—")
+            return parts[0].strip(f" {_DASH_CHARS}"), parts[1].strip(f" {_DASH_CHARS}")
     return remainder.strip(), ""
+
+
+def _split_company_location(line: str) -> tuple[str, str | None]:
+    """Split a "Company — Location" line, e.g. one that stands alone below a
+    job title/date line rather than sharing a line with them."""
+    for delim_pattern in (r"\|", rf"[{_DASH_CHARS}]", r","):
+        parts = re.split(delim_pattern, line, maxsplit=1)
+        if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+            return parts[0].strip(f" {_DASH_CHARS}"), parts[1].strip(f" {_DASH_CHARS}")
+    return line.strip(), None
 
 
 def _parse_job_header(line: str) -> ParsedEmployment | None:
@@ -202,7 +277,7 @@ def _parse_job_header(line: str) -> ParsedEmployment | None:
 
     remainder = line[: m.start()] + line[m.end():]
     remainder = re.sub(r"\(\s*\)", "", remainder)
-    remainder = remainder.strip(" -–—()|,\t")
+    remainder = remainder.strip(f" {_DASH_CHARS}()|,\t")
 
     title, company = _split_title_company(remainder)
     title_lower, company_lower = title.lower(), company.lower()
@@ -212,7 +287,7 @@ def _parse_job_header(line: str) -> ParsedEmployment | None:
         title, company = company, title
 
     return ParsedEmployment(
-        company=company or "Unknown",
+        company=company,
         title=title or remainder,
         location=None,
         start_date=start_date,
@@ -221,21 +296,54 @@ def _parse_job_header(line: str) -> ParsedEmployment | None:
     )
 
 
-def _parse_experience_section(paras: list[_Para]) -> tuple[list[ParsedEmployment], list[str]]:
+def _parse_experience_section(paras: list[LineInfo]) -> tuple[list[ParsedEmployment], list[str]]:
+    """Collect job entries and their bullets from an EXPERIENCE section.
+
+    Handles two common layouts: "Title, Company | Dates" all on one line
+    (docx-style), and "Title, Dates" on one line with "Company — Location"
+    on the very next non-bullet line (a common resume-builder/PDF layout,
+    where the date range's remainder yields no company via delimiter
+    splitting) — in that case the following line is consumed as the
+    company/location rather than being misread as a bullet.
+    """
     employments: list[ParsedEmployment] = []
     unparsed: list[str] = []
     preamble: list[str] = []
     current: ParsedEmployment | None = None
+    skip_next = False
 
-    for p in paras:
-        if not p.is_bullet_style:
+    for idx, p in enumerate(paras):
+        if skip_next:
+            skip_next = False
+            continue
+        if not p.is_bullet_hint:
             job = _parse_job_header(p.text)
             if job is not None:
+                if not job.company:
+                    next_p = paras[idx + 1] if idx + 1 < len(paras) else None
+                    if (
+                        next_p is not None
+                        and not next_p.is_bullet_hint
+                        and _parse_job_header(next_p.text) is None
+                    ):
+                        job.company, job.location = _split_company_location(next_p.text)
+                        skip_next = True
+                job.company = job.company or "Unknown"
                 current = job
                 employments.append(current)
                 continue
         if current is not None:
-            current.bullets.append(_strip_bullet_char(p.text))
+            if p.is_bullet_hint or not current.bullets:
+                current.bullets.append(_strip_bullet_char(p.text))
+            elif current.bullets[-1].endswith((".", "!", "?", ":")):
+                current.bullets.append(_strip_bullet_char(p.text))
+            else:
+                # No bullet marker and the previous bullet doesn't look
+                # sentence-complete: this is very likely wrapped text from a
+                # PDF export (a bullet whose text ran onto a second line
+                # without repeating the bullet glyph), so merge rather than
+                # creating a spurious extra bullet.
+                current.bullets[-1] = f"{current.bullets[-1]} {p.text}".strip()
         else:
             preamble.append(p.text)
 
@@ -244,16 +352,30 @@ def _parse_experience_section(paras: list[_Para]) -> tuple[list[ParsedEmployment
     return employments, unparsed
 
 
-def _parse_skills_section(paras: list[_Para]) -> list[str]:
+_PUA_CHAR_RE = re.compile(r"[-]")
+
+
+def _parse_skills_section(paras: list[LineInfo]) -> list[str]:
     skills: list[str] = []
     seen: set[str] = set()
     for p in paras:
-        for token in re.split(r"[,|;•●•]", p.text):
+        # PDF exports of a Word skills list often use a Wingdings bullet
+        # glyph (Private Use Area) as the separator between skills on the
+        # same line, not just as a line-leading bullet.
+        text = _PUA_CHAR_RE.sub(",", p.text)
+        for token in re.split(r"[,|;•●•]", text):
             token = token.strip(" \t.")
             if token and token.lower() not in seen:
                 seen.add(token.lower())
                 skills.append(token)
     return skills
+
+
+_DEGREE_KEYWORDS = (
+    "bachelor", "master", "phd", "doctor", "b.sc", "m.sc", "b.tech", "m.tech",
+    "associate degree", "diploma", "b.e.", "m.e.", "mba", "bsc", "msc",
+)
+_INSTITUTION_KEYWORDS = ("university", "college", "institute", "polytechnic")
 
 
 def _parse_education_line(line: str) -> ParsedEducation:
@@ -266,10 +388,16 @@ def _parse_education_line(line: str) -> ParsedEducation:
         end_date = None if end_token in ("present", "current") else _parse_month_year(m.group("end"))
         remainder = line[: m.start()] + line[m.end():]
 
-    remainder = re.sub(r"\(\s*\)", "", remainder).strip(" -–—()|,\t")
-    parts = re.split(r",", remainder, maxsplit=1)
-    if len(parts) == 2:
-        degree_and_field, institution = parts[0].strip(), parts[1].strip()
+    remainder = re.sub(r"\(\s*\)", "", remainder).strip(f" {_DASH_CHARS}()|,\t")
+    parts = [part.strip() for part in re.split(r",", remainder, maxsplit=1)]
+    if len(parts) == 2 and parts[0] and parts[1]:
+        a, b = parts
+        a_is_institution = any(kw in a.lower() for kw in _INSTITUTION_KEYWORDS)
+        b_is_institution = any(kw in b.lower() for kw in _INSTITUTION_KEYWORDS)
+        if a_is_institution and not b_is_institution:
+            institution, degree_and_field = a, b
+        else:
+            degree_and_field, institution = a, b
     else:
         degree_and_field, institution = "", remainder
 
@@ -277,6 +405,10 @@ def _parse_education_line(line: str) -> ParsedEducation:
     m2 = re.search(r"(.+?)\s+in\s+(.+)", degree_and_field, re.IGNORECASE)
     if m2:
         degree, field_of_study = m2.group(1).strip(), m2.group(2).strip()
+    else:
+        m3 = re.search(rf"(.+?)\s*[{_DASH_CHARS}]\s*(.+)", degree_and_field)
+        if m3 and any(kw in m3.group(1).lower() for kw in _DEGREE_KEYWORDS):
+            degree, field_of_study = m3.group(1).strip(), m3.group(2).strip()
 
     return ParsedEducation(
         institution=institution or line,
@@ -286,6 +418,28 @@ def _parse_education_line(line: str) -> ParsedEducation:
         end_date=end_date,
         raw_line=line,
     )
+
+
+def _parse_education_section(paras: list[LineInfo]) -> list[ParsedEducation]:
+    """Group EDUCATION lines into entries.
+
+    A single line already containing a date range (the common "Degree in
+    Field, Institution (dates)" one-liner) is its own entry immediately.
+    Otherwise consecutive lines are buffered together (a common layout is
+    "Institution" on one line and "Degree — Field" on the next, neither of
+    which mentions dates) and flushed as one combined entry once a
+    date-bearing line is hit or the section ends.
+    """
+    entries: list[ParsedEducation] = []
+    buffer: list[str] = []
+    for p in paras:
+        buffer.append(p.text)
+        if _DATE_RANGE_RE.search(p.text) or _TRAILING_YEAR_RE.search(p.text):
+            entries.append(_parse_education_line(", ".join(buffer)))
+            buffer = []
+    if buffer:
+        entries.append(_parse_education_line(", ".join(buffer)))
+    return entries
 
 
 def _parse_certification_line(line: str) -> ParsedCertification:
@@ -305,10 +459,10 @@ def _parse_certification_line(line: str) -> ParsedCertification:
     return ParsedCertification(name=name or line, issuer=issuer, issue_date=issue_date, raw_line=line)
 
 
-def _parse_projects_section(paras: list[_Para]) -> list[ParsedProject]:
+def _parse_projects_section(paras: list[LineInfo]) -> list[ParsedProject]:
     projects: list[ParsedProject] = []
     for p in paras:
-        if not p.is_bullet_style:
+        if not p.is_bullet_hint:
             projects.append(ParsedProject(name=p.text, description=None))
         elif projects:
             desc = _strip_bullet_char(p.text)
@@ -318,16 +472,17 @@ def _parse_projects_section(paras: list[_Para]) -> list[ParsedProject]:
     return projects
 
 
-def parse_resume_docx(path: Path) -> ParsedResume:
-    doc = Document(str(path))
-    paragraphs = _extract_paragraphs(doc)
+def _parse_resume_lines(lines: list[LineInfo]) -> ParsedResume:
+    """Shared section-detection/extraction logic, format-agnostic.
 
-    buckets: list[tuple[str | None, str | None, list[_Para]]] = []
+    Both docx and PDF parsing converge here after producing a list[LineInfo].
+    """
+    buckets: list[tuple[str | None, str | None, list[LineInfo]]] = []
     current_key: str | None = None
     current_header: str | None = None
-    current_paras: list[_Para] = []
+    current_paras: list[LineInfo] = []
 
-    for p in paragraphs:
+    for p in lines:
         if _is_section_boundary(p):
             buckets.append((current_key, current_header, current_paras))
             current_key = _match_section_key(p.text)
@@ -361,13 +516,13 @@ def parse_resume_docx(path: Path) -> ParsedResume:
         elif key == "skills":
             skills.extend(_parse_skills_section(paras))
         elif key == "education":
-            education.extend(_parse_education_line(p.text) for p in paras)
+            education.extend(_parse_education_section(paras))
         elif key == "certifications":
-            certifications.extend(_parse_certification_line(p.text) for p in paras)
+            certifications.extend(_parse_certification_line(_strip_bullet_char(p.text)) for p in paras)
         elif key == "projects":
             projects.extend(_parse_projects_section(paras))
 
-    raw_text_for_hash = "\n".join(p.text for p in paragraphs)
+    raw_text_for_hash = "\n".join(p.text for p in lines)
 
     return ParsedResume(
         summary=" ".join(summary_parts) if summary_parts else None,
@@ -381,13 +536,36 @@ def parse_resume_docx(path: Path) -> ParsedResume:
     )
 
 
-def import_resume(session: Session, docx_path: Path, *, force: bool = False) -> ImportResult:
-    """Parse ``docx_path`` and persist it as a new CandidateProfile version.
+def parse_resume_docx(path: Path) -> ParsedResume:
+    return _parse_resume_lines(_extract_docx_lines(path))
+
+
+def parse_resume_pdf(path: Path) -> ParsedResume:
+    return _parse_resume_lines(_extract_pdf_lines(path))
+
+
+_PARSERS_BY_SUFFIX = {
+    ".docx": parse_resume_docx,
+    ".pdf": parse_resume_pdf,
+}
+
+
+def parse_resume(path: Path) -> ParsedResume:
+    """Dispatch to the right parser based on file extension (.docx or .pdf)."""
+    parser = _PARSERS_BY_SUFFIX.get(path.suffix.lower())
+    if parser is None:
+        supported = ", ".join(sorted(_PARSERS_BY_SUFFIX))
+        raise ValueError(f"Unsupported resume file type '{path.suffix}'. Supported types: {supported}")
+    return parser(path)
+
+
+def import_resume(session: Session, resume_path: Path, *, force: bool = False) -> ImportResult:
+    """Parse ``resume_path`` (.docx or .pdf) and persist it as a new CandidateProfile version.
 
     If the document's content is unchanged from the currently active profile,
     this is a no-op (``created=False``) unless ``force`` is set.
     """
-    parsed = parse_resume_docx(docx_path)
+    parsed = parse_resume(resume_path)
     file_hash = content_hash(parsed.raw_text_for_hash)
 
     existing_active = (
@@ -414,7 +592,7 @@ def import_resume(session: Session, docx_path: Path, *, force: bool = False) -> 
 
     profile = CandidateProfile(
         summary=parsed.summary,
-        raw_resume_path=str(docx_path),
+        raw_resume_path=str(resume_path),
         source_hash=file_hash,
         version=new_version,
         is_active=True,
