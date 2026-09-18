@@ -1,0 +1,91 @@
+candidate:
+  name: "Candidate Name"
+  base_resume: "./data/resumes/base_resume.docx"
+
+address_profiles:
+  british_columbia:
+    city: "Victoria"
+    province: "BC"
+    country: "Canada"
+
+  ontario:
+    city: "Toronto"
+    province: "ON"
+    country: "Canada"
+
+search_profiles:
+  - name: "BC Backend"
+    enabled: true
+    locations:
+      - "Victoria, BC"
+      - "Vancouver, BC"
+      - "Remote Canada"
+    address_profile: "british_columbia"
+    titles:
+      - "Senior Software Engineer"
+      - "Senior Backend Engineer"
+      - "Senior Java Developer"
+      - "Staff Software Engineer"
+
+  - name: "Ontario Backend"
+    enabled: true
+    locations:
+      - "Toronto, ON"
+      - "Mississauga, ON"
+    address_profile: "ontario"
+    titles:
+      - "Senior Software Engineer"
+      - "Senior Backend Engineer"
+      - "Senior Java Developer"
+
+matching:
+  minimum_score: 75
+
+  required_or_high_value_skills:
+    - Java
+    - Spring Boot
+    - REST APIs
+    - Distributed Systems
+
+  preferred_skills:
+    - AWS
+    - Kubernetes
+    - Docker
+    - PostgreSQL
+    - MongoDB
+    - Kafka
+    - OAuth2
+    - Keycloak
+
+  negative_keywords:
+    - "Frontend Developer"
+    - "React Developer"
+    - "PHP Developer"
+    - "iOS Developer"
+
+  # Must sum to 100. See docs/ARCHITECTURE.md for the scoring model.
+  weights:
+    technical_skills: 30
+    relevant_experience: 20
+    title_similarity: 15
+    seniority: 10
+    platform: 10
+    location: 5
+    domain_experience: 5
+    education: 5
+
+resume:
+  optimize_keywords: true
+  reorder_bullets: true
+  tailor_summary: true
+  tailor_skills: true
+  change_address: true
+  maximum_pages: 2
+  never_invent_experience: true
+
+notifications:
+  minimum_score: 80
+
+scheduler:
+  enabled: true
+  interval_minutes: 15

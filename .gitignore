@@ -1,0 +1,22 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Secrets and personal config
+.env
+config/config.yaml
+
+# Local database
+data/*.db
+data/*.db-journal
+
+# Generated/personal artifacts (never commit resumes or application output)
+data/resumes/*
+!data/resumes/.gitkeep
+data/applications/**
+!data/applications/.gitkeep
