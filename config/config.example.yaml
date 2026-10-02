@@ -1,6 +1,10 @@
 candidate:
   name: "Candidate Name"
   base_resume: "./data/resumes/base_resume.docx"
+  # By default the name parsed off your resume's own header wins over `name`
+  # above (which is easy to forget to edit). Set true to force `name` to
+  # always win instead, e.g. for a different spelling/nickname than the file.
+  override_parsed_name: false
 
 address_profiles:
   british_columbia:
@@ -33,6 +37,12 @@ search_profiles:
     # `run`/`serve` only ever poll what's listed here.
     greenhouse_boards: []
     lever_companies: []
+    # Adzuna: a job-aggregator API (covers many employers per query, not just
+    # one ATS board) -- searches using the `titles`/`locations` above. Needs
+    # ADZUNA_APP_ID/ADZUNA_APP_KEY in .env (free signup at
+    # developer.adzuna.com); disabled here until those are set.
+    adzuna_enabled: false
+    adzuna_country: "ca"
 
   - name: "Ontario Backend"
     enabled: true

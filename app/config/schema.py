@@ -6,12 +6,22 @@ from pydantic import BaseModel, Field, model_validator
 class CandidateConfig(BaseModel):
     name: str
     base_resume: str
+    # By default the name parsed off the resume's own header (app/resume/parser.py)
+    # wins, since config.yaml's `name` commonly gets left at its placeholder value.
+    # Set true to force `name` above to always win instead (e.g. you want a
+    # different spelling/nickname on the resume than what's printed on the file).
+    override_parsed_name: bool = False
 
 
 class AddressProfile(BaseModel):
     city: str
     province: str
     country: str
+
+
+_ADZUNA_COUNTRIES = {
+    "at", "au", "br", "ca", "de", "fr", "gb", "in", "it", "mx", "nl", "nz", "pl", "ru", "sg", "us", "za",
+}
 
 
 class SearchProfile(BaseModel):
@@ -26,6 +36,23 @@ class SearchProfile(BaseModel):
     # regardless of these being set.
     greenhouse_boards: list[str] = Field(default_factory=list)
     lever_companies: list[str] = Field(default_factory=list)
+    # Adzuna (docs/ARCHITECTURE.md, "Job Source Risk Assessment"): a public,
+    # key-authenticated job-aggregator API covering many employers per query,
+    # instead of one ATS board at a time. Reuses `titles` above as the search
+    # queries (one Adzuna search per title) and `locations[0]` as the location
+    # filter. Requires ADZUNA_APP_ID/ADZUNA_APP_KEY in .env (free signup at
+    # developer.adzuna.com) -- credentials never live in this file.
+    adzuna_enabled: bool = False
+    adzuna_country: str = "ca"
+
+    @model_validator(mode="after")
+    def adzuna_country_is_known(self) -> "SearchProfile":
+        if self.adzuna_enabled and self.adzuna_country not in _ADZUNA_COUNTRIES:
+            raise ValueError(
+                f"search_profiles[{self.name!r}].adzuna_country must be one of "
+                f"{sorted(_ADZUNA_COUNTRIES)}, got {self.adzuna_country!r}"
+            )
+        return self
 
 
 class MatchingWeights(BaseModel):

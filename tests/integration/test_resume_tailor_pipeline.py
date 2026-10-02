@@ -137,6 +137,81 @@ def test_address_swapped_only_for_job_with_matching_search_profile(session):
     assert "Victoria, BC, Canada" not in _docx_text(result2.docx_path)
 
 
+def test_parsed_name_wins_over_config_name_by_default(session):
+    profile = _seed_candidate(session)
+    profile.full_name = "Jordan Q. Casey"
+    session.commit()
+    job = _seed_job(session)
+
+    config = _config(candidate=CandidateConfig(name="Config Placeholder Name", base_resume="x.docx"))
+    result = tailor_resume(session, job, config, ai_provider=MockAIProvider())
+
+    text = _docx_text(result.docx_path)
+    assert "Jordan Q. Casey" in text
+    assert "Config Placeholder Name" not in text
+
+
+def test_ai_omitting_a_whole_employer_and_skills_is_backfilled_verbatim(session):
+    """Regression test: a real observed failure mode is the AI treating
+    "tailor" as "shorten" -- dropping an entire employer's bullets and most
+    skills as "irrelevant" rather than just reordering/re-emphasizing.
+    Nothing true on the candidate's profile should be able to silently
+    vanish from the final resume just because the AI chose to omit it.
+    """
+    profile = CandidateProfile(raw_resume_path="x.docx", source_hash="h", is_active=True)
+    profile.skills = [Skill(name="Java"), Skill(name="COBOL")]
+    recent_bullet = AccomplishmentBullet(id=1, text="Did recent things", order_index=0)
+    old_bullet = AccomplishmentBullet(id=2, text="Did old things", order_index=0)
+    profile.employments = [
+        Employment(company="New Co", title="Engineer", start_date=date(2023, 1, 1), is_current=True, bullets=[recent_bullet]),
+        Employment(company="Old Co", title="Engineer", start_date=date(2015, 1, 1), end_date=date(2020, 1, 1), bullets=[old_bullet]),
+    ]
+    session.add(profile)
+    job = _seed_job(session)
+    session.commit()
+
+    class OverlyAggressiveProvider:
+        last_usage = None
+
+        def tailor_resume(self, candidate, job, requirements, address):
+            # Only returns the recent bullet and one skill, dropping "Old Co" and "COBOL" entirely.
+            return TailoredResumeDraft(
+                summary="Engineer.",
+                skills_order=["Java"],
+                bullets=[TailoredBulletDraft(text="Did recent things", source_bullet_id=1)],
+            )
+
+    result = tailor_resume(session, job, _config(), ai_provider=OverlyAggressiveProvider())
+
+    provenance = session.query(TailoredBulletProvenance).filter_by(
+        tailored_resume_id=result.tailored_resume.id
+    ).all()
+    covered_ids = {p.source_bullet_id for p in provenance}
+    assert covered_ids == {1, 2}  # both bullets present, including the "dropped" one
+
+    assert set(result.tailored_resume.skills_order) == {"Java", "COBOL"}
+
+    docx_text = _docx_text(result.docx_path)
+    assert "Did old things" in docx_text
+    assert "Old Co" in docx_text
+
+
+def test_override_parsed_name_forces_config_name_to_win(session):
+    profile = _seed_candidate(session)
+    profile.full_name = "Jordan Q. Casey"
+    session.commit()
+    job = _seed_job(session)
+
+    config = _config(
+        candidate=CandidateConfig(name="Preferred Name", base_resume="x.docx", override_parsed_name=True)
+    )
+    result = tailor_resume(session, job, config, ai_provider=MockAIProvider())
+
+    text = _docx_text(result.docx_path)
+    assert "Preferred Name" in text
+    assert "Jordan Q. Casey" not in text
+
+
 def _docx_text(path) -> str:
     from docx import Document
 

@@ -112,6 +112,20 @@ def test_job_detail_page_shows_match_and_resume_diff(client):
     assert response.status_code == 200
     assert "Great fit" in response.text
     assert "88/100" in response.text
+
+
+def test_download_links_are_excluded_from_hx_boost(client):
+    """Regression test: hx-boost="true" on <body> (base.html) intercepts link
+    clicks as AJAX/JS fetches, which silently breaks a real file download --
+    the browser never sees the response's Content-Disposition header. Download
+    links must opt out individually with hx-boost="false".
+    """
+    test_client, SessionLocal = client
+    job_id = _seed_job_with_resume(SessionLocal)
+
+    response = test_client.get(f"/jobs/{job_id}")
+
+    assert 'href="/jobs/1/resume.docx" hx-boost="false"' in response.text
     assert "Tailored summary" in response.text
     assert "Kept original wording" in response.text  # the rejected/fallback bullet
 

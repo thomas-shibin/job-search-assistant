@@ -23,9 +23,11 @@ from app.notifications.base import NotificationProvider
 from app.notifications.service import maybe_notify_qualified_job
 from app.resume.pipeline import generate_resume_bundle
 from app.scheduler.lock import RunAlreadyInProgressError, run_lock
+from app.sources.adzuna import AdzunaSource
 from app.sources.base import JobSource
 from app.sources.greenhouse import GreenhouseSource
 from app.sources.lever import LeverSource
+from app.sources.settings import AdzunaSettings
 from app.utils.logging import log_event
 
 logger = logging.getLogger(__name__)
@@ -41,12 +43,27 @@ class RunSummary:
     skipped: bool = False
 
 
-def _configured_sources(search_profile: SearchProfile) -> list[tuple[str, JobSource]]:
+def _configured_sources(search_profile: SearchProfile, adzuna_settings: AdzunaSettings) -> list[tuple[str, JobSource]]:
     sources: list[tuple[str, JobSource]] = []
     for token in search_profile.greenhouse_boards:
         sources.append((f"greenhouse:{token}", GreenhouseSource(board_token=token)))
     for company in search_profile.lever_companies:
         sources.append((f"lever:{company}", LeverSource(company=company)))
+    if search_profile.adzuna_enabled:
+        if not (adzuna_settings.app_id and adzuna_settings.app_key):
+            logger.warning(
+                "search_profile %r has adzuna_enabled=true but ADZUNA_APP_ID/ADZUNA_APP_KEY "
+                "are not set in .env -- skipping Adzuna for this run",
+                search_profile.name,
+            )
+        else:
+            sources.append((
+                "adzuna",
+                AdzunaSource(
+                    app_id=adzuna_settings.app_id, app_key=adzuna_settings.app_key,
+                    country=search_profile.adzuna_country,
+                ),
+            ))
     return sources
 
 
@@ -149,11 +166,12 @@ def _run(session: Session, config: AppConfig) -> RunSummary:
             logger.warning("AI provider misconfigured; continuing this run without AI extraction", exc_info=True)
 
     notification_provider = _build_notification_provider()
+    adzuna_settings = AdzunaSettings()
 
     for search_profile in config.search_profiles:
         if not search_profile.enabled:
             continue
-        for source_name, source in _configured_sources(search_profile):
+        for source_name, source in _configured_sources(search_profile, adzuna_settings):
             _run_source(
                 session, scheduler_run, source_name, source, search_profile, config,
                 ai_provider, notification_provider, summary,

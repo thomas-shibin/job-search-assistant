@@ -24,7 +24,7 @@ from app.documents.docx import render_tailored_resume
 from app.models.candidate import CandidateProfile
 from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory
 from app.models.resume import TailoredBulletProvenance, TailoredResume
-from app.resume.validator import validate_tailored_resume
+from app.resume.validator import BulletValidationResult, ValidationResult, validate_tailored_resume
 from app.utils.logging import log_event
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,17 @@ def _resolve_requirements(session: Session, job: Job) -> ExtractedJobRequirement
     )
 
 
+def _resolve_candidate_name(config: AppConfig, candidate: CandidateProfile) -> str:
+    """`candidate.full_name` (parsed off the resume's own header) wins by
+    default, since config.yaml's `candidate.name` commonly gets left at its
+    placeholder value. `candidate.override_parsed_name: true` inverts that,
+    for a deliberately different name/spelling than what's on the file.
+    """
+    if config.candidate.override_parsed_name:
+        return config.candidate.name
+    return candidate.full_name or config.candidate.name
+
+
 def _resolve_address(config: AppConfig, job: Job) -> AddressProfile | None:
     """Address swap only applies to a job discovered under a search profile
     (spec: swap to the address matching where you're applying) -- a manually
@@ -65,6 +76,28 @@ def _resolve_address(config: AppConfig, job: Job) -> AddressProfile | None:
     if search_profile is None:
         return None
     return config.address_profiles.get(search_profile.address_profile)
+
+
+def _backfill_omitted_content(validation: ValidationResult, candidate: CandidateProfile) -> None:
+    """Completeness safety net: nothing on the candidate's real profile
+    should silently vanish just because the AI chose to omit it as
+    "irrelevant" to this job (a real, documented failure mode -- an AI asked
+    to tailor a resume will sometimes drop whole roles/skills rather than
+    just reordering/re-emphasizing). This isn't a truthfulness problem (the
+    validator already handles that), so anything backfilled here is added as
+    `accepted=True` verbatim, not flagged as a validation failure.
+    """
+    covered_bullet_ids = {b.source_bullet_id for b in validation.bullets if b.source_bullet_id is not None}
+    for emp in candidate.employments:
+        for bullet in emp.bullets:
+            if bullet.id not in covered_bullet_ids:
+                validation.bullets.append(BulletValidationResult(text=bullet.text, source_bullet_id=bullet.id, accepted=True))
+
+    covered_skills_lower = {s.lower() for s in validation.skills_accepted}
+    for skill in candidate.skills:
+        if skill.name.lower() not in covered_skills_lower:
+            validation.skills_accepted.append(skill.name)
+            covered_skills_lower.add(skill.name.lower())
 
 
 def tailor_resume(
@@ -87,6 +120,7 @@ def tailor_resume(
 
     draft = provider.tailor_resume(candidate, job, requirements, address)
     validation = validate_tailored_resume(draft, candidate)
+    _backfill_omitted_content(validation, candidate)
 
     final_summary = draft.summary if validation.summary_accepted else (candidate.summary or "")
     final_skills = validation.skills_accepted
@@ -140,7 +174,8 @@ def tailor_resume(
     docx_path = folder / "tailored_resume.docx"
     render_tailored_resume(
         docx_path,
-        candidate_name=config.candidate.name,
+        candidate_name=_resolve_candidate_name(config, candidate),
+        contact_line=candidate.contact_line,
         address=address,
         summary=final_summary,
         skills_order=final_skills,

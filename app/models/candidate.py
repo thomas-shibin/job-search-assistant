@@ -12,6 +12,8 @@ class CandidateProfile(Base):
     __tablename__ = "candidate_profiles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    contact_line: Mapped[str | None] = mapped_column(String(512), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_resume_path: Mapped[str] = mapped_column(String(1024))
     source_hash: Mapped[str] = mapped_column(String(64))

@@ -88,7 +88,13 @@ def test_pdf_unrecognized_section_lands_in_raw_unparsed_not_dropped():
     combined = "\n".join(parsed.raw_unparsed_sections)
     assert "VOLUNTEER" in combined
     assert "Local Coding Bootcamp" in combined
-    assert "jordan.casey@example.com" in combined
+
+
+def test_pdf_header_block_is_extracted_as_name_and_contact():
+    parsed = parse_resume_pdf(FIXTURE_PATH)
+    assert parsed.full_name == "Jordan Casey"
+    assert "jordan.casey@example.com" in parsed.contact_line
+    assert "Victoria, BC" in parsed.contact_line
 
 
 def test_parse_resume_dispatches_to_pdf_by_extension():

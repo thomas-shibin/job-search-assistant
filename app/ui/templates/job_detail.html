@@ -43,8 +43,8 @@
 {% if detail.tailored_resume %}
 <section>
   <h2>Tailored resume ({{ detail.tailored_resume.validation_status }})</h2>
-  {% if detail.tailored_resume.docx_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.docx">Download DOCX</a></p>{% endif %}
-  {% if detail.tailored_resume.pdf_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.pdf">Download PDF</a></p>{% endif %}
+  {% if detail.tailored_resume.docx_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.docx" hx-boost="false" download>Download DOCX</a></p>{% endif %}
+  {% if detail.tailored_resume.pdf_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.pdf" hx-boost="false" download>Download PDF</a></p>{% endif %}
 
   <h3>Summary</h3>
   <p>{{ detail.tailored_resume.summary_text }}</p>

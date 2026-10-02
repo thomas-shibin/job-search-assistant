@@ -26,6 +26,7 @@ def test_render_includes_all_sections(tmp_path):
     render_tailored_resume(
         out,
         candidate_name="Jordan Casey",
+        contact_line="jordan.casey@example.com | (555) 123-4567",
         address=AddressProfile(city="Victoria", province="BC", country="Canada"),
         summary="Backend engineer tailored for this role.",
         skills_order=["Java", "AWS"],
@@ -37,6 +38,7 @@ def test_render_includes_all_sections(tmp_path):
     assert out.exists()
     text = _all_text(out)
     assert "Jordan Casey" in text
+    assert "jordan.casey@example.com | (555) 123-4567" in text
     assert "Victoria, BC, Canada" in text
     assert "Backend engineer tailored for this role." in text
     assert "Java, AWS" in text
@@ -52,6 +54,7 @@ def test_render_omits_empty_sections(tmp_path):
     render_tailored_resume(
         out,
         candidate_name="Jordan Casey",
+        contact_line=None,
         address=None,
         summary="",
         skills_order=[],

@@ -45,15 +45,21 @@ _TAILOR_SYSTEM_PROMPT = """You tailor a candidate's resume to a specific job pos
 the job posting, extracted job requirements, and the candidate's ground-truth profile (summary, skills, and a
 numbered list of accomplishment bullets, each with an id).
 
+Tailoring means reordering and re-emphasizing to highlight what's most relevant to this job -- it does NOT mean
+shortening the resume or deciding what the candidate is allowed to show. Every skill and every bullet from every
+employer must still be present in your response, even ones from older or seemingly less relevant roles.
+
 Respond with ONLY a JSON object (no markdown, no commentary) with these keys:
 - summary: a 2-4 sentence professional summary tailored to this job
-- skills_order: an array of strings, a REORDERED SUBSET of candidate_skills (most relevant to this job first) --
-  every entry must be copied exactly from candidate_skills; never invent a skill not in that list
-- bullets: an array of objects {"source_bullet_id": <int>, "text": <string>}, one per candidate_bullets entry you
-  choose to include (you may omit bullets that are irrelevant to this job, but never invent a new one).
-  source_bullet_id MUST be one of the ids given in candidate_bullets. The rewritten text may rephrase, reorder, or
-  emphasize -- but MUST NOT introduce any number, percentage, or metric that is not already present in that exact
-  source bullet's original text. When in doubt, keep the number unchanged or omit it rather than guessing."""
+- skills_order: an array of strings containing EVERY entry from candidate_skills exactly once, reordered so the
+  most relevant to this job come first -- do not drop any entry, and each one must be copied exactly from
+  candidate_skills; never invent a skill not in that list
+- bullets: an array of objects {"source_bullet_id": <int>, "text": <string>}, with EXACTLY ONE entry for EVERY
+  id present in candidate_bullets -- never omit a bullet or an entire employer's bullets, no matter how old or
+  unrelated the role seems; never invent a bullet that isn't in candidate_bullets. source_bullet_id MUST be one
+  of the ids given in candidate_bullets. The rewritten text may rephrase, reorder emphasis, or tighten wording --
+  but MUST NOT introduce any number, percentage, or metric that is not already present in that exact source
+  bullet's original text. When in doubt, keep the number unchanged or omit it rather than guessing."""
 
 
 class OpenAIProvider:

@@ -144,6 +144,13 @@ Two source types are unambiguously safe:
    `api.lever.co/v0/postings/...`) — intentionally public, documented, unauthenticated
    APIs that companies use to power their own careers pages. Reading them is consuming a
    public API as designed, not scraping a restricted platform.
+3. **Adzuna** (`api.adzuna.com/v1/api/jobs/...`) — a public, documented, key-authenticated
+   job-aggregator API (free developer signup at developer.adzuna.com). Unlike Greenhouse/
+   Lever, which each cover one employer's own board, Adzuna indexes postings from many
+   employers/boards and is queried by keyword/location rather than a fixed company token —
+   the practical answer to "search broadly" without touching LinkedIn/Indeed. Same
+   "consuming a documented API with an issued key" legal footing as any other API
+   integration, not scraping.
 
 **Explicitly out of scope**: LinkedIn/Indeed scraping, automated Easy Apply, CAPTCHA
 handling, or anything touching authenticated sessions on those platforms. LinkedIn was

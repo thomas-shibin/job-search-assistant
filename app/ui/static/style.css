@@ -20,6 +20,13 @@ body {
 .topbar nav a { margin-left: 1rem; text-decoration: none; }
 main { max-width: 900px; margin: 0 auto; padding: 1.5rem; }
 .flash { background: #eef6ee; border: 1px solid var(--accent); padding: 0.5rem 1rem; margin-bottom: 1rem; }
+.error { background: #fff0f0; border: 1px solid var(--danger); color: var(--danger); padding: 0.5rem 1rem; margin-bottom: 1rem; }
+.quick-form { display: flex; flex-direction: column; gap: 1rem; max-width: 640px; }
+.quick-form label { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.9rem; }
+.quick-form textarea, .quick-form input[type="text"], .quick-form input[type="url"] { font-family: inherit; padding: 0.4rem; }
+.quick-form details { border: 1px solid var(--border); padding: 0.5rem 0.75rem; }
+.quick-form details label { margin-top: 0.5rem; }
+.quick-form button { align-self: start; padding: 0.5rem 1.5rem; }
 table.job-table { width: 100%; border-collapse: collapse; }
 table.job-table th, table.job-table td { text-align: left; padding: 0.5rem; border-bottom: 1px solid var(--border); }
 .filters { display: flex; gap: 1rem; align-items: end; margin-bottom: 1rem; }
@@ -39,3 +46,11 @@ table.job-table th, table.job-table td { text-align: left; padding: 0.5rem; bord
 .rejection-note { font-size: 0.8rem; color: var(--danger); }
 ins { background: #dbf5db; text-decoration: none; }
 del { background: #fbdada; color: #7a1f1f; }
+.browse-results { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 1rem; }
+.browse-result { border: 1px solid var(--border); padding: 0.75rem 1rem; }
+.browse-result h3 { margin: 0 0 0.25rem; }
+.browse-meta { color: #666; font-size: 0.85rem; margin: 0 0 0.5rem; }
+.browse-description { font-size: 0.9rem; margin: 0 0 0.5rem; }
+.pager { display: flex; justify-content: space-between; margin-top: 1rem; }
+.muted { color: #666; font-size: 0.9rem; }
+.search-section { margin-bottom: 1.5rem; }

@@ -1,14 +1,16 @@
-"""Tests for the Greenhouse/Lever adapters (Milestone 12). Every request goes
-through an `httpx.MockTransport` -- no real network call is made, so these
-stay fast/deterministic/offline like the rest of the suite.
+"""Tests for the Greenhouse/Lever/Adzuna adapters (Milestone 12). Every
+request goes through an `httpx.MockTransport` -- no real network call is
+made, so these stay fast/deterministic/offline like the rest of the suite.
 """
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import httpx
 import pytest
 
+from app.sources.adzuna import AdzunaSource
 from app.sources.greenhouse import GreenhouseSource
 from app.sources.lever import LeverSource
 
@@ -93,3 +95,128 @@ def test_lever_source_parses_postings_into_raw_jobs():
     assert "Build our platform." in job.description
     assert "Java" in job.description
     assert job.date_posted is not None
+
+
+ADZUNA_POSTING = {
+    "id": 987654,
+    "title": "Senior Backend Engineer",
+    "company": {"display_name": "Acme Corp"},
+    "location": {"display_name": "Victoria, BC"},
+    "redirect_url": "https://www.adzuna.ca/land/ad/987654",
+    "description": "We need <b>Java</b> experience.",
+    "created": "2024-02-01T09:00:00Z",
+}
+
+
+def _adzuna_client(handler) -> httpx.Client:
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_adzuna_source_parses_postings_into_raw_jobs():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": [ADZUNA_POSTING]})
+
+    search_profile = SimpleNamespace(titles=["Senior Backend Engineer"], locations=["Victoria, BC"])
+    source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(handler))
+
+    jobs = source.discover_jobs(search_profile)
+
+    assert len(jobs) == 1
+    job = jobs[0]
+    assert job.source == "adzuna"
+    assert job.external_id == "987654"
+    assert job.title == "Senior Backend Engineer"
+    assert job.company == "Acme Corp"
+    assert job.location == "Victoria, BC"
+    assert "Java" in job.description
+    assert "<b>" not in job.description
+    assert job.date_posted is not None
+
+
+def test_adzuna_source_sends_credentials_and_query_params():
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"results": []})
+
+    search_profile = SimpleNamespace(titles=["Backend Engineer"], locations=["Toronto, ON"])
+    source = AdzunaSource(app_id="my-id", app_key="my-key", country="ca", client=_adzuna_client(handler))
+
+    source.discover_jobs(search_profile)
+
+    assert len(captured) == 1
+    params = captured[0].url.params
+    assert params["app_id"] == "my-id"
+    assert params["app_key"] == "my-key"
+    assert params["what"] == "Backend Engineer"
+    assert params["where"] == "Toronto, ON"
+    assert "/v1/api/jobs/ca/search/1" in str(captured[0].url)
+
+
+def test_adzuna_source_queries_once_per_title_and_dedupes_by_id():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": [ADZUNA_POSTING]})
+
+    search_profile = SimpleNamespace(titles=["Backend Engineer", "Senior Backend Engineer"], locations=[])
+    source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(handler))
+
+    jobs = source.discover_jobs(search_profile)
+
+    # Same posting id surfaces under both title queries -- only counted once.
+    assert len(jobs) == 1
+
+
+def test_adzuna_source_falls_back_to_unfiltered_query_when_no_titles():
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"results": []})
+
+    search_profile = SimpleNamespace(titles=[], locations=[])
+    source = AdzunaSource(app_id="id", app_key="key", country="us", client=_adzuna_client(handler))
+
+    source.discover_jobs(search_profile)
+
+    assert len(captured) == 1
+    assert "what" not in captured[0].url.params
+    assert "where" not in captured[0].url.params
+
+
+def test_adzuna_source_search_page_requests_the_given_page_and_returns_raw_jobs():
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, json={"results": [ADZUNA_POSTING]})
+
+    source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(handler))
+
+    jobs = source.search_page(what="Backend Engineer", where="Toronto, ON", page=3)
+
+    assert len(jobs) == 1
+    assert jobs[0].external_id == "987654"
+    assert "/v1/api/jobs/ca/search/3" in str(captured[0].url)
+
+
+def test_adzuna_source_search_page_returns_empty_list_past_last_page():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"results": []})
+
+    source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(handler))
+
+    jobs = source.search_page(what="Backend Engineer", where=None, page=99)
+
+    assert jobs == []
+
+
+def test_adzuna_source_raises_on_http_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(404, json={})
+
+    search_profile = SimpleNamespace(titles=["Backend Engineer"], locations=[])
+    source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(handler))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        source.discover_jobs(search_profile)

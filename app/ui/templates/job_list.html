@@ -3,6 +3,66 @@
 {% block content %}
 <h1>Jobs</h1>
 
+<section class="search-section">
+  <h2>Search for jobs</h2>
+  <p class="muted">Live search against Adzuna. Nothing is saved until you click "Track &amp; tailor" on a result.</p>
+
+  <form method="get" action="/" class="filters">
+    <label>Title / keywords
+      <input type="text" name="what" value="{{ search.what }}" placeholder="Senior Backend Engineer">
+    </label>
+    <label>Location
+      <input type="text" name="where" value="{{ search.where }}" placeholder="Victoria, BC">
+    </label>
+    <label>Country
+      <input type="text" name="country" value="{{ search.country }}" size="4">
+    </label>
+    <button type="submit">Search</button>
+  </form>
+
+  {% if search.searched %}
+    {% if search.error %}<div class="error">{{ search.error }}</div>{% endif %}
+    <ul class="browse-results">
+      {% for row in search.results %}
+      <li class="browse-result">
+        <h3><a href="{{ row.raw.source_url }}" target="_blank" rel="noopener">{{ row.raw.title }}</a></h3>
+        <p class="browse-meta">{{ row.raw.company }}{% if row.raw.location %} &middot; {{ row.raw.location }}{% endif %}</p>
+        <p class="browse-description">{{ row.raw.description[:400] }}{% if row.raw.description|length > 400 %}...{% endif %}</p>
+        {% if row.tracked_job_id %}
+          <a href="/jobs/{{ row.tracked_job_id }}">Already tracked -- view</a>
+        {% else %}
+          <form method="post" action="/browse/track" hx-boost="false">
+            <input type="hidden" name="external_id" value="{{ row.raw.external_id or '' }}">
+            <input type="hidden" name="source_url" value="{{ row.raw.source_url }}">
+            <input type="hidden" name="company" value="{{ row.raw.company }}">
+            <input type="hidden" name="title" value="{{ row.raw.title }}">
+            <input type="hidden" name="location" value="{{ row.raw.location or '' }}">
+            <input type="hidden" name="date_posted" value="{{ row.raw.date_posted.isoformat() if row.raw.date_posted else '' }}">
+            <textarea name="description" hidden>{{ row.raw.description }}</textarea>
+            <button type="submit">Track &amp; tailor</button>
+          </form>
+        {% endif %}
+      </li>
+      {% else %}
+      {% if not search.error %}<p>No results on this page.</p>{% endif %}
+      {% endfor %}
+    </ul>
+
+    <div class="pager">
+      {% if search.page > 1 %}
+        <a href="/?what={{ search.what | urlencode }}&where={{ search.where | urlencode }}&country={{ search.country | urlencode }}&page={{ search.page - 1 }}">&larr; Previous</a>
+      {% endif %}
+      {% if search.has_next %}
+        <a href="/?what={{ search.what | urlencode }}&where={{ search.where | urlencode }}&country={{ search.country | urlencode }}&page={{ search.page + 1 }}">Next &rarr;</a>
+      {% endif %}
+    </div>
+  {% endif %}
+</section>
+
+<hr>
+
+<h2>Your tracked jobs</h2>
+
 <form method="get" action="/" class="filters">
   <label>Status
     <select name="status">

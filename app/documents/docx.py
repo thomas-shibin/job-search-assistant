@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.shared import Pt
 
 if TYPE_CHECKING:
     from app.config.schema import AddressProfile
@@ -48,6 +49,7 @@ def render_tailored_resume(
     path: Path,
     *,
     candidate_name: str,
+    contact_line: str | None,
     address: "AddressProfile | None",
     summary: str,
     skills_order: list[str],
@@ -58,6 +60,12 @@ def render_tailored_resume(
     """Writes a resume DOCX to `path`. `employment_bullets` is already ordered
     (most recent employment first) and already contains only the final bullet
     text to display for each -- see `app/resume/tailor.py`.
+
+    `contact_line` (email/phone/links, extracted from the base resume's own
+    header by `app/resume/parser.py`) and `address` (an explicit city/
+    province/country override swapped in only for a job tied to a search
+    profile -- see `app/resume/tailor.py::_resolve_address`) are independent:
+    both render if both are given, rather than one trying to edit the other.
     """
     doc = Document()
 
@@ -65,10 +73,15 @@ def render_tailored_resume(
     name_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     name_run = name_para.add_run(candidate_name)
     name_run.bold = True
+    name_run.font.size = Pt(18)
 
     if address is not None:
         addr_para = doc.add_paragraph(f"{address.city}, {address.province}, {address.country}")
         addr_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    if contact_line:
+        contact_para = doc.add_paragraph(contact_line)
+        contact_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     if summary:
         doc.add_heading("Summary", level=1)

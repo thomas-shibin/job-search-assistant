@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Quick Tailor - Job Application Assistant{% endblock %}
+{% block content %}
+<h1>Quick tailor</h1>
+<p>
+  Upload your resume and paste a job description below. This tailors a resume for it
+  immediately (skipping the score-and-filter pipeline the main job list uses) and takes
+  you straight to the diff/download view.
+</p>
+
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+
+<form method="post" action="/quick" enctype="multipart/form-data" class="quick-form">
+  <label>
+    Resume (.docx or .pdf)
+    <input type="file" name="resume" accept=".docx,.pdf" required>
+  </label>
+
+  <label>
+    Job description
+    <textarea name="description" rows="14" placeholder="Paste the full job posting text here..." required></textarea>
+  </label>
+
+  <details>
+    <summary>Optional: job URL / override company / title</summary>
+    <label>
+      Job posting URL
+      <input type="url" name="url" placeholder="https://...">
+    </label>
+    <label>
+      Company (if not guessed correctly)
+      <input type="text" name="company">
+    </label>
+    <label>
+      Title (if not guessed correctly)
+      <input type="text" name="title">
+    </label>
+  </details>
+
+  <button type="submit">Tailor my resume</button>
+</form>
+{% endblock %}

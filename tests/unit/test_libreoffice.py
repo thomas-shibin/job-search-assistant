@@ -11,7 +11,10 @@ import pytest
 from app.documents.libreoffice import LibreOfficePdfConverter, PdfConversionError
 
 
-def test_convert_raises_when_soffice_not_found():
+def test_convert_raises_when_soffice_not_found(monkeypatch):
+    # Force the "truly not installed anywhere" case regardless of whether
+    # the machine running this test actually has LibreOffice installed.
+    monkeypatch.setattr("app.documents.libreoffice._find_soffice", lambda: None)
     converter = LibreOfficePdfConverter(soffice_path=None)
     with pytest.raises(PdfConversionError, match="not found on PATH"):
         converter.convert(__file__)  # path existence isn't even reached

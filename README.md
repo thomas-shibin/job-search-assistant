@@ -230,9 +230,10 @@ etc.) is logged and never breaks the run that triggered it.
 
 ## Automated discovery + the scheduler (Milestones 11-12)
 
-Beyond manual `discover`, `run`/`serve` can poll public, documented, unauthenticated
-job-board APIs directly — Greenhouse (`boards-api.greenhouse.io`) and Lever
-(`api.lever.co`) — configured per search profile:
+Beyond manual `discover`, `run`/`serve` can poll public, documented job-board APIs
+directly — Greenhouse (`boards-api.greenhouse.io`), Lever (`api.lever.co`), and Adzuna
+(`api.adzuna.com`, a job-aggregator API covering many employers per query instead of one
+ATS board at a time) — configured per search profile:
 
 ```yaml
 search_profiles:
@@ -240,17 +241,24 @@ search_profiles:
     ...
     greenhouse_boards: ["some-company"]   # from boards.greenhouse.io/<token>
     lever_companies: ["some-company"]     # from jobs.lever.co/<company>
+    adzuna_enabled: true                  # searches using this profile's titles/locations
+    adzuna_country: "ca"                  # see app/config/schema.py for supported codes
 ```
+
+Adzuna additionally needs a free `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` pair in `.env` (sign up
+at https://developer.adzuna.com/ — see `.env.example`); a profile with `adzuna_enabled:
+true` but no credentials set is skipped with a warning rather than failing the run.
 
 ```powershell
 python cli.py run      # one discover -> analyze -> notify -> generate-resume pass, then exit
 python cli.py serve    # dashboard + this same pass on a scheduler.interval_minutes timer
 ```
 
-Per spec's job-source risk assessment (see `docs/ARCHITECTURE.md`), these are the only two
-automated sources: both are public APIs companies run specifically to power their own
-careers pages, not scraping. LinkedIn/Indeed are deliberately never scripted — they only
-ever appear as `source_url`s opened manually via `open-application`.
+Per spec's job-source risk assessment (see `docs/ARCHITECTURE.md`), these are the only
+automated sources: all three are public APIs (two run by companies to power their own
+careers pages, one a dedicated aggregator), not scraping. LinkedIn/Indeed are deliberately
+never scripted — they only ever appear as `source_url`s opened manually via
+`open-application`.
 
 A failing source never aborts the run for the others (`SourceRunResult` records
 per-source discovered/new/duplicate/qualified counts and any error, all under one

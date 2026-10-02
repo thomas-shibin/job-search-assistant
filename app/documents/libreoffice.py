@@ -7,11 +7,33 @@ specific, catchable `PdfConversionError` rather than crashing the whole
 """
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
 
 _CONVERT_TIMEOUT_SECONDS = 120
+
+
+def _find_soffice() -> str | None:
+    """The Windows LibreOffice installer doesn't add itself to PATH by
+    default, so a plain `shutil.which` lookup misses a perfectly normal
+    install. Fall back to the two locations the official installer actually
+    uses before giving up.
+    """
+    found = shutil.which("soffice") or shutil.which("soffice.exe")
+    if found:
+        return found
+
+    for env_var in ("ProgramFiles", "ProgramFiles(x86)"):
+        program_files = os.environ.get(env_var)
+        if not program_files:
+            continue
+        candidate = Path(program_files) / "LibreOffice" / "program" / "soffice.exe"
+        if candidate.exists():
+            return str(candidate)
+
+    return None
 
 
 class PdfConversionError(Exception):
@@ -20,7 +42,7 @@ class PdfConversionError(Exception):
 
 class LibreOfficePdfConverter:
     def __init__(self, soffice_path: str | None = None) -> None:
-        self._soffice_path = soffice_path or shutil.which("soffice") or shutil.which("soffice.exe")
+        self._soffice_path = soffice_path or _find_soffice()
 
     def convert(self, docx_path: Path) -> Path:
         if not self._soffice_path:

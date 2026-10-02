@@ -6,6 +6,7 @@ classes `app/scheduler/run.py` imports.
 from __future__ import annotations
 
 from datetime import date
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import create_engine
@@ -149,3 +150,47 @@ def test_run_once_skips_disabled_search_profiles(session, monkeypatch):
     summary = run_module.run_once(session, config)
 
     assert summary.jobs_discovered == 0
+
+
+def test_run_once_uses_adzuna_source_when_enabled_with_credentials(session, monkeypatch):
+    import app.scheduler.run as run_module
+
+    _seed_candidate(session)
+    raw_job = RawJob(
+        source="adzuna", source_url="https://example.com/3", company="Gamma",
+        title="Senior Backend Engineer", description="Java role.",
+    )
+    monkeypatch.setattr(
+        run_module, "AdzunaSettings", lambda: SimpleNamespace(app_id="id", app_key="key")
+    )
+    monkeypatch.setattr(
+        run_module, "AdzunaSource", lambda app_id, app_key, country: _FakeSource([raw_job])
+    )
+
+    config = _config([SearchProfile(name="SP", address_profile="x", adzuna_enabled=True)])
+
+    summary = run_module.run_once(session, config)
+
+    assert summary.jobs_new == 1
+    source_result = session.query(SourceRunResult).one()
+    assert source_result.source_name == "adzuna"
+    assert source_result.status == "OK"
+
+
+def test_run_once_skips_adzuna_when_credentials_missing(session, monkeypatch):
+    import app.scheduler.run as run_module
+
+    _seed_candidate(session)
+    monkeypatch.setattr(
+        run_module, "AdzunaSettings", lambda: SimpleNamespace(app_id=None, app_key=None)
+    )
+    monkeypatch.setattr(
+        run_module, "AdzunaSource", lambda app_id, app_key, country: pytest.fail("should not be called")
+    )
+
+    config = _config([SearchProfile(name="SP", address_profile="x", adzuna_enabled=True)])
+
+    summary = run_module.run_once(session, config)
+
+    assert summary.jobs_discovered == 0
+    assert session.query(SourceRunResult).count() == 0

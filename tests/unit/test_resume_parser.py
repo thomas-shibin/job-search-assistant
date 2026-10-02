@@ -85,8 +85,21 @@ def test_unrecognized_section_lands_in_raw_unparsed_not_dropped():
     combined = "\n".join(parsed.raw_unparsed_sections)
     assert "Volunteer Experience" in combined
     assert "Local Coding Bootcamp" in combined
-    # the pre-heading contact block should also be preserved, not discarded
-    assert "jordan.casey@example.com" in combined
+
+
+def test_header_block_is_extracted_as_name_and_contact_not_left_unparsed():
+    """The pre-heading contact block used to just get dumped into
+    raw_unparsed_sections; it's now structured (see docx.py's header
+    rendering), and specifically no longer duplicated into raw_unparsed_sections.
+    """
+    parsed = parse_resume_docx(FIXTURE_PATH)
+    assert parsed.full_name == "Jordan Casey"
+    assert "jordan.casey@example.com" in parsed.contact_line
+    assert "(555) 123-4567" in parsed.contact_line
+    assert "Victoria, BC" in parsed.contact_line
+
+    combined = "\n".join(parsed.raw_unparsed_sections)
+    assert "jordan.casey@example.com" not in combined
 
 
 def test_content_hash_stable_across_identical_reparse(tmp_path):

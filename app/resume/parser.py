@@ -138,6 +138,8 @@ class ParsedProject:
 
 @dataclass
 class ParsedResume:
+    full_name: str | None
+    contact_line: str | None
     summary: str | None
     employments: list[ParsedEmployment]
     skills: list[str]
@@ -216,6 +218,32 @@ def _extract_pdf_lines(path: Path) -> list[LineInfo]:
 
 def _is_section_boundary(p: LineInfo) -> bool:
     return p.is_heading_hint
+
+
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
+_PHONE_RE = re.compile(r"\+?\d[\d\s().-]{7,}\d")
+
+
+def _extract_header_info(preamble_lines: list[str]) -> tuple[str | None, str | None]:
+    """The header block above the first recognized section (name, location,
+    phone, email, links -- see the module docstring's "store it somewhere"
+    principle) isn't a named section a resume author labels, so it can't be
+    matched via `SECTION_ALIASES` like everything else. Convention carries
+    the whole signal instead: the very first line is the candidate's name
+    unless it already looks like contact info itself (an email/phone/a very
+    long line), in which case there's no separate name line to find and
+    everything becomes the contact line.
+    """
+    lines = [line.strip() for line in preamble_lines if line.strip()]
+    if not lines:
+        return None, None
+
+    first = lines[0]
+    if _EMAIL_RE.search(first) or _PHONE_RE.search(first) or len(first) > 80:
+        return None, " | ".join(lines)
+
+    contact_line = " | ".join(lines[1:]) if len(lines) > 1 else None
+    return first, contact_line
 
 
 def _match_section_key(header_text: str) -> str | None:
@@ -492,6 +520,8 @@ def _parse_resume_lines(lines: list[LineInfo]) -> ParsedResume:
             current_paras.append(p)
     buckets.append((current_key, current_header, current_paras))
 
+    full_name: str | None = None
+    contact_line: str | None = None
     summary_parts: list[str] = []
     employments: list[ParsedEmployment] = []
     skills: list[str] = []
@@ -504,7 +534,9 @@ def _parse_resume_lines(lines: list[LineInfo]) -> ParsedResume:
         if not paras:
             continue
         if key is None and header is None:
-            raw_unparsed.append("[PREAMBLE]\n" + "\n".join(p.text for p in paras))
+            full_name, contact_line = _extract_header_info([p.text for p in paras])
+            if full_name is None and contact_line is None:
+                raw_unparsed.append("[PREAMBLE]\n" + "\n".join(p.text for p in paras))
         elif key is None:
             raw_unparsed.append(f"[{header}]\n" + "\n".join(p.text for p in paras))
         elif key == "summary":
@@ -525,6 +557,8 @@ def _parse_resume_lines(lines: list[LineInfo]) -> ParsedResume:
     raw_text_for_hash = "\n".join(p.text for p in lines)
 
     return ParsedResume(
+        full_name=full_name,
+        contact_line=contact_line,
         summary=" ".join(summary_parts) if summary_parts else None,
         employments=employments,
         skills=skills,
@@ -591,6 +625,8 @@ def import_resume(session: Session, resume_path: Path, *, force: bool = False) -
         existing_active.is_active = False
 
     profile = CandidateProfile(
+        full_name=parsed.full_name,
+        contact_line=parsed.contact_line,
         summary=parsed.summary,
         raw_resume_path=str(resume_path),
         source_hash=file_hash,
