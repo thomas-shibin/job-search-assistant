@@ -28,6 +28,7 @@ from app.notifications.watchlist import WatchlistAlerter, build_watchlist_alerte
 from app.resume.pipeline import generate_resume_bundle
 from app.scheduler.lock import RunAlreadyInProgressError, run_lock
 from app.sources.adzuna import AdzunaSource
+from app.services.retention import purge_old_jobs, was_deleted
 from app.services.search import QuerySpec, queries_per_scan, scan_slice, scan_specs, search_jobs
 from app.sources.base import JobSource, RawJob
 from app.sources.greenhouse import GreenhouseSource
@@ -45,6 +46,7 @@ class RunSummary:
     jobs_qualified: int = 0
     jobs_tailored: int = 0
     source_failures: int = 0
+    jobs_deleted: int = 0
     skipped: bool = False
 
 
@@ -166,6 +168,9 @@ def _run_source(
         summary.jobs_discovered += len(raw_jobs)
 
         for raw in raw_jobs:
+            if was_deleted(session, raw):  # cleaned up earlier: not new, don't re-score or re-alert
+                result.jobs_duplicate += 1
+                continue
             ingest_result = ingest_raw_job(session, raw)
             if not ingest_result.created:
                 result.jobs_duplicate += 1
@@ -256,6 +261,12 @@ def _run(session: Session, config: AppConfig) -> RunSummary:
 
     if watchlist_alerter is not None:
         watchlist_alerter.flush()
+
+    try:  # retention clean-up: old jobs you haven't acted on (Settings -> Retention)
+        summary.jobs_deleted = purge_old_jobs(session, config).deleted
+    except Exception:
+        session.rollback()
+        logger.warning("Job clean-up failed this run", exc_info=True)
 
     scheduler_run.status = "COMPLETED" if summary.source_failures == 0 else "COMPLETED_WITH_ERRORS"
     scheduler_run.finished_at = datetime.now(timezone.utc)

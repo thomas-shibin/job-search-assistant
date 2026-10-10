@@ -170,8 +170,8 @@ class WatchlistAlerter:
                 detail: str | None = None) -> None:
         if self._session is None:
             return
-        self._session.add(WatchlistAlert(job_id=job.id, alert_key=key, watches=watches, score=score,
-                                         status=status, detail=detail))
+        self._session.add(WatchlistAlert(job_id=job.id, job_title=job.title, job_company=job.company, alert_key=key,
+                                         watches=watches, score=score, status=status, detail=detail))
         self._session.commit()
 
     def _already_alerted(self, key: str, job: Job) -> WatchlistAlert | None:

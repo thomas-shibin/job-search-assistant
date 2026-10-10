@@ -23,12 +23,16 @@ def _applications_root() -> Path:
     return Path(override) if override else PROJECT_ROOT / "data" / "applications"
 
 
+def application_folder_path(job: Job) -> Path:
+    """Where `job`'s generated artifacts live (not created)."""
+    return _applications_root() / f"{sanitize_filename(job.company)}_{sanitize_filename(job.title)}_{job.id}"
+
+
 def get_application_folder(job: Job) -> Path:
     """Returns (creating if needed) the folder for `job`'s generated artifacts.
     Stable across calls for the same job id -- the folder name embeds `job.id`
     specifically so it never collides even if company/title are edited or reused.
     """
-    folder_name = f"{sanitize_filename(job.company)}_{sanitize_filename(job.title)}_{job.id}"
-    folder = _applications_root() / folder_name
+    folder = application_folder_path(job)
     folder.mkdir(parents=True, exist_ok=True)
     return folder

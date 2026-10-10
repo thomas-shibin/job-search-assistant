@@ -1,9 +1,12 @@
 """Database-backed settings: the source of truth for every `AppConfig` section
-the dashboard can edit. config.yaml is now only an import source -- the first
-time settings are loaded and the `app_settings` table is empty, the YAML file
-is copied in (sections -> `AppSetting` rows, watches -> `WatchlistEntry` rows).
-After that, edits happen in the dashboard (or via `python cli.py import-config
---force` to re-import a YAML file over them). Secrets stay in .env throughout.
+the dashboard can edit.
+
+Defaults arrive through versioned Alembic migrations (`app/config/seeding.py`):
+a new install's database is created with every default setting, user-specific
+ones blank, and later releases only add missing keys -- never overwriting what
+a user changed. config.yaml is an optional import source (`python cli.py
+import-config --force`), and the fallback for a database that was created
+without the migrations (e.g. the test suite). Secrets stay in .env throughout.
 """
 from __future__ import annotations
 
@@ -23,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 SECTIONS = (
     "candidate", "search", "address_profiles", "search_profiles", "matching", "ai",
-    "resume", "notifications", "watchlist", "scheduler",
+    "resume", "notifications", "watchlist", "scheduler", "retention",
 )
 WATCH_LIST_FIELDS = ("companies", "titles", "keywords", "locations", "exclude_keywords", "exclude_companies", "job_types")
 WATCH_VALUE_FIELDS = ("min_score", "min_salary", "max_salary", "posted_within_days", "search")

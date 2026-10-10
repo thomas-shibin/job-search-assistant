@@ -89,3 +89,19 @@ class JobRequirements(Base):
     extracted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     job: Mapped["Job"] = relationship(back_populates="requirements")
+
+
+class JobTombstone(Base):
+    """What's left of a job the retention clean-up deleted: just enough to
+    recognise the same posting if a later scan finds it again, so it isn't
+    re-saved, re-scored (AI cost) and re-alerted as if it were new.
+    """
+
+    __tablename__ = "job_tombstones"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(64))
+    external_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    fingerprint: Mapped[str] = mapped_column(String(64), index=True)
+    description_hash: Mapped[str] = mapped_column(String(64), index=True)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)

@@ -34,6 +34,8 @@ HELP: dict[str, str] = {
     "address_profiles.unit": "Optional: unit, suite, apartment or building.",
     "address_profiles.province": "Province or state, e.g. ON or Ontario. Jobs in this province use this address.",
     "address_profiles.postal_code": "Optional.",
+    "retention.delete_jobs_after_days": "Jobs found more than this many days ago are deleted, with their tailored resumes. 0 = never.",
+    "retention.keep_jobs_you_acted_on": "Never delete jobs you've approved, opened, applied to, interviewed for, got an offer or rejection from, or archived.",
     "search.titles": "Pick from the list or type your own and press Enter. Empty = any title.",
     "search.keywords": "Optional. Jobs must mention at least one of these, e.g. Java, Kafka. Empty = no filter.",
     "search.locations": "Cities, regions or provinces. \"Remote\" finds remote jobs anywhere in the country. Empty = anywhere.",

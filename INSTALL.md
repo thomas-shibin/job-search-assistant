@@ -143,7 +143,9 @@ macOS works like Linux: install Docker Desktop (`brew install --cask docker`) or
 
 ## 5. First-time setup (in the app)
 
-Open **http://127.0.0.1:8000** (or the port you chose), then:
+Open **http://127.0.0.1:8000** (or the port you chose). Every setting already has its
+default (applied by the database migrations on first start); only the personal ones are
+blank, so:
 
 1. **My resume** → upload the resume. A Word **.docx** keeps its exact design in every
    tailored resume; a PDF gets a plain layout. Check "What the app read from it".
@@ -155,6 +157,8 @@ Open **http://127.0.0.1:8000** (or the port you chose), then:
    *Start* on your bot in Telegram, then **Detect chat ID** and **Send test message**.
 6. Fill the search suggestions from the job market (once; ~50 Adzuna requests):
    Settings → Search catalog → **Refresh catalog**.
+7. **Settings → Retention** → how long found jobs are kept (default 7 days; jobs you've
+   applied to etc. are always kept).
 
 ### API keys (all optional, all in `.env`)
 

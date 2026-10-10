@@ -226,6 +226,18 @@ class WatchlistConfig(BaseModel):
     watches: list[Watch] = Field(default_factory=list)
 
 
+class RetentionConfig(BaseModel):
+    """Automatic clean-up of stored jobs (checked after every scheduled scan).
+    Settings, search criteria and watches are never deleted.
+    """
+
+    # Delete jobs found more than this many days ago. 0 = keep jobs forever.
+    delete_jobs_after_days: int = Field(default=7, ge=0)
+    # Keep jobs you've acted on -- approved, application opened, applied,
+    # interview, offer, rejected, archived -- however old.
+    keep_jobs_you_acted_on: bool = True
+
+
 class SchedulerConfig(BaseModel):
     enabled: bool = True
     interval_minutes: int = 15
@@ -242,3 +254,4 @@ class AppConfig(BaseModel):
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     watchlist: WatchlistConfig = Field(default_factory=WatchlistConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
+    retention: RetentionConfig = Field(default_factory=RetentionConfig)

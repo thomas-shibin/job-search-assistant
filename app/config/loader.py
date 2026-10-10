@@ -41,7 +41,9 @@ def validate_config(config: AppConfig, base_dir: Path) -> list[str]:
     base_resume_path = Path(config.candidate.base_resume)
     if not base_resume_path.is_absolute():
         base_resume_path = (base_dir / base_resume_path).resolve()
-    if not base_resume_path.exists():
+    if not config.candidate.base_resume.strip():
+        errors.append("No resume yet: upload yours on the My resume page.")
+    elif not base_resume_path.is_file():
         errors.append(
             f"candidate.base_resume: file not found at '{base_resume_path}' "
             f"(configured as '{config.candidate.base_resume}')"

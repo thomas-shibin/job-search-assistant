@@ -370,6 +370,32 @@ The database is SQLite (`data/job_assistant.db`) by default, with nothing to ins
 PostgreSQL instead, run `pip install -e ".[postgres]"`, set
 `DATABASE_URL=postgresql+psycopg://user:pass@host:5432/jobs` and run `alembic upgrade head`.
 
+
+### Where settings come from
+
+Every setting has a default, delivered by the database migrations (Alembic -- the same
+idea as Liquibase changesets): a new install's database is created with all of them, and
+the values that are personal start blank -- your name and resume, job titles, locations,
+keywords, addresses, company boards and watches. A later release that adds or changes a
+default ships a new migration that only fills in what's missing, so nothing you've set is
+ever overwritten. Secrets (API keys, bot token) are never in the database; they stay in
+`.env`. `config/config.example.yaml` is only needed to import a prepared configuration
+(`python cli.py import-config PATH --force`).
+
+To change a default in the code: add a migration (`alembic revision -m "..."`) whose
+`upgrade()` calls `seed_setting_defaults(op.get_bind(), {"section": {"key": value}})` from
+`app/config/seeding.py`. Never edit a migration that has already been released.
+
+### Job clean-up (retention)
+
+Settings -> Retention: jobs found more than **7 days** ago (configurable; 0 = keep forever)
+are deleted after each scheduled scan, along with their scores, AI analyses and tailored
+resume files. Kept regardless of age: jobs you've acted on (approved, application opened,
+applied, interview, offer, rejected, archived -- switch off "keep jobs you acted on" to
+include them), your settings, search criteria and watches, the AI cost history and the
+watchlist alert log. A deleted posting leaves a small "already seen" record, so if a later
+scan finds it again it isn't saved, scored or alerted as new. Preview with
+`python cli.py cleanup-jobs --dry-run`.
 ## Automated discovery + the scheduler (Milestones 11-12)
 
 Beyond manual `discover`, `run`/`serve` can poll public, documented job-board APIs

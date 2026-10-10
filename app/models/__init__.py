@@ -10,7 +10,7 @@ from app.models.candidate import (
     Project,
     Skill,
 )
-from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory
+from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory, JobTombstone
 from app.models.matching import JobFitAssessment, MatchAnalysis
 from app.models.resume import TailoredBulletProvenance, TailoredResume
 from app.models.scheduler import SchedulerRun, SourceRunResult
@@ -27,6 +27,7 @@ __all__ = [
     "Job",
     "JobStatus",
     "JobStatusHistory",
+    "JobTombstone",
     "JobRequirements",
     "MatchAnalysis",
     "JobFitAssessment",

@@ -38,6 +38,7 @@ router = APIRouter()
 SETTINGS_SECTIONS: list[tuple[str, str]] = [
     ("search", "Job search conditions -- applied to the Jobs page search and to scheduled scans"),
     ("scheduler", "Automatic scans"),
+    ("retention", "Delete old jobs automatically -- settings, searches and watches are never deleted"),
     ("search_profiles", "Company job boards (Greenhouse/Lever) to watch, and the address used on tailored resumes"),
     ("matching", "How jobs are scored and filtered"),
     ("notifications", "Desktop notifications for qualified jobs"),
@@ -183,7 +184,7 @@ def _watchlist_response(request: Request, session: Session, *, error: str | None
 def _recent_alerts(session: Session, limit: int = 50) -> list[dict]:
     rows = (
         session.query(WatchlistAlert, Job)
-        .join(Job, Job.id == WatchlistAlert.job_id)
+        .outerjoin(Job, Job.id == WatchlistAlert.job_id)  # the job may since have been cleaned up
         .order_by(WatchlistAlert.created_at.desc(), WatchlistAlert.id.desc())
         .limit(limit)
         .all()

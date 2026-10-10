@@ -57,7 +57,11 @@ class WatchlistAlert(Base):
     __tablename__ = "watchlist_alerts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    # Null once the job is deleted by the retention clean-up -- the alert stays,
+    # so "already alerted for this role" keeps working.
+    job_id: Mapped[int | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"), nullable=True, index=True)
+    job_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    job_company: Mapped[str | None] = mapped_column(String(255), nullable=True)
     alert_key: Mapped[str] = mapped_column(String(512), index=True)
     watches: Mapped[list] = mapped_column(JSON, default=list)
     score: Mapped[int | None] = mapped_column(Integer, nullable=True)

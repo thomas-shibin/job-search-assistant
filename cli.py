@@ -580,6 +580,33 @@ def rebuild_resumes(
                + (f", {pdf_failed} PDFs failed" if pdf_failed else "") + ".")
 
 
+@app.command("cleanup-jobs")
+def cleanup_jobs(
+    days: int = typer.Option(None, help="Override Settings -> Retention for this run (0 = delete nothing)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Only list what would be deleted"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
+) -> None:
+    """Delete stored jobs older than the retention period (default 7 days), with
+    their scores, analyses and tailored resumes. Jobs you've acted on are kept.
+    Runs automatically after every scheduled scan."""
+    from app.database.session import SessionLocal
+    from app.services.retention import purge_old_jobs
+
+    config = _load_settings(config_path)
+    if days is not None:
+        config.retention.delete_jobs_after_days = days
+    with SessionLocal() as session:
+        report = purge_old_jobs(session, config, dry_run=dry_run)
+    if config.retention.delete_jobs_after_days <= 0:
+        typer.echo("Retention is off (delete_jobs_after_days = 0): nothing deleted.")
+        return
+    verb = "Would delete" if dry_run else "Deleted"
+    typer.echo(f"{verb} {report.deleted} jobs older than {config.retention.delete_jobs_after_days} days"
+               + (f"; kept {report.kept_acted_on} you've acted on" if report.kept_acted_on else "") + ".")
+    for title in report.deleted_titles[:50]:
+        typer.echo(f"  - {title}")
+
+
 @app.command("catalog-scan")
 def catalog_scan(
     country: str = typer.Option(None, help="Adzuna country code (default: Settings -> Job search country)"),
