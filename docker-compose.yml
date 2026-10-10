@@ -11,6 +11,9 @@ services:
     environment:
       # The host .env's relative sqlite URL resolves against /app inside the container.
       DATABASE_URL: sqlite:////app/data/job_assistant.db
+      # Your time zone (set by the installer), so times -- e.g. in tailored resume
+      # file names -- are local rather than UTC.
+      TZ: ${TZ:-UTC}
     volumes:
       - ./data:/app/data
       - ./config:/app/config

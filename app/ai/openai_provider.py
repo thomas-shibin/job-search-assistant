@@ -72,6 +72,34 @@ Respond with ONLY a JSON object (no markdown, no commentary) with these keys:
   source_bullet_id MUST be one of the ids given in candidate_bullets."""
 
 
+_REWRITE_SYSTEM_PROMPT = """You tailor a candidate's resume to a specific job posting. You will receive JSON with
+the job posting, its key terms (job_keywords) and passages: the sentences of the candidate's resume, each with an
+id, the section or project heading it sits under, and its text.
+
+Rewrite EVERY passage so a recruiter for THIS job immediately sees the match: lead with the part most relevant to
+the posting, use the posting's own terminology for things the candidate really did, and give it a new sentence
+structure. Returning a passage unchanged, or with only a word or two swapped, is a failed answer.
+
+Truthfulness rules (a rewrite that breaks one is discarded and the original kept):
+- Never add a number, percentage or metric that isn't in that passage ("12+ years" -> "over 12 years" is fine).
+- Only mention technologies, tools, employers, job titles and domains that appear in that passage or in
+  candidate_skills. Never give the candidate the posting's job title or a title they don't have.
+- Never add an outcome or benefit the passage doesn't state -- rephrase, don't embellish.
+- Keep each rewrite no longer than its passage (shorter is fine); rewrites over 25% longer are discarded.
+- Keep the passage's form: a first-person sentence stays first person; a "Label: description" passage keeps
+  its label (you may rephrase the description); a fragment stays a fragment.
+
+Relevance: also rate how much each passage matters to a recruiter for THIS job -- "high" (directly matches what
+the job asks for), "medium" (related or transferable), or "low" (work this job plainly doesn't involve, e.g. UI
+or CSS work for a pure backend role). For every "low" passage give a short "reason" (max 15 words). Summary or
+profile lines are never "low". Be honest: the candidate uses "low" to decide what to cut, and they decide --
+still rewrite every passage, whatever its relevance.
+
+Respond with ONLY a JSON object: {"passages": [{"id": <int>, "text": <string>, "relevance": "high"|"medium"|"low",
+"reason": <string, for low only>}, ...]} with exactly one entry for every passage id given -- never omit, merge or
+invent a passage."""
+
+
 _FIT_SYSTEM_PROMPT = """You are an experienced technical recruiter. You will receive JSON with a job posting and a
 candidate's resume (summary, skills, employment history with accomplishments, education, certifications, projects,
 and other_resume_text: resume sections that weren't parsed into fields -- treat it as part of the resume).
@@ -86,6 +114,9 @@ Respond with ONLY a JSON object (no markdown, no commentary) with these keys:
 - matched: array of short strings, the job requirements the resume clearly meets (most important first, max 8)
 - gaps: array of short strings, requirements the resume doesn't show or only partly meets (most important first, max 8)
 - recommendation: one short sentence -- whether to apply, and what to emphasize or address if so"""
+
+
+_PASSAGES_PER_CALL = 40  # long project resumes go in a few calls, keeping each answer complete
 
 
 class OpenAIProvider:
@@ -155,6 +186,43 @@ class OpenAIProvider:
         content = response.choices[0].message.content or "{}"
         data = json.loads(content)
         return TailoredResumeDraft.model_validate(data)
+
+    def rewrite_passages(self, passages, job, requirements, candidate_skills) -> dict[int, dict]:
+        job_keywords = []
+        if requirements:
+            job_keywords = list(dict.fromkeys([*requirements.required_skills, *requirements.preferred_skills]))
+        rewrites: dict[int, dict] = {}
+        tokens_in = tokens_out = 0
+        cost = 0.0
+        for start in range(0, len(passages), _PASSAGES_PER_CALL):
+            payload = {
+                "job_title": job.title, "job_company": job.company, "job_description": job.description,
+                "job_keywords": job_keywords, "candidate_skills": candidate_skills,
+                "passages": passages[start:start + _PASSAGES_PER_CALL],
+            }
+            response = self._create_completion(
+                model=self._model,
+                temperature=0.5,  # low temperatures tend to echo the passages back unchanged
+                response_format={"type": "json_object"},
+                messages=[
+                    {"role": "system", "content": _REWRITE_SYSTEM_PROMPT},
+                    {"role": "user", "content": json.dumps(payload)},
+                ],
+            )
+            self._record_usage(response)
+            if self.last_usage:
+                tokens_in += self.last_usage.tokens_in or 0
+                tokens_out += self.last_usage.tokens_out or 0
+                cost += self.last_usage.estimated_cost or 0
+            data = json.loads(response.choices[0].message.content or "{}")
+            for item in data.get("passages", []):
+                if isinstance(item, dict) and isinstance(item.get("id"), int) and isinstance(item.get("text"), str):
+                    low = str(item.get("relevance", "")).lower() == "low"
+                    reason = str(item.get("reason") or "").strip()
+                    rewrites[item["id"]] = {"text": item["text"].strip(),
+                                            "drop_reason": (reason or "Not relevant to this job") if low else None}
+        self.last_usage = AIUsage(tokens_in=tokens_in, tokens_out=tokens_out, estimated_cost=round(cost, 6))
+        return rewrites
 
     def assess_fit(self, candidate: dict, job: Any) -> FitAssessmentResult:
         payload = {

@@ -6,7 +6,7 @@ FROM python:3.12-slim
 # it those render as empty boxes.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu fonts-liberation \
-       fonts-crosextra-carlito fonts-wqy-microhei \
+       fonts-crosextra-carlito fonts-wqy-microhei tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

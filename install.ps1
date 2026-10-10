@@ -77,6 +77,18 @@ if (-not $Native) {
     docker info *> $null
     if ($LASTEXITCODE -ne 0) { Fail "Docker Desktop isn't running. Start it from the Start menu, wait until it says 'running', then run this again." }
     Ok "Docker is ready"
+    if (-not (Get-EnvValue "TZ")) {
+        # Local time in the app (e.g. resume file names): Windows zone -> IANA name.
+        $zones = @{
+            "Pacific Standard Time" = "America/Vancouver"; "Mountain Standard Time" = "America/Edmonton";
+            "Canada Central Standard Time" = "America/Regina"; "Central Standard Time" = "America/Winnipeg";
+            "Eastern Standard Time" = "America/Toronto"; "Atlantic Standard Time" = "America/Halifax";
+            "Newfoundland Standard Time" = "America/St_Johns"; "India Standard Time" = "Asia/Kolkata";
+            "GMT Standard Time" = "Europe/London"; "UTC" = "UTC"
+        }
+        $tzId = [System.TimeZoneInfo]::Local.Id
+        if ($zones.ContainsKey($tzId)) { Set-EnvValue "TZ" $zones[$tzId] }
+    }
     Set-EnvValue "APP_UID" 1000
     Set-EnvValue "APP_GID" 1000
 

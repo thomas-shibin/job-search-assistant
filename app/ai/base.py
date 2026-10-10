@@ -66,6 +66,14 @@ class AIProvider(Protocol):
         """Implemented in Milestone 6."""
         ...
 
+    def rewrite_passages(self, passages: list[dict], job: Any, requirements: ExtractedJobRequirements | None,
+                         candidate_skills: list[str]) -> dict[int, str | dict]:
+        """Rewrite each resume passage ({"id", "section", "text"}) for `job`;
+        returns {id: new text}, or {id: {"text", "drop_reason"}} where the AI
+        suggests the passage is irrelevant to the job (the user decides).
+        Layout-independent tailoring of a Word resume."""
+        ...
+
     def assess_fit(self, candidate: dict, job: Any) -> FitAssessmentResult:
         """Judge the resume (`candidate`, see app/ai/fit.py) against `job`."""
         ...

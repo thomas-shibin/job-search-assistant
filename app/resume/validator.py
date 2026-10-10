@@ -20,7 +20,8 @@ from pydantic import BaseModel, Field
 
 from app.ai.base import TailoredResumeDraft
 
-_NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?%?\+?")
+_NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?(?:[kKmM]\b)?%?\+?")
+_SCALE = {"k": 1_000, "m": 1_000_000}
 
 
 class BulletValidationResult(BaseModel):
@@ -55,6 +56,8 @@ def _numbers_in(text: str) -> set[str]:
         token = match.group().rstrip("+")
         percent = token.endswith("%")
         value = token.rstrip("%").replace(",", "")
+        if value[-1:].lower() in _SCALE:  # "20K" is the same claim as "20,000"
+            value = f"{float(value[:-1]) * _SCALE[value[-1].lower()]:.6f}"
         if "." in value:
             value = value.rstrip("0").rstrip(".")
         found.add(value + ("%" if percent else ""))
@@ -142,3 +145,48 @@ def validate_tailored_resume(draft: TailoredResumeDraft, candidate: Any) -> Vali
         skills_accepted=skills_accepted,
         skills_rejected=skills_rejected,
     )
+
+
+# --- Passages (layout-independent tailoring of a Word resume) --------------
+
+_NAME_WORD = re.compile(r"[A-Za-z][\w.+#/-]*")
+_SENTENCE_START = re.compile(r"(^|[.!?:;]\s+|[(\"'“]\s*)$")
+
+
+def _new_names(rewrite: str, resume_text: str) -> list[str]:
+    """Capitalised words (tools, employers, titles) in `rewrite` that appear
+    nowhere in the resume -- i.e. claims the candidate never made. Words that
+    start a sentence or follow a label are capitalised by grammar, so skipped."""
+    known = resume_text.casefold()
+    found = []
+    for match in _NAME_WORD.finditer(rewrite):
+        word = match.group().rstrip(".")
+        if not (word[:1].isupper() or any(c.isupper() for c in word[1:])):
+            continue
+        if _SENTENCE_START.search(rewrite[:match.start()]):
+            continue
+        parts = [part for part in re.split(r"[-/]", word) if part]  # "Kafka-based", "CI/CD"
+        if any(part[:1].isupper() and part.casefold() not in known for part in parts) \
+                and word.casefold() not in known and word not in found:
+            found.append(word)
+    return found
+
+
+def validate_passage(original: str, rewrite: str | None, *, resume_text: str, job_title: str = "") -> tuple[str, str | None]:
+    """(text to use, rejection reason or None). A rejected rewrite falls back to
+    the original passage, so the resume never says anything new."""
+    if not rewrite or not rewrite.strip():
+        return original, "no rewrite returned"
+    rewrite = rewrite.strip()
+    invented = _numbers_in(rewrite) - _numbers_in(original)
+    if invented:
+        return original, "number(s) not in the original: " + ", ".join(sorted(invented))
+    if len(rewrite) > _max_length(original):
+        return original, f"too long for the resume's layout ({len(rewrite)} vs {len(original)} characters)"
+    title = job_title.strip()
+    if title and title.casefold() in rewrite.casefold() and title.casefold() not in resume_text.casefold():
+        return original, f"claims the job's title ({title})"
+    names = _new_names(rewrite, resume_text)
+    if names:
+        return original, "mentions what the resume doesn't: " + ", ".join(names[:5])
+    return rewrite, None

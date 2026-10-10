@@ -81,6 +81,11 @@ if [ "$MODE" = docker ]; then
   ok "Docker is ready"
 
   # Run the container as you, so everything it writes in data/ stays yours.
+  if [ -z "$(get_env TZ)" ]; then  # local time in the app (e.g. resume file names)
+    TZ_NAME="$(timedatectl show -p Timezone --value 2>/dev/null || cat /etc/timezone 2>/dev/null || true)"
+    [ -z "$TZ_NAME" ] && [ -L /etc/localtime ] && TZ_NAME="$(readlink /etc/localtime | sed 's#.*/zoneinfo/##')"
+    [ -n "$TZ_NAME" ] && set_env TZ "$TZ_NAME"
+  fi
   set_env APP_UID "$(id -u)"
   set_env APP_GID "$(id -g)"
 

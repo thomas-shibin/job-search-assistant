@@ -41,5 +41,14 @@ class TailoredBulletProvenance(Base):
     )
     validation_passed: Mapped[bool] = mapped_column(Boolean, default=False)
     rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Passage tailoring of a Word resume (no source bullet): the original
+    # paragraph text and the heading it sits under.
+    source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    section: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # The AI may suggest a paragraph is irrelevant to the job; it's only taken
+    # out of the resume once the user approves (`removed`).
+    suggest_remove: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+    remove_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    removed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
 
     tailored_resume: Mapped["TailoredResume"] = relationship(back_populates="bullet_provenance")

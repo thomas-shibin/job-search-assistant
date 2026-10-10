@@ -133,14 +133,20 @@
       {% set changed = detail.bullet_diffs | selectattr("changed") | list %}
       {% set kept = detail.bullet_diffs | rejectattr("changed") | list %}
       {% set rejected = detail.bullet_diffs | rejectattr("validation_passed") | list %}
-      {% set summary_changed = detail.original_summary and (detail.original_summary.split() | join(" ")) != ((tr.summary_text or "").split() | join(" ")) %}
+      {# Word resumes are tailored paragraph by paragraph: the summary is one of those paragraphs. #}
+      {% set by_paragraph = tr.bullet_provenance | selectattr("source_text") | list | length > 0 %}
+      {% set summary_changed = not by_paragraph and detail.original_summary and (detail.original_summary.split() | join(" ")) != ((tr.summary_text or "").split() | join(" ")) %}
 
       <h3 class="changes-title">What changed in your resume</h3>
       <div class="changes-overview">
-        <span class="chip {{ 'chip-on' if changed }}">{{ changed | length }} of {{ detail.bullet_diffs | length }} bullets reworded</span>
-        <span class="chip {{ 'chip-on' if summary_changed }}">Summary {{ "rewritten" if summary_changed else "unchanged" }}</span>
+        <span class="chip {{ 'chip-on' if changed }}">{{ changed | length }} of {{ detail.bullet_diffs | length }} {{ "paragraphs" if by_paragraph else "bullets" }} reworded</span>
+        {% if not by_paragraph %}<span class="chip {{ 'chip-on' if summary_changed }}">Summary {{ "rewritten" if summary_changed else "unchanged" }}</span>{% endif %}
         {% if resume_address %}<span class="chip chip-on">{{ icon("pin") }}Location: {{ resume_address.city }}, {{ resume_address.province }}</span>{% endif %}
         {% if rejected %}<span class="chip chip-warn">{{ rejected | length }} rewrite{{ "s" if rejected | length != 1 }} rejected, original kept</span>{% endif %}
+        {% set suggested = detail.bullet_diffs | selectattr("suggest_remove") | list %}
+        {% set removed = detail.bullet_diffs | selectattr("removed") | list %}
+        {% if suggested %}<span class="chip chip-warn">{{ icon("scissors") }}{{ suggested | length }} suggested to remove</span>{% endif %}
+        {% if removed %}<span class="chip chip-on">{{ removed | length }} removed by you</span>{% endif %}
       </div>
       <p class="muted changes-legend"><del>Struck out</del> = removed from your original &nbsp;·&nbsp; <ins>Highlighted</ins> = new wording. Everything else in the document (layout, fonts, skills section) is exactly your base resume.</p>
 
@@ -160,14 +166,35 @@
       </div>
       {% endif %}
 
+      {% if by_paragraph %}
+      <form id="removals" method="post" action="/jobs/{{ job.id }}/removals" hx-boost="false"></form>
+      <div class="notice removal-notice">{{ icon("scissors") }}<div class="alert-body">
+        {% if suggested %}The AI thinks <strong>{{ suggested | length }}</strong> paragraph{{ "s" if suggested | length != 1 }} (marked below) don't matter for this job.{% endif %}
+        Tick <strong>Remove</strong> on any paragraph you want out of this resume, then apply. Nothing is removed unless you choose it,
+        and you can put it back the same way.
+        <div style="margin-top: .5rem"><button type="submit" form="removals" class="small">{{ icon("check") }} Apply removals</button></div>
+      </div></div>
+      {% endif %}
+
+      {% macro remove_toggle(diff) %}
+        {% if by_paragraph and diff.id %}
+        <label class="remove-toggle {{ 'suggested' if diff.suggest_remove }}">
+          <input type="checkbox" name="remove" value="{{ diff.id }}" form="removals" {{ 'checked' if diff.removed }}>
+          {{ "Removed — tick off to put it back" if diff.removed else "Remove from this resume" }}
+          {% if diff.suggest_remove %}<span class="remove-hint">· AI suggests removing: {{ diff.remove_reason }}</span>{% endif %}
+        </label>
+        {% endif %}
+      {% endmacro %}
+
       {% for role, diffs in detail.bullet_groups %}
         {% set role_changes = diffs | selectattr("changed") | list %}
         {% set role_rejected = diffs | rejectattr("validation_passed") | list %}
-        {% if role_changes or role_rejected %}
+        {% set role_flagged = diffs | selectattr("suggest_remove") | list + diffs | selectattr("removed") | list %}
+        {% if role_changes or role_rejected or role_flagged %}
         <div class="change-group">
           <div class="change-group-title">{{ role or "Other" }} <span class="muted">· {{ role_changes | length }} of {{ diffs | length }} reworded</span></div>
-          {% for diff in diffs if diff.changed or not diff.validation_passed %}
-            <div class="change-card {{ 'rejected' if not diff.validation_passed }}">
+          {% for diff in diffs if diff.changed or not diff.validation_passed or diff.suggest_remove or diff.removed %}
+            <div class="change-card {{ 'rejected' if not diff.validation_passed }} {{ 'is-removed' if diff.removed }} {{ 'is-suggested' if diff.suggest_remove and not diff.removed }}">
               {% if diff.changed %}
                 {% set before, after = sidediff(diff.source_text, diff.generated_text) %}
                 <div class="change-row"><span class="change-tag before">Before</span><div>{{ before }}</div></div>
@@ -178,17 +205,18 @@
               {% if not diff.validation_passed %}
                 <div class="rejection-note">{{ icon("alert") }} The AI's rewrite was rejected, so your original wording is used: {{ diff.rejection_reason }}</div>
               {% endif %}
+              {{ remove_toggle(diff) }}
             </div>
           {% endfor %}
         </div>
         {% endif %}
       {% endfor %}
 
-      {% set kept_ok = kept | selectattr("validation_passed") | list %}
+      {% set kept_ok = kept | selectattr("validation_passed") | rejectattr("suggest_remove") | rejectattr("removed") | list %}
       {% if kept_ok %}
       <details class="kept-bullets">
         <summary>{{ kept_ok | length }} bullet{{ "s" if kept_ok | length != 1 }} kept exactly as in your resume</summary>
-        <ul>{% for diff in kept_ok %}<li><span class="muted">{{ diff.role }}:</span> {{ diff.source_text }}</li>{% endfor %}</ul>
+        <ul>{% for diff in kept_ok %}<li><span class="muted">{{ diff.role }}:</span> {{ diff.source_text }}{{ remove_toggle(diff) }}</li>{% endfor %}</ul>
       </details>
       {% endif %}
 

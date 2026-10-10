@@ -32,7 +32,7 @@ def session(tmp_path, monkeypatch) -> Session:
 
 
 def _seed(session: Session) -> Job:
-    profile = CandidateProfile(raw_resume_path="x.docx", source_hash="h", summary="Engineer.", is_active=True)
+    profile = CandidateProfile(raw_resume_path="x.pdf", source_hash="h", summary="Engineer.", is_active=True)
     profile.skills = [Skill(name="Java")]
     profile.employments = [
         Employment(
@@ -69,19 +69,18 @@ def test_generate_resume_bundle_ends_with_ready_for_review_and_matching_snapshot
     assert job_json["status"] == "READY_FOR_REVIEW"  # snapshot reflects the final status, not RESUME_GENERATED
 
 
-def test_tailored_resume_is_the_candidates_own_docx_with_only_wording_changed(session, tmp_path, monkeypatch):
+def test_tailored_resume_is_the_candidates_own_docx_with_only_wording_changed(session, tmp_path):
     from docx import Document
     from docx.shared import Pt, RGBColor
 
-    from app.ai.base import TailoredBulletDraft, TailoredResumeDraft
     from app.resume.tailor import tailor_resume
 
     base = tmp_path / "my_resume.docx"
     doc = Document()
     doc.add_paragraph().add_run("Jordan Casey").font.size = Pt(21)
-    doc.add_paragraph("Engineer.")
+    doc.add_paragraph("EXPERIENCE")
     bullet = doc.add_paragraph(style="List Bullet")
-    run = bullet.add_run("Did the thing")
+    run = bullet.add_run("Built the payment service that handles card refunds for customers")
     run.font.name, run.font.color.rgb = "Georgia", RGBColor(0x2F, 0x4F, 0x6F)
     doc.save(str(base))
 
@@ -89,22 +88,23 @@ def test_tailored_resume_is_the_candidates_own_docx_with_only_wording_changed(se
     profile = session.query(CandidateProfile).one()
     profile.raw_resume_path = str(base)
     session.commit()
-    bullet_id = profile.employments[0].bullets[0].id
+
+    seen = []
 
     class _Provider(MockAIProvider):
-        def tailor_resume(self, candidate, job, requirements, address):
-            return TailoredResumeDraft(
-                summary="Engineer.", skills_order=["Java"],
-                bullets=[TailoredBulletDraft(text="Did the thing at scale", source_bullet_id=bullet_id)],
-            )
+        def rewrite_passages(self, passages, job, requirements, candidate_skills):
+            seen.extend(passages)
+            return {p["id"]: "Built the customer payment service handling card refunds" for p in passages}
 
-    monkeypatch.setattr("app.resume.tailor.validate_tailored_resume", _accept_all)
     result = tailor_resume(session, job, AppConfig(candidate=CandidateConfig(name="Jordan", base_resume=str(base))),
                            ai_provider=_Provider())
 
+    # Only the sentence is sent for rewriting -- never the name or the heading.
+    assert [(p["section"], p["text"]) for p in seen] == [
+        ("EXPERIENCE", "Built the payment service that handles card refunds for customers")]
     out = Document(str(result.docx_path))
     texts = [p.text for p in out.paragraphs if p.text]
-    assert texts == ["Jordan Casey", "Engineer.", "Did the thing at scale"]  # same document, same order
+    assert texts == ["Jordan Casey", "EXPERIENCE", "Built the customer payment service handling card refunds"]
     styled = out.paragraphs[2]
     assert styled.style.name == "List Bullet"
     assert (styled.runs[0].font.name, styled.runs[0].font.color.rgb) == ("Georgia", RGBColor(0x2F, 0x4F, 0x6F))

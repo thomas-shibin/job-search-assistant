@@ -43,6 +43,10 @@ class BulletDiff:
     validation_passed: bool
     rejection_reason: str | None
     role: str | None = None  # "Senior Software Engineer · AOT Technologies"
+    id: int | None = None  # the provenance row (paragraph tailoring: what a removal refers to)
+    suggest_remove: bool = False  # the AI thinks this paragraph is irrelevant to the job
+    remove_reason: str | None = None
+    removed: bool = False  # taken out of the resume (the user approved)
 
     @property
     def changed(self) -> bool:
@@ -104,12 +108,16 @@ def get_job_detail(session: Session, job_id: int) -> JobDetail | None:
                  employment.id, source_bullet.order_index)
                 if employment is not None else (1,)
             )
+            if p.source_text is not None:  # a paragraph of a Word resume, in document order
+                sort_key = (0, 0, 0, 0, p.id)
             ordered.append((sort_key, BulletDiff(
-                source_text=source_bullet.text if source_bullet else None,
+                source_text=source_bullet.text if source_bullet else p.source_text,
                 generated_text=p.generated_text,
                 validation_passed=p.validation_passed,
                 rejection_reason=p.rejection_reason,
-                role=f"{employment.title} · {employment.company}" if employment is not None else None,
+                role=f"{employment.title} · {employment.company}" if employment is not None else p.section,
+                id=p.id if p.source_text is not None else None,
+                suggest_remove=bool(p.suggest_remove), remove_reason=p.remove_reason, removed=bool(p.removed),
             )))
         bullet_diffs = [diff for _, diff in sorted(ordered, key=lambda item: item[0])]
 

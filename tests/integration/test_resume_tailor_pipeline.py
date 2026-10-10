@@ -33,7 +33,7 @@ def session(tmp_path, monkeypatch) -> Session:
 
 
 def _seed_candidate(session: Session) -> CandidateProfile:
-    profile = CandidateProfile(raw_resume_path="x.docx", source_hash="h", summary="Backend engineer.", is_active=True)
+    profile = CandidateProfile(raw_resume_path="x.pdf", source_hash="h", summary="Backend engineer.", is_active=True)
     profile.skills = [Skill(name=n) for n in ["Java", "AWS"]]
     profile.employments = [
         Employment(
@@ -186,7 +186,7 @@ def test_ai_omitting_a_whole_employer_and_skills_is_backfilled_verbatim(session)
     Nothing true on the candidate's profile should be able to silently
     vanish from the final resume just because the AI chose to omit it.
     """
-    profile = CandidateProfile(raw_resume_path="x.docx", source_hash="h", is_active=True)
+    profile = CandidateProfile(raw_resume_path="x.pdf", source_hash="h", is_active=True)
     profile.skills = [Skill(name="Java"), Skill(name="COBOL")]
     recent_bullet = AccomplishmentBullet(id=1, text="Did recent things", order_index=0)
     old_bullet = AccomplishmentBullet(id=2, text="Did old things", order_index=0)

@@ -628,3 +628,15 @@ label.check, .settings-field label.check {
 .more-filters summary .muted { font-weight: 500; font-size: 0.8rem; }
 .more-filters[open] summary { margin-bottom: 0.9rem; }
 .watch-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.35rem; }
+
+/* Removing paragraphs from a tailored resume (always the user's choice) */
+.removal-notice { margin: 0 0 1rem; }
+.remove-toggle { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin-top: .6rem; font-size: .85rem;
+  color: var(--text-3); cursor: pointer; }
+.remove-toggle input { width: auto; margin: 0; }
+.remove-toggle.suggested { color: var(--warning); }
+.remove-hint { font-style: italic; }
+.change-card.is-suggested { border-color: var(--warning); background: var(--warning-soft); }
+.change-card.is-removed { opacity: .6; }
+.change-card.is-removed .change-row > div { text-decoration: line-through; }
+.kept-bullets li .remove-toggle { margin-top: .25rem; }

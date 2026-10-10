@@ -42,7 +42,7 @@ def session(tmp_path, monkeypatch) -> Session:
 
 
 def _seed_candidate(session: Session) -> None:
-    profile = CandidateProfile(raw_resume_path="x.docx", source_hash="h", is_active=True)
+    profile = CandidateProfile(raw_resume_path="x.pdf", source_hash="h", is_active=True)
     profile.skills = [Skill(name="Java")]
     profile.employments = [
         Employment(company="Prior Co", title="Senior Backend Engineer", start_date=date(2019, 1, 1), is_current=True)

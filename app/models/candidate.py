@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -16,6 +16,9 @@ class CandidateProfile(Base):
     contact_line: Mapped[str | None] = mapped_column(String(512), nullable=True)
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     raw_resume_path: Mapped[str] = mapped_column(String(1024))
+    # The uploaded file itself, so tailoring can always start from the exact
+    # original design even if the file on disk is moved or lost.
+    source_file: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True, deferred=True)
     source_hash: Mapped[str] = mapped_column(String(64))
     version: Mapped[int] = mapped_column(Integer, default=1)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

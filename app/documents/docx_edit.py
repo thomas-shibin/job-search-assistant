@@ -37,6 +37,7 @@ class EditReport:
     unchanged: int = 0
     not_found: list[str] = field(default_factory=list)
     address_replaced: bool = False
+    removed: int = 0
 
 
 def _key(text: str) -> str:
@@ -132,12 +133,12 @@ def _remove_paragraph(paragraph: Paragraph) -> None:
 
 def tailor_docx(
     base_path: Path, out_path: Path, replacements: list[tuple[str, str]], *,
-    location_line: str | None = None, full_address: bool = False,
+    location_line: str | None = None, full_address: bool = False, remove: list[str] = (),
 ) -> EditReport:
     """Copy `base_path` to `out_path`, then for each (original text, new text)
     rewrite the paragraph(s) holding the original text. Text found in several
-    consecutive paragraphs (a multi-paragraph summary) is rewritten into the
-    first and the rest are removed. `location_line` replaces the address line in
+    consecutive paragraphs (a multi-paragraph summary) is split back across the
+    same paragraphs at sentence breaks -- paragraphs are never removed or merged. `location_line` replaces the address line in
     the resume's header: a complete street address (`full_address`) as given,
     a "City, Province, Country" one in the shape the resume already uses.
     """
@@ -148,6 +149,16 @@ def tailor_docx(
     keys = [_key(p.text) for p in paragraphs]
     used: set[int] = set()
     report = EditReport()
+
+    # Paragraphs the user chose to take out (never done without their approval).
+    to_remove = []
+    for original in remove:
+        span = _find_span(keys, _key(original), used)
+        if span is None:
+            report.not_found.append(original)
+            continue
+        used.update(range(*span))
+        to_remove.extend(paragraphs[span[0]:span[1]])
 
     for original, new in replacements:
         target = _key(original)
@@ -162,16 +173,56 @@ def tailor_docx(
         if _key(new) == target and end - start == 1:
             report.unchanged += 1
             continue
-        set_paragraph_text(paragraphs[start], new)
-        for extra in paragraphs[start + 1:end]:
-            _remove_paragraph(extra)
+        pieces = _split_across(new, [paragraphs[k].text for k in range(start, end)])
+        if pieces is None:  # can't keep every paragraph: leave the passage as written
+            report.not_found.append(original)
+            continue
+        for paragraph, piece in zip(paragraphs[start:end], pieces):
+            set_paragraph_text(paragraph, piece)
         report.replaced += 1
 
     if location_line:
         report.address_replaced = _replace_location_line(paragraphs, location_line, full_address=full_address)
+    for paragraph in to_remove:
+        cell_paragraphs = paragraph._p.getparent().findall(qn("w:p"))
+        if paragraph._p.getparent().tag == qn("w:tc") and len(cell_paragraphs) == 1:
+            set_paragraph_text(paragraph, "")  # a table cell must keep one paragraph
+        else:
+            _remove_paragraph(paragraph)
+        report.removed += 1
 
     doc.save(str(out_path))
     return report
+
+
+_SENTENCE_END = re.compile(r"(?<=[.;!?])\s+")
+
+
+def _split_across(new: str, originals: list[str]) -> list[str] | None:
+    """Fit `new` into as many paragraphs as the original passage used, so no
+    paragraph (bullet, line, date) is ever removed or merged. Breaks only between
+    sentences, balancing lengths like the originals; None if `new` has too few
+    sentences to fill every paragraph.
+    """
+    if len(originals) == 1:
+        return [new]
+    sentences = [x for x in _SENTENCE_END.split(new.strip()) if x]
+    if len(sentences) < len(originals):
+        return None
+    total = sum(len(t) for t in originals) or 1
+    pieces, index = [], 0
+    for n, original in enumerate(originals):
+        remaining_slots = len(originals) - n - 1
+        piece = [sentences[index]]
+        index += 1
+        goal = len(" ".join(sentences)) * len(original) / total
+        while index < len(sentences) - remaining_slots and len(" ".join(piece)) < goal * 0.75:
+            piece.append(sentences[index])
+            index += 1
+        if remaining_slots == 0:
+            piece.extend(sentences[index:])
+        pieces.append(" ".join(piece))
+    return pieces
 
 
 def _find_span(keys: list[str], target: str, used: set[int]) -> tuple[int, int] | None:
@@ -230,3 +281,65 @@ def _replace_location_line(paragraphs: list[Paragraph], location_line: str, *, f
             set_paragraph_text(paragraph, replacement)
         return True
     return False
+
+
+# --- Layout-independent tailoring -------------------------------------------
+# Which paragraphs of any Word resume are prose worth rewriting for a job: the
+# summary lines, bullets and responsibilities (also inside tables), never names,
+# headings, dates, contact details, table labels or bare skill lists.
+
+_MIN_PROSE_WORDS = 6
+_MIN_PROSE_CHARS = 35
+_MONTH = r"(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?"
+# A date anywhere marks a role/education/period line, not prose to rewrite.
+_HAS_DATE = re.compile(
+    rf"\b\d{{1,2}}/\d{{2,4}}\b|\b\d{{1,2}}[.-](19|20)\d{{2}}\b|\b{_MONTH}\s*'?\d{{2,4}}\b|\b(19|20)\d{{2}}\s*[-–—to]+\s*((19|20)\d{{2}}|present|current|now|till|date)"
+    r"|\b(till|to) date\b|\b(present|current)\s*$", re.I)
+
+
+_LABEL = re.compile(r"^[^:.]{2,50}:\s+")
+_CONTACT = re.compile(r"\S+@\S+\.\w|https?://|www\.|\b(linkedin|github)\.com\b|\+?\(?\d{3}\)?[\s.-]\d{3}[\s.-]\d{4}", re.I)
+
+
+@dataclass
+class Passage:
+    text: str             # the paragraph's text, without any typed bullet glyph
+    section: str | None   # the heading/label above it, as context for the rewrite
+
+
+def is_prose(text: str) -> bool:
+    text = _BULLET_PREFIX.sub("", text).strip()
+    words = text.split()
+    if len(words) < _MIN_PROSE_WORDS or len(text) < _MIN_PROSE_CHARS:
+        return False
+    if _CONTACT.search(text) or _HAS_DATE.search(text) or text.isupper():
+        return False
+    body = _LABEL.sub("", text)  # "Cloud Computing: Skilled in ..." -- judge the part after the label
+    body_words = body.split() or words
+    separators = body.count(",") + body.count("|") + body.count("/") + body.count("•")
+    lowercase_words = sum(1 for w in body_words if w[:1].islower())
+    if separators >= len(body_words) / 3 and lowercase_words < len(body_words) / 3:
+        return False  # a list of skills/tools, not a sentence
+    # Title Case (ignoring acronyms like AWS): a job title, degree or certification, not a sentence.
+    alphabetic = [w for w in body_words if w[:1].isalpha() and not (w.isupper() and len(w) > 1)]
+    if alphabetic and sum(1 for w in alphabetic if w[:1].isupper()) / len(alphabetic) > 0.6:
+        return False
+    return True
+
+
+def rewritable_passages(path: Path) -> list[Passage]:
+    """The prose paragraphs of the resume body, in reading order, each with the
+    nearest heading or label above it."""
+    doc = Document(str(path))
+    passages, section = [], None
+    for p in doc.element.body.iter(qn("w:p")):
+        if any(ancestor.tag == _MC_FALLBACK for ancestor in p.iterancestors()):
+            continue
+        text = Paragraph(p, None).text.strip()
+        if not text:
+            continue
+        if is_prose(text):
+            passages.append(Passage(text=_BULLET_PREFIX.sub("", text).strip(), section=section))
+        elif len(text) <= 80:
+            section = text
+    return passages

@@ -68,16 +68,29 @@ def test_bold_words_that_survive_a_rewrite_stay_bold(tmp_path):
     assert "Kafka" in bold_words and "Senior" not in bold_words
 
 
-def test_multi_paragraph_text_is_rewritten_into_the_first_paragraph(tmp_path):
+def test_multi_paragraph_text_is_split_back_across_the_same_paragraphs(tmp_path):
+    base, out = tmp_path / "base.docx", tmp_path / "out.docx"
+    _base_resume(base)
+    original = "Backend engineer building Kafka pipelines at scale. Second summary paragraph."
+    before = len(_paragraphs(base))
+
+    tailor_docx(base, out, [(original, "Backend engineer building Kafka pipelines for fintech. Mentors the team.")])
+
+    texts = [p.text for p in _paragraphs(out)]
+    assert len(texts) == before  # no paragraph removed
+    assert "Backend engineer building Kafka pipelines for fintech." in texts
+    assert "Mentors the team." in texts
+
+
+def test_a_rewrite_that_cannot_fill_every_paragraph_is_left_as_written(tmp_path):
     base, out = tmp_path / "base.docx", tmp_path / "out.docx"
     _base_resume(base)
     original = "Backend engineer building Kafka pipelines at scale. Second summary paragraph."
 
-    tailor_docx(base, out, [(original, "Backend engineer building Kafka pipelines for fintech.")])
+    report = tailor_docx(base, out, [(original, "One merged sentence for both paragraphs.")])
 
     texts = [p.text for p in _paragraphs(out)]
-    assert "Backend engineer building Kafka pipelines for fintech." in texts
-    assert "Second summary paragraph." not in texts
+    assert "Second summary paragraph." in texts and report.not_found == [original]
 
 
 def test_location_line_keeps_its_shape_and_missing_text_is_reported(tmp_path):

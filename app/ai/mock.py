@@ -175,6 +175,11 @@ class MockAIProvider:
             bullets=bullets,
         )
 
+    def rewrite_passages(self, passages, job, requirements, candidate_skills) -> dict[int, str]:
+        """Zero-cost stand-in: every passage kept verbatim."""
+        self.last_usage = AIUsage()
+        return {p["id"]: p["text"] for p in passages}
+
     def assess_fit(self, candidate: dict, job) -> FitAssessmentResult:
         """Zero-cost stand-in: the share of the posting's detected skills that
         appear in the candidate's skill list.

@@ -11,8 +11,9 @@ source_bullet_id didn't match anything real).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 from sqlalchemy.orm import Session
@@ -25,12 +26,14 @@ from app.catalog.geo import job_place, province_code
 from app.config.schema import AddressProfile, AppConfig
 from app.database.session import PROJECT_ROOT
 from app.documents.docx import render_tailored_resume
-from app.documents.docx_edit import tailor_docx
+from app.documents.docx_edit import rewritable_passages, tailor_docx
 from app.models.ai_usage import AICallLog
 from app.models.candidate import AccomplishmentBullet, CandidateProfile
 from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory
 from app.models.resume import TailoredBulletProvenance, TailoredResume
-from app.resume.validator import BulletValidationResult, ValidationResult, validate_tailored_resume
+from app.resume.validator import (
+    BulletValidationResult, ValidationResult, validate_passage, validate_tailored_resume,
+)
 from app.utils.logging import log_event
 
 logger = logging.getLogger(__name__)
@@ -38,6 +41,11 @@ logger = logging.getLogger(__name__)
 
 class NoActiveCandidateProfileError(Exception):
     """Raised when tailoring is attempted before a resume has been imported."""
+
+
+class BaseResumeMissingError(NoActiveCandidateProfileError):
+    """The Word resume to tailor can't be found. Tailoring refuses rather than
+    produce a resume in a different design."""
 
 
 @dataclass
@@ -69,6 +77,25 @@ def _resolve_candidate_name(config: AppConfig, candidate: CandidateProfile) -> s
     if config.candidate.override_parsed_name:
         return config.candidate.name
     return candidate.full_name or config.candidate.name
+
+
+_UNSAFE_IN_FILENAME = re.compile(r'[\\/:*?"<>|\x00-\x1f]+')
+
+
+def resume_download_name(config: AppConfig, candidate: CandidateProfile | None, company: str | None,
+                         generated_at: datetime | None, suffix: str) -> str:
+    """"First Last - Company - 2026-10-10_1432.docx": the name a tailored resume
+    downloads as, so each one is recognisable in a Downloads folder or an upload
+    form. The time is when it was generated, in this computer's time zone.
+    """
+    name = _resolve_candidate_name(config, candidate) if candidate else config.candidate.name
+    name = " ".join((name or "").split())
+    if name.isupper():
+        name = name.title()  # "GLADIA JOY" -> "Gladia Joy"
+    when = (generated_at or datetime.now(timezone.utc).replace(tzinfo=None)).replace(tzinfo=timezone.utc).astimezone()
+    parts = [name or "Resume", company or "", when.strftime("%Y-%m-%d_%H%M")]
+    cleaned = [" ".join(_UNSAFE_IN_FILENAME.sub(" ", part).split()) for part in parts]
+    return " - ".join(part for part in cleaned if part)[:150] + suffix
 
 
 def resolve_address(config: AppConfig, job: Job, session: Session | None = None) -> AddressProfile | None:
@@ -126,15 +153,32 @@ def _backfill_omitted_content(validation: ValidationResult, candidate: Candidate
             covered_skills_lower.add(skill.name.lower())
 
 
+RESTORED_DIR = PROJECT_ROOT / "data" / "resumes" / "restored"
+
+
 def _base_docx(candidate: CandidateProfile) -> Path | None:
-    """The candidate's original .docx, if it's still on disk (relative paths are
-    taken from the project folder, so local runs and Docker both find it).
+    """The candidate's original .docx: the file on disk (relative paths are taken
+    from the project folder, so local runs and Docker both find it), else the copy
+    kept in the database, restored to disk. None for a PDF resume.
+
+    Raises BaseResumeMissingError for a Word resume that can't be found at all.
     """
     path = Path(candidate.raw_resume_path)
+    if path.suffix.lower() != ".docx":
+        return None
     for candidate_path in (path, PROJECT_ROOT / path):
-        if candidate_path.suffix.lower() == ".docx" and candidate_path.is_file():
+        if candidate_path.is_file():
             return candidate_path
-    return None
+    if candidate.source_file:
+        restored = RESTORED_DIR / f"resume_v{candidate.version}_{candidate.id}.docx"
+        if not restored.is_file():
+            restored.parent.mkdir(parents=True, exist_ok=True)
+            restored.write_bytes(candidate.source_file)
+        return restored
+    raise BaseResumeMissingError(
+        f"Your resume file ({path.name}) is missing, so it can't be tailored without changing its design. "
+        "Upload it again on the My resume page."
+    )
 
 
 def write_resume_docx(
@@ -146,8 +190,9 @@ def write_resume_docx(
 
     With a .docx base resume, the candidate's own document is copied and only
     the tailored wording changes -- layout, fonts, tables and styles stay
-    exactly as designed. A PDF base resume has no Word layout to keep, so a
-    clean one is laid out instead.
+    exactly as designed (never a different layout: a missing .docx raises
+    BaseResumeMissingError). A PDF base resume has no Word layout to keep, so
+    a clean one is laid out instead.
     """
     base_docx = _base_docx(candidate)
     if base_docx is not None:
@@ -198,6 +243,21 @@ def rebuild_tailored_resume(session: Session, tailored: TailoredResume, config: 
     None if its source bullets no longer exist.
     """
     provenance = session.query(TailoredBulletProvenance).filter_by(tailored_resume_id=tailored.id).all()
+    if any(p.source_text is not None for p in provenance):  # tailored paragraph by paragraph
+        candidate = (session.query(CandidateProfile).filter_by(is_active=True)
+                     .order_by(CandidateProfile.version.desc()).first())
+        base_docx = _base_docx(candidate) if candidate else None
+        if base_docx is None:
+            return None
+        job = session.get(Job, tailored.job_id)
+        docx_path = get_application_folder(job) / "tailored_resume.docx"
+        _write_passages(docx_path, base_docx,
+                        [(p.source_text, p.generated_text) for p in provenance if p.source_text and not p.removed],
+                        resolve_address(config, job, session),
+                        remove=[p.source_text for p in provenance if p.source_text and p.removed])
+        tailored.docx_path = str(docx_path)
+        session.commit()
+        return docx_path
     source_ids = [p.source_bullet_id for p in provenance if p.source_bullet_id is not None]
     first = session.get(AccomplishmentBullet, source_ids[0]) if source_ids else None
     if first is None:
@@ -231,10 +291,17 @@ def tailor_resume(
         raise NoActiveCandidateProfileError(
             "No active CandidateProfile found. Run 'import-resume' before generating a tailored resume."
         )
+    base_docx = _base_docx(candidate)  # a missing Word resume fails here, before any AI spend
 
     provider = ai_provider or build_ai_provider(config.ai, AISettings())
     requirements = _resolve_requirements(session, job)
     address = resolve_address(config, job, session)
+
+    if base_docx is not None:
+        tailored_resume, docx_path = _tailor_passages(
+            session, job, config, candidate, base_docx, provider, requirements, address)
+        return _finish(session, job, tailored_resume, docx_path, update_status=update_status, rejected=sum(
+            1 for row in tailored_resume.bullet_provenance if not row.validation_passed))
 
     draft = provider.tailor_resume(candidate, job, requirements, address)
     usage = getattr(provider, "last_usage", None)
@@ -280,7 +347,13 @@ def tailor_resume(
         bullets=[(r.source_bullet_id, r.text) for r in validation.bullets if r.text],
     )
     tailored_resume.docx_path = str(docx_path)
+    return _finish(session, job, tailored_resume, docx_path, update_status=update_status,
+                   rejected=sum(1 for b in validation.bullets if not b.accepted),
+                   rejected_skills=len(validation.skills_rejected))
 
+
+def _finish(session: Session, job: Job, tailored_resume: TailoredResume, docx_path: Path, *, update_status: bool,
+            rejected: int, rejected_skills: int = 0) -> TailorResult:
     if update_status:
         from_status = job.status
         job.status = JobStatus.RESUME_GENERATED
@@ -299,11 +372,112 @@ def tailor_resume(
         job_id=job.id,
         tailored_resume_id=tailored_resume.id,
         validation_status=tailored_resume.validation_status,
-        rejected_bullets=sum(1 for b in validation.bullets if not b.accepted),
-        rejected_skills=len(validation.skills_rejected),
+        rejected_bullets=rejected,
+        rejected_skills=rejected_skills,
     )
 
     session.commit()
     session.refresh(job)
     session.refresh(tailored_resume)
     return TailorResult(job=job, tailored_resume=tailored_resume, docx_path=docx_path)
+
+
+def _resume_text(path: Path) -> str:
+    """Everything the resume says (body, tables, text boxes, headers), for the
+    truthfulness check: a rewrite may only name what's already in here."""
+    from docx import Document
+    from docx.oxml.ns import qn
+
+    doc = Document(str(path))
+    parts = [doc.element.body] + [s.header._element for s in doc.sections] + [s.footer._element for s in doc.sections]
+    return "\n".join("".join(t.text or "" for t in part.iter(qn("w:t"))) for part in parts)
+
+
+def _tailor_passages(
+    session: Session, job: Job, config: AppConfig, candidate: CandidateProfile, base_docx: Path,
+    provider: AIProvider, requirements: ExtractedJobRequirements | None, address: AddressProfile | None,
+) -> tuple[TailoredResume, Path]:
+    """Tailor a Word resume paragraph by paragraph, whatever its layout: every
+    prose paragraph (summary lines, bullets, project responsibilities -- also in
+    tables) is rewritten in its own place; names, headings, dates, contact
+    lines and skill lists are never touched, and no paragraph is added, removed
+    or moved. Each rewrite is checked like a bullet (no new numbers, names or
+    titles, same length); a rejected one keeps the original wording.
+    """
+    passages = rewritable_passages(base_docx)
+    resume_text = _resume_text(base_docx)
+    skills = [s.name for s in candidate.skills]
+    rewrites = provider.rewrite_passages(
+        [{"id": i, "section": p.section, "text": p.text} for i, p in enumerate(passages)], job, requirements, skills,
+    ) if passages else {}
+    usage = getattr(provider, "last_usage", None)
+    session.add(AICallLog(
+        provider=config.ai.provider, operation="tailor_resume", job_id=job.id,
+        tokens_in=usage.tokens_in if usage else None, tokens_out=usage.tokens_out if usage else None,
+        estimated_cost=usage.estimated_cost if usage else None, cache_hit=False,
+    ))
+
+    results = []
+    for i, passage in enumerate(passages):
+        answer = rewrites.get(i)
+        rewrite, drop_reason = (answer.get("text"), answer.get("drop_reason")) if isinstance(answer, dict) else (answer, None)
+        text, reason = validate_passage(passage.text, rewrite, resume_text=resume_text, job_title=job.title)
+        results.append((passage, text, reason, drop_reason))
+
+    results = _sensible_suggestions(results)
+
+    tailored_resume = TailoredResume(
+        job_id=job.id,
+        summary_text=candidate.summary or "",
+        skills_order=skills,
+        validation_status="PASSED" if all(reason is None for _, _, reason, _ in results) else "PARTIAL",
+    )
+    session.add(tailored_resume)
+    session.flush()
+    for passage, text, reason, drop_reason in results:
+        session.add(TailoredBulletProvenance(
+            tailored_resume_id=tailored_resume.id, generated_text=text, source_bullet_id=None,
+            source_text=passage.text, section=(passage.section or "")[:255] or None,
+            validation_passed=reason is None, rejection_reason=reason,
+            suggest_remove=bool(drop_reason), remove_reason=(drop_reason or None) and drop_reason[:300],
+        ))
+
+    docx_path = get_application_folder(job) / "tailored_resume.docx"
+    _write_passages(docx_path, base_docx, [(p.text, text) for p, text, _, _ in results], address)
+    tailored_resume.docx_path = str(docx_path)
+    session.flush()
+    session.refresh(tailored_resume)
+    return tailored_resume, docx_path
+
+
+_SUMMARY_SECTION = re.compile(r"summary|profile|objective|about", re.I)
+
+
+def _sensible_suggestions(results: list) -> list:
+    """Keep the AI's removal suggestions only where acting on them leaves a sound
+    resume: never the summary, and never every paragraph under one heading (that
+    would leave an empty section -- the user can still remove those by hand)."""
+    by_section: dict = {}
+    for passage, _, _, drop in results:
+        by_section.setdefault(passage.section, []).append(bool(drop))
+    return [
+        (passage, text, reason,
+         None if (passage.section is None or _SUMMARY_SECTION.search(passage.section) or all(by_section[passage.section]))
+         else drop)
+        for passage, text, reason, drop in results
+    ]
+
+
+def _write_passages(docx_path: Path, base_docx: Path, replacements: list[tuple[str, str]],
+                    address: AddressProfile | None, remove: list[str] = ()) -> None:
+    """Write the tailored copy: `replacements` reworded, `remove` (approved by the
+    user) taken out, everything else exactly as in `base_docx`."""
+    report = tailor_docx(
+        base_docx, docx_path, [(old, new) for old, new in replacements if old != new], remove=list(remove),
+        location_line=(address.one_line() if address.has_street else f"{address.city}, {address.province}, {address.country}")
+        if address else None,
+        full_address=bool(address and address.has_street),
+    )
+    if report.not_found:
+        logger.warning("Tailored resume: %d passages not found in %s, kept as written",
+                       len(report.not_found), base_docx)

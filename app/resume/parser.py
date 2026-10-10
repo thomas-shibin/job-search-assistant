@@ -618,6 +618,13 @@ def parse_resume(path: Path) -> ParsedResume:
     return parser(path)
 
 
+def _resume_file_exists(raw_path: str) -> bool:
+    path = Path(raw_path)
+    from app.database.session import PROJECT_ROOT
+
+    return path.is_file() or (PROJECT_ROOT / path).is_file()
+
+
 def import_resume(session: Session, resume_path: Path, *, force: bool = False) -> ImportResult:
     """Parse ``resume_path`` (.docx or .pdf) and persist it as a new CandidateProfile version.
 
@@ -635,6 +642,11 @@ def import_resume(session: Session, resume_path: Path, *, force: bool = False) -
     )
 
     if existing_active is not None and existing_active.source_hash == file_hash and not force:
+        if existing_active.source_file is None or not _resume_file_exists(existing_active.raw_resume_path):
+            # Same content, but the stored original is gone: adopt this copy of it.
+            existing_active.raw_resume_path = str(resume_path)
+            existing_active.source_file = resume_path.read_bytes()
+            session.commit()
         counts = {
             "employments": len(existing_active.employments),
             "bullets": sum(len(e.bullets) for e in existing_active.employments),
@@ -654,6 +666,7 @@ def import_resume(session: Session, resume_path: Path, *, force: bool = False) -
         contact_line=parsed.contact_line,
         summary=parsed.summary,
         raw_resume_path=str(resume_path),
+        source_file=resume_path.read_bytes(),
         source_hash=file_hash,
         version=new_version,
         is_active=True,

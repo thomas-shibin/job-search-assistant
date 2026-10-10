@@ -27,6 +27,7 @@ from app.ai.fit import active_candidate, assess_job_fit, latest_assessment
 from app.config.schema import GlobalSearchConfig
 from app.config.store import load_app_config, save_section
 from app.models.candidate import CandidateProfile
+from app.models.resume import TailoredBulletProvenance
 from app.database.session import get_session
 from app.ingestion.pipeline import ingest_raw_job
 from app.matching.pipeline import NoActiveCandidateProfileError, analyze_job
@@ -34,7 +35,9 @@ from app.models.job import Job, JobStatus
 from app.resume.parser import ImportResult, import_resume
 from app.resume.pipeline import generate_resume_bundle
 from app.resume.tailor import NoActiveCandidateProfileError as TailorNoProfileError
-from app.resume.tailor import resolve_address, tailor_resume
+from app.resume.tailor import (
+    BaseResumeMissingError, rebuild_tailored_resume, resolve_address, resume_download_name, tailor_resume,
+)
 from app.documents.libreoffice import PdfConversionError, convert_to_pdf
 from app.services.costs import ai_cost_summary
 from app.services.jobs import (
@@ -300,6 +303,8 @@ def _analyze_and_tailor(session: Session, job: Job, *, force: bool = False) -> s
                 pass  # DOCX is still there; PDF needs LibreOffice
     except ConfigError as exc:
         return f"Settings are invalid (fix them on the Settings page): {'; '.join(exc.errors)}"
+    except BaseResumeMissingError as exc:
+        return str(exc)
     except (NoActiveCandidateProfileError, TailorNoProfileError):
         return "No resume yet -- upload yours on the My resume page (or below), then click \"Analyze & tailor\"."
     except AIProviderConfigError as exc:
@@ -333,7 +338,7 @@ async def _import_uploaded_resume(session: Session, resume: UploadFile) -> tuple
         session.rollback()
         dest_path.unlink(missing_ok=True)
         return None, f"Couldn't read that resume ({type(exc).__name__}). Is it a valid Word or PDF file?"
-    if not result.created:
+    if not result.created and Path(result.profile.raw_resume_path) not in (stored_path, dest_path):
         dest_path.unlink(missing_ok=True)  # same content as the current resume: keep nothing new
     else:
         try:  # keep Settings -> Candidate -> base resume pointing at the file in use
@@ -478,6 +483,38 @@ def retailor_job(job_id: int, session: Session = Depends(get_session)):
     return _job_redirect(job_id, msg="Resume re-tailored -- download it below.")
 
 
+@router.post("/jobs/{job_id}/removals")
+async def apply_removals(job_id: int, request: Request, session: Session = Depends(get_session)):
+    """Take the paragraphs the user ticked out of this job's tailored resume (and
+    put back any they unticked), then rebuild it from the base resume -- no AI call."""
+    job = _get_job_or_404(session, job_id)
+    detail = get_job_detail(session, job_id)
+    if detail is None or detail.tailored_resume is None:
+        raise HTTPException(status_code=404, detail="No tailored resume for this job")
+    chosen = {int(v) for v in (await request.form()).getlist("remove") if str(v).isdigit()}
+    rows = session.query(TailoredBulletProvenance).filter(
+        TailoredBulletProvenance.tailored_resume_id == detail.tailored_resume.id,
+        TailoredBulletProvenance.source_text.isnot(None)).all()
+    for row in rows:
+        row.removed = row.id in chosen
+    session.commit()
+    try:
+        config = load_app_config(session, DEFAULT_CONFIG_PATH)
+        path = rebuild_tailored_resume(session, detail.tailored_resume, config)
+    except (ConfigError, TailorNoProfileError) as exc:
+        return _job_redirect(job_id, error=str(exc))
+    if path is None:
+        return _job_redirect(job_id, error="Couldn't rebuild the resume: your base resume is missing.")
+    try:
+        detail.tailored_resume.pdf_path = str(convert_to_pdf(path))
+        session.commit()
+    except PdfConversionError:
+        pass
+    count = sum(1 for row in rows if row.removed)
+    return _job_redirect(job_id, msg=f"Resume rebuilt with {count} paragraph{'s' if count != 1 else ''} removed."
+                         if count else "Resume rebuilt with every paragraph included.")
+
+
 def _job_redirect(job_id: int, **params: str) -> RedirectResponse:
     return RedirectResponse(url=f"/jobs/{job_id}?{urlencode(params)}#resume", status_code=303)
 
@@ -539,7 +576,7 @@ def download_resume_docx(job_id: int, session: Session = Depends(get_session)):
     detail = get_job_detail(session, job_id)
     if detail is None or detail.tailored_resume is None or not detail.tailored_resume.docx_path:
         raise HTTPException(status_code=404, detail="No tailored resume DOCX for this job")
-    return FileResponse(detail.tailored_resume.docx_path, filename=Path(detail.tailored_resume.docx_path).name)
+    return FileResponse(detail.tailored_resume.docx_path, filename=_download_name(session, detail, ".docx"))
 
 
 @router.get("/jobs/{job_id}/resume.pdf")
@@ -547,7 +584,17 @@ def download_resume_pdf(job_id: int, session: Session = Depends(get_session)):
     detail = get_job_detail(session, job_id)
     if detail is None or detail.tailored_resume is None or not detail.tailored_resume.pdf_path:
         raise HTTPException(status_code=404, detail="No tailored resume PDF for this job")
-    return FileResponse(detail.tailored_resume.pdf_path, filename=Path(detail.tailored_resume.pdf_path).name)
+    return FileResponse(detail.tailored_resume.pdf_path, filename=_download_name(session, detail, ".pdf"))
+
+
+def _download_name(session: Session, detail, suffix: str) -> str:
+    """"First Last - Company - timestamp.docx" (see resume_download_name)."""
+    try:
+        config = load_app_config(session, DEFAULT_CONFIG_PATH)
+    except ConfigError:
+        return f"tailored_resume{suffix}"
+    return resume_download_name(config, active_candidate(session), detail.job.company,
+                                detail.tailored_resume.generated_at, suffix)
 
 
 def _action_route(action_fn_name: str):
