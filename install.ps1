@@ -80,8 +80,18 @@ if (-not $Native) {
     Set-EnvValue "APP_UID" 1000
     Set-EnvValue "APP_GID" 1000
 
-    Say "Building and starting (the first build takes a few minutes)"
-    docker compose up -d --build
+    $image = Get-EnvValue "APP_IMAGE"
+    if ($image) {
+        Say "Downloading $image and starting"
+        docker compose pull
+        if ($LASTEXITCODE -ne 0) { Fail "Couldn't download $image -- check APP_IMAGE in .env and your internet." }
+        docker compose up -d --no-build
+    }
+    else {
+        if (-not (Test-Path Dockerfile)) { Fail "No APP_IMAGE in .env and no source code to build from." }
+        Say "Building and starting (the first build takes a few minutes)"
+        docker compose up -d --build
+    }
     if ($LASTEXITCODE -ne 0) { Fail "docker compose failed -- see the messages above." }
     if (-not (Wait-Healthy $url 180)) { Fail "The app didn't start. See: docker compose logs app" }
     Ok "Running at $url"
@@ -90,6 +100,7 @@ if (-not $Native) {
 }
 else {
     # 2b. Native ---------------------------------------------------------------
+    if (-not (Test-Path pyproject.toml)) { Fail "This package runs with Docker only (it has no source code): install.cmd" }
     Say "Checking Python (3.11 or newer)"
     $py = $null
     foreach ($candidate in @("py -3.13", "py -3.12", "py -3.11", "python")) {

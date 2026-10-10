@@ -69,7 +69,7 @@
         </div>
       {% endif %}
       <div class="panel-foot">
-        <span class="muted">{% if fit %}{{ fit.provider }}{% if fit.model %} ({{ fit.model }}){% endif %} · {{ fit.created_at.strftime("%Y-%m-%d %H:%M") }}{% else %}Uses your imported resume{% endif %}</span>
+        <span class="muted">{% if fit %}{{ fit.provider }}{% if fit.model %} ({{ fit.model }}){% endif %} · {{ fit.created_at.strftime("%Y-%m-%d %H:%M") }}{% else %}Compares the job with your resume -- to get a tailored copy, use Analyze &amp; tailor below{% endif %}</span>
         {% if has_resume %}
           <form method="post" action="/jobs/{{ job.id }}/assess" hx-boost="false">
             <button type="submit" class="{{ '' if fit else 'primary' }}">{{ icon("refresh" if fit else "sparkles") }} {{ "Re-run analysis" if fit else "Analyze with AI" }}</button>
@@ -201,15 +201,30 @@
       <div class="panel-head">
         <div>
           <h2>Tailored resume</h2>
-          <p><em>No tailored resume generated yet.</em></p>
+          {% set score = detail.match_analysis.overall_score if detail.match_analysis else none %}
+          {% if score is not none and minimum_score is not none and score < minimum_score %}
+            <p>Not generated: this job scored <strong>{{ score }}/100</strong>, below your minimum score of
+               <strong>{{ minimum_score }}</strong> (<a href="/settings#matching">Settings &rarr; Matching</a>).
+               Resumes are tailored automatically only for jobs at or above it.</p>
+          {% else %}
+            <p>Not generated yet. <strong>Analyze &amp; tailor</strong> scores this job against your resume and,
+               if it reaches your minimum score{% if minimum_score is not none %} ({{ minimum_score }}){% endif %}, writes a tailored copy.</p>
+          {% endif %}
         </div>
       </div>
       <form method="post" action="/jobs/{{ job.id }}/analyze" enctype="multipart/form-data" hx-boost="false" class="analyze-form">
-        <label>
-          Resume (.docx or .pdf) &mdash; optional if you've already imported one
-          <input type="file" name="resume" accept=".docx,.pdf">
-        </label>
+        {% if has_resume %}
+          <span class="muted">Uses your resume from <a href="/resume">My resume</a>.</span>
+        {% else %}
+          <label>
+            Upload your resume first (.docx or .pdf)
+            <input type="file" name="resume" accept=".docx,.pdf" required>
+          </label>
+        {% endif %}
         <button type="submit" class="primary">{{ icon("pen") }} Analyze &amp; tailor</button>
+        {% if has_resume %}
+          <button type="submit" name="force" value="true" title="Tailor a resume for this job even if it scores below your minimum">{{ icon("sparkles") }} Tailor anyway</button>
+        {% endif %}
       </form>
     </section>
     {% endif %}

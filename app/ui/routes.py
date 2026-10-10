@@ -271,26 +271,37 @@ async def upload_resume(
     return RedirectResponse(url=f"{path}{query}{'#' + fragment if fragment else ''}", status_code=303)
 
 
-def _analyze_and_tailor(session: Session, job: Job) -> str | None:
-    """Score `job` and, if it qualifies, generate its tailored resume. Returns
-    a human-readable reason when that didn't happen (so the dashboard can show
-    it instead of leaving the job silently stuck at DISCOVERED), else None.
+def _analyze_and_tailor(session: Session, job: Job, *, force: bool = False) -> str | None:
+    """Score `job` and, if it qualifies (or `force`: "Tailor anyway"), generate
+    its tailored resume. Returns a human-readable reason when that didn't happen
+    (so the dashboard can show it instead of leaving the job silently stuck at
+    DISCOVERED), else None.
     """
     try:
         config = load_app_config(session, DEFAULT_CONFIG_PATH)
         analysis = analyze_job(session, job, config)
-        if not analysis.filter_result.passed:
-            return "Skipped by hard filters: " + "; ".join(analysis.filter_result.reasons)
-        if not analysis.qualified:
+        if not analysis.filter_result.passed and not force:
+            return ("Skipped by your hard filters (" + "; ".join(analysis.filter_result.reasons)
+                    + ") -- no tailored resume generated. Use \"Tailor anyway\" to make one.")
+        if not analysis.qualified and not force:
             return (
-                f"Scored {analysis.breakdown.overall_score}/100, below matching.minimum_score "
-                f"({config.matching.minimum_score}) -- no tailored resume generated."
+                f"Scored {analysis.breakdown.overall_score}/100, below your minimum score "
+                f"({config.matching.minimum_score}, Settings -> Matching) -- no tailored resume generated. "
+                "Use \"Tailor anyway\" to make one."
             )
-        generate_resume_bundle(session, job, config)
+        if analysis.qualified:
+            generate_resume_bundle(session, job, config)
+        else:  # forced: tailor without moving the job through the qualified statuses
+            result = tailor_resume(session, job, config, update_status=False)
+            try:
+                result.tailored_resume.pdf_path = str(convert_to_pdf(result.docx_path))
+                session.commit()
+            except PdfConversionError:
+                pass  # DOCX is still there; PDF needs LibreOffice
     except ConfigError as exc:
         return f"Settings are invalid (fix them on the Settings page): {'; '.join(exc.errors)}"
-    except NoActiveCandidateProfileError:
-        return "No resume imported yet -- upload your resume below, then click \"Analyze & tailor\"."
+    except (NoActiveCandidateProfileError, TailorNoProfileError):
+        return "No resume yet -- upload yours on the My resume page (or below), then click \"Analyze & tailor\"."
     except AIProviderConfigError as exc:
         return str(exc)
     return None
@@ -391,6 +402,10 @@ def _job_detail_response(request: Request, session: Session, job_id: int, *, err
     if detail is None:
         raise HTTPException(status_code=404, detail=f"No job found with id={job_id}")
     resume_address = None
+    try:
+        minimum_score = load_app_config(session, DEFAULT_CONFIG_PATH).matching.minimum_score
+    except ConfigError:
+        minimum_score = None
     if detail.tailored_resume is not None:
         try:
             resume_address = resolve_address(load_app_config(session, DEFAULT_CONFIG_PATH), detail.job, session)
@@ -403,6 +418,7 @@ def _job_detail_response(request: Request, session: Session, job_id: int, *, err
             "description_preview": is_description_preview(detail.job),
             "detail": detail, "actions": _actions_for(detail.job), "error": error, "message": message,
             "fit": latest_assessment(session, job_id), "has_resume": active_candidate(session) is not None,
+            "minimum_score": minimum_score,
         },
     )
 
@@ -471,6 +487,7 @@ async def analyze_job_action(
     request: Request,
     job_id: int,
     resume: UploadFile | None = File(None),
+    force: bool = Form(False),
     session: Session = Depends(get_session),
 ):
     """Re-run scoring + tailoring for one job from its detail page, optionally
@@ -482,7 +499,7 @@ async def analyze_job_action(
     if resume is not None and resume.filename:
         error = await _save_uploaded_resume(session, resume)
     if error is None:
-        error = _analyze_and_tailor(session, job)
+        error = _analyze_and_tailor(session, job, force=force)
     if error is not None:
         return _job_detail_response(request, session, job_id, error=error)
     return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)

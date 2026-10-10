@@ -24,7 +24,17 @@ it refuses to build if one of your keys would be included. Copy the zip over (US
 email, cloud drive) and unzip it somewhere permanent, e.g. `C:\job-assistant` or
 `~/job-assistant`.
 
-**B. From GitHub** (once your latest changes are pushed):
+**B. Docker only, no source code (smallest).** Push the image to Docker Hub, then:
+
+```bash
+python scripts/package.py --image thomasshibin90/jobfinderapp:0.1   # -> dist/job-assistant-docker-YYYYMMDD.zip
+```
+
+A ~10 KB zip: installers, `docker-compose.yml`, `.env.example` with `APP_IMAGE` set and a
+README. The installer downloads the image instead of building. Docker install only (3a / 4a).
+To update later, change `APP_IMAGE` in `.env` to the new tag and run the installer again.
+
+**C. From GitHub** (once your latest changes are pushed):
 
 ```bash
 git clone https://github.com/thomas-shibin/job-search-assistant.git job-assistant

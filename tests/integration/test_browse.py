@@ -360,7 +360,7 @@ def test_browse_track_without_resume_shows_why_job_was_not_analyzed(client):
     response = test_client.post("/browse/track", data=_TRACK_PAYLOAD)
 
     assert response.status_code == 200
-    assert "No resume imported yet" in response.text
+    assert "No resume yet" in response.text
     assert "Analyze &amp; tailor" in response.text
 
 
@@ -370,7 +370,7 @@ def test_browse_track_below_minimum_score_explains_no_resume(client):
     response = test_client.post("/browse/track", data=_TRACK_PAYLOAD)
 
     assert response.status_code == 200
-    assert "below matching.minimum_score" in response.text
+    assert "below your minimum score" in response.text
 
 
 def test_analyze_action_imports_uploaded_resume_then_analyzes(client, tmp_path, monkeypatch):
@@ -396,8 +396,8 @@ def test_analyze_action_imports_uploaded_resume_then_analyzes(client, tmp_path, 
         response = test_client.post(f"/jobs/{job_id}/analyze", files={"resume": ("resume.docx", f)})
 
     assert response.status_code == 200
-    assert "No resume imported yet" not in response.text
-    assert "below matching.minimum_score" in response.text  # it got as far as scoring
+    assert "No resume yet" not in response.text
+    assert "below your minimum score" in response.text  # it got as far as scoring
     session = SessionLocal()
     assert session.query(CandidateProfile).filter_by(is_active=True).count() == 1
     session.close()
@@ -488,3 +488,35 @@ def test_preview_descriptions_are_flagged_and_too_short_pastes_rejected(client):
     assert "too short to be a job description" in response.text
     with SessionLocal() as session:
         assert session.get(Job, job_id).description == "x" * 500
+
+
+def test_below_minimum_job_explains_why_and_can_be_tailored_anyway(client, monkeypatch, tmp_path):
+    import app.ui.routes as ui_routes
+    from app.models.job import Job, JobStatus
+
+    test_client, SessionLocal = client
+    test_client.post("/browse/track", data=_TRACK_PAYLOAD)
+    with SessionLocal() as session:
+        job_id = session.query(Job.id).scalar()
+
+    page = test_client.get(f"/jobs/{job_id}").text
+    assert "below your minimum score of" in page and "Tailor anyway" in page
+    assert 'name="resume"' not in page.split('id="description"')[0].split("Tailored resume")[-1]  # no upload box
+
+    calls = []
+
+    def fake_tailor(session, job, config, ai_provider=None, *, update_status=True):
+        calls.append(update_status)
+        path = tmp_path / "tailored_resume.docx"
+        path.write_bytes(b"docx")
+        return SimpleNamespace(docx_path=path, tailored_resume=SimpleNamespace(pdf_path=None))
+
+    monkeypatch.setattr(ui_routes, "tailor_resume", fake_tailor)
+    monkeypatch.setattr(ui_routes, "convert_to_pdf", lambda path: path.with_suffix(".pdf"))
+
+    response = test_client.post(f"/jobs/{job_id}/analyze", data={"force": "true"}, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert calls == [False]  # tailored, without pretending the job qualified
+    with SessionLocal() as session:
+        assert session.get(Job, job_id).status == JobStatus.ANALYZED

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Job Assistant installer for Linux (and macOS).
 #
-#   ./install.sh                 # Docker (recommended): builds and starts the app
+#   ./install.sh                 # Docker (recommended): pulls APP_IMAGE (or builds) and starts
 #   ./install.sh --native        # no Docker: Python virtual environment instead
 #   ./install.sh --port 8080     # use another port (default 8000)
 #   ./install.sh --no-prompt     # don't ask for API keys (add them to .env later)
@@ -84,8 +84,16 @@ if [ "$MODE" = docker ]; then
   set_env APP_UID "$(id -u)"
   set_env APP_GID "$(id -g)"
 
-  bold "Building and starting (the first build takes a few minutes)"
-  docker compose up -d --build
+  IMAGE="$(get_env APP_IMAGE)"
+  if [ -n "$IMAGE" ]; then
+    bold "Downloading $IMAGE and starting"
+    docker compose pull || die "Couldn't download $IMAGE -- check APP_IMAGE in .env and your internet."
+    docker compose up -d --no-build
+  else
+    [ -f Dockerfile ] || die "No APP_IMAGE in .env and no source code to build from."
+    bold "Building and starting (the first build takes a few minutes)"
+    docker compose up -d --build
+  fi
 
   printf '  Waiting for the app'
   for _ in $(seq 1 90); do
@@ -101,6 +109,7 @@ if [ "$MODE" = docker ]; then
 
 # 2b. Native -----------------------------------------------------------------
 else
+  [ -f pyproject.toml ] || die "This package runs with Docker only (it has no source code): ./install.sh"
   bold "Checking Python (3.11 or newer)"
   PY=""
   for candidate in python3.13 python3.12 python3.11 python3; do

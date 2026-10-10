@@ -1,7 +1,9 @@
 services:
   app:
+    # APP_IMAGE in .env (e.g. thomasshibin90/jobfinderapp:0.1) runs a published
+    # image -- no source code needed. Unset, it builds from this folder.
+    image: ${APP_IMAGE:-job-search-assistant}
     build: .
-    image: job-search-assistant
     restart: unless-stopped
     env_file: .env
     # Run as the owner of data/ (set by install.sh) so files it writes stay yours.
