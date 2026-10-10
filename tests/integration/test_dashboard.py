@@ -43,7 +43,7 @@ def client(tmp_path, monkeypatch):
 
 def _seed_job_with_resume(SessionLocal, *, status=JobStatus.READY_FOR_REVIEW) -> int:
     session: Session = SessionLocal()
-    candidate = CandidateProfile(raw_resume_path="x.docx", source_hash="h", is_active=True)
+    candidate = CandidateProfile(raw_resume_path="x.docx", source_hash="h", is_active=True, summary="Original summary")
     bullet = AccomplishmentBullet(text="Reduced latency by 40%", order_index=0)
     candidate.employments = [Employment(company="Acme", title="Engineer", bullets=[bullet])]
     session.add(candidate)
@@ -112,6 +112,9 @@ def test_job_detail_page_shows_match_and_resume_diff(client):
     assert response.status_code == 200
     assert "Great fit" in response.text
     assert "88/100" in response.text
+    assert "What changed in your resume" in response.text
+    assert "0 of 2 bullets reworded" in response.text and "Summary rewritten" in response.text
+    assert "1 bullet kept exactly as in your resume" in response.text
 
 
 def test_download_links_are_excluded_from_hx_boost(client):
@@ -126,8 +129,8 @@ def test_download_links_are_excluded_from_hx_boost(client):
     response = test_client.get(f"/jobs/{job_id}")
 
     assert 'href="/jobs/1/resume.docx" hx-boost="false"' in response.text
-    assert "Tailored summary" in response.text
-    assert "Kept original wording" in response.text  # the rejected/fallback bullet
+    assert "<del>Original</del> summary" in response.text and "<ins>Tailored</ins> summary" in response.text
+    assert "your original wording is used: unknown source_bullet_id" in response.text  # the rejected bullet
 
 
 def test_unknown_job_returns_404(client):

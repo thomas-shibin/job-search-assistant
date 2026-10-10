@@ -37,8 +37,28 @@ class ValidationResult(BaseModel):
     skills_rejected: list[str] = Field(default_factory=list)
 
 
+MAX_LENGTH_GROWTH = 1.25  # a rewritten bullet/summary may be at most 25% longer than the original...
+LENGTH_SLACK = 30  # ...or 30 characters, whichever is more (a short line has room to spare)
+
+
+def _max_length(original: str) -> float:
+    return max(MAX_LENGTH_GROWTH * len(original), len(original) + LENGTH_SLACK)
+
+
 def _numbers_in(text: str) -> set[str]:
-    return {m.group() for m in _NUMBER_RE.finditer(text)}
+    """The numbers a text states, by value: "12+", "12" and "1,000" vs "1000" are
+    the same claim, so rephrasing "12+ years" as "over 12 years" isn't "inventing"
+    a number. A percentage stays distinct from a plain number ("40%" vs "40").
+    """
+    found = set()
+    for match in _NUMBER_RE.finditer(text):
+        token = match.group().rstrip("+")
+        percent = token.endswith("%")
+        value = token.rstrip("%").replace(",", "")
+        if "." in value:
+            value = value.rstrip("0").rstrip(".")
+        found.add(value + ("%" if percent else ""))
+    return found
 
 
 def _validate_bullet(draft_bullet: Any, source_bullets_by_id: dict[int, Any]) -> BulletValidationResult:
@@ -63,10 +83,23 @@ def _validate_bullet(draft_bullet: Any, source_bullets_by_id: dict[int, Any]) ->
             ),
         )
 
+    if len(draft_bullet.text) > _max_length(source.text):
+        # The tailored resume is the candidate's own document with only the wording
+        # swapped: a much longer bullet would wrap onto extra lines and shift the layout.
+        return BulletValidationResult(
+            text=source.text,
+            source_bullet_id=source.id,
+            accepted=False,
+            rejection_reason=f"generated text is too long for the resume's layout "
+                             f"({len(draft_bullet.text)} vs {len(source.text)} characters)",
+        )
+
     return BulletValidationResult(text=draft_bullet.text, source_bullet_id=source.id, accepted=True)
 
 
 def _validate_summary(summary: str, candidate: Any) -> bool:
+    if candidate.summary and len(summary) > _max_length(candidate.summary):
+        return False  # would push the rest of the resume down (see _validate_bullet)
     source_text = " ".join(
         [candidate.summary or ""] + [b.text for emp in candidate.employments for b in emp.bullets]
     )

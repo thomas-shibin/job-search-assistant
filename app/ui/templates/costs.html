@@ -1,44 +1,77 @@
 {% extends "base.html" %}
-{% block title %}AI Costs - Job Application Assistant{% endblock %}
+{% from "_icons.html" import icon %}
+{% block title %}AI usage - Job Assistant{% endblock %}
+{% block crumb %}AI usage{% endblock %}
 {% block content %}
-<h1>AI cost tracking</h1>
-<p>Estimated cost is a rough figure from token counts (spec §19), not an invoice.</p>
-<table class="job-table">
-  <thead>
-    <tr>
-      <th>Operation</th>
-      <th>Calls</th>
-      <th>Cache hits</th>
-      <th>Tokens in</th>
-      <th>Tokens out</th>
-      <th>Estimated cost (USD)</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for row in summary %}
-    <tr>
-      <td>{{ row.operation }}</td>
-      <td>{{ row.call_count }}</td>
-      <td>{{ row.cache_hit_count }}</td>
-      <td>{{ row.tokens_in }}</td>
-      <td>{{ row.tokens_out }}</td>
-      <td>{{ "%.4f"|format(row.estimated_cost) }}</td>
-    </tr>
-    {% else %}
-    <tr><td colspan="6">No AI calls logged yet.</td></tr>
-    {% endfor %}
-  </tbody>
-  {% if summary %}
-  <tfoot>
-    <tr>
-      <th>Total</th>
-      <th>{{ summary | sum(attribute="call_count") }}</th>
-      <th>{{ summary | sum(attribute="cache_hit_count") }}</th>
-      <th>{{ summary | sum(attribute="tokens_in") }}</th>
-      <th>{{ summary | sum(attribute="tokens_out") }}</th>
-      <th>{{ "%.4f"|format(summary | sum(attribute="estimated_cost")) }}</th>
-    </tr>
-  </tfoot>
-  {% endif %}
-</table>
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Account</p>
+    <h1>AI cost tracking</h1>
+    <p class="lead">Estimated cost is a rough figure from token counts (spec §19), not an invoice.</p>
+  </div>
+</header>
+
+{% set total_cost = summary | sum(attribute="estimated_cost") %}
+{% set total_calls = summary | sum(attribute="call_count") %}
+<div class="stats">
+  <div class="stat">
+    <div class="stat-label">{{ icon("coins") }} Estimated spend</div>
+    <div class="stat-value">${{ "%.4f"|format(total_cost) }}</div>
+    <div class="stat-sub">USD, all time</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("activity") }} AI calls</div>
+    <div class="stat-value">{{ total_calls }}</div>
+    <div class="stat-sub">{{ summary | sum(attribute="cache_hit_count") }} answered from cache</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("file") }} Tokens</div>
+    <div class="stat-value">{{ "{:,}".format(summary | sum(attribute="tokens_in")) }}</div>
+    <div class="stat-sub">in &middot; {{ "{:,}".format(summary | sum(attribute="tokens_out")) }} out</div>
+  </div>
+</div>
+
+<section class="panel flush">
+  <div class="panel-head"><div><h2>By operation</h2></div></div>
+  <div class="table-wrap" style="margin-top: 1rem">
+    <table class="job-table">
+      <thead>
+        <tr>
+          <th>Operation</th>
+          <th class="num">Calls</th>
+          <th class="num">Cache hits</th>
+          <th class="num">Tokens in</th>
+          <th class="num">Tokens out</th>
+          <th class="num">Estimated cost (USD)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in summary %}
+        <tr>
+          <td class="cell-title">{{ row.operation }}</td>
+          <td class="num">{{ row.call_count }}</td>
+          <td class="num">{{ row.cache_hit_count }}</td>
+          <td class="num">{{ row.tokens_in }}</td>
+          <td class="num">{{ row.tokens_out }}</td>
+          <td class="num">{{ "%.4f"|format(row.estimated_cost) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="empty">No AI calls logged yet.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if summary %}
+      <tfoot>
+        <tr>
+          <th>Total</th>
+          <th class="num">{{ total_calls }}</th>
+          <th class="num">{{ summary | sum(attribute="cache_hit_count") }}</th>
+          <th class="num">{{ summary | sum(attribute="tokens_in") }}</th>
+          <th class="num">{{ summary | sum(attribute="tokens_out") }}</th>
+          <th class="num">{{ "%.4f"|format(total_cost) }}</th>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+  </div>
+</section>
 {% endblock %}

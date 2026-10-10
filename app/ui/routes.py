@@ -9,32 +9,45 @@ fragment -- it degrades to plain navigation with JS disabled.
 from __future__ import annotations
 
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
-import httpx
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.ai.factory import AIProviderConfigError
 from app.applications import state_machine
-from app.config.loader import ConfigError, load_config
+from app.catalog.store import location_paths, remember_user_terms
+from app.config.loader import ConfigError
+from app.ai.fit import active_candidate, assess_job_fit, latest_assessment
+from app.config.schema import GlobalSearchConfig
+from app.config.store import load_app_config, save_section
+from app.models.candidate import CandidateProfile
 from app.database.session import get_session
 from app.ingestion.pipeline import ingest_raw_job
 from app.matching.pipeline import NoActiveCandidateProfileError, analyze_job
 from app.models.job import Job, JobStatus
-from app.resume.parser import import_resume
+from app.resume.parser import ImportResult, import_resume
 from app.resume.pipeline import generate_resume_bundle
+from app.resume.tailor import NoActiveCandidateProfileError as TailorNoProfileError
+from app.resume.tailor import resolve_address, tailor_resume
+from app.documents.libreoffice import PdfConversionError, convert_to_pdf
 from app.services.costs import ai_cost_summary
-from app.services.jobs import get_job_detail, latest_match_analysis, list_jobs
+from app.services.jobs import (
+    get_job_detail, is_description_preview, latest_match_analysis, list_jobs, replace_job_description,
+)
+from app.services.search import query_pairs, search_jobs
 from app.sources.adzuna import AdzunaSource
 from app.sources.base import RawJob
 from app.sources.manual import import_manual_job
 from app.sources.settings import AdzunaSettings
-from app.ui.diff import inline_word_diff_html
+from app.ui.diff import inline_word_diff_html, side_by_side_diff
 from app.utils.filenames import sanitize_filename
+from app.utils.terms import split_places, split_terms
 
 router = APIRouter()
 
@@ -46,6 +59,7 @@ _ALLOWED_RESUME_SUFFIXES = {".docx", ".pdf"}
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 templates.env.filters["worddiff"] = inline_word_diff_html
+templates.env.globals["sidediff"] = side_by_side_diff
 
 # (url path segment, state_machine function name, human label, status this action requires)
 _ACTIONS_BY_STATUS: dict[JobStatus, list[tuple[str, str, str]]] = {
@@ -80,28 +94,57 @@ def _get_job_or_404(session: Session, job_id: int) -> Job:
     return job
 
 
-DEFAULT_ADZUNA_COUNTRY = "ca"
+_CARDS_PER_PAGE = 40
 
 
-def _search_adzuna(session: Session, request: Request, *, what: str, where: str, country: str, page: int) -> dict:
-    """Live Adzuna search for the dashboard's "Search for jobs" section --
-    nothing here touches the DB. A posting only becomes a tracked `Job` row
-    when the user explicitly hits "Track & tailor" on it (`browse_track_job`
-    below), unlike the automated scheduler's `AdzunaSource.discover_jobs`
-    (config.yaml's `adzuna_enabled`), which ingests everything it finds.
-    Only runs at all if the search form was actually submitted (`what`/`where`
-    present in the query string, even blank) -- a plain visit to `/` does no
-    Adzuna call. `page` past the last page of real results comes back empty
-    from Adzuna -- that's the "no more results" signal, not an error.
+def _ago(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    now = datetime.now(value.tzinfo) if value.tzinfo else datetime.now()
+    days = (now - value).days
+    if days <= 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    if days < 30:
+        return f"{days} days ago"
+    return value.strftime("%b %d, %Y")
+
+
+templates.env.filters["ago"] = _ago
+
+
+def _tracked_by_external_id(session: Session, external_ids: list[str]) -> dict[str, dict]:
+    """For search results already saved as jobs: their id, score and AI fit."""
+    if not external_ids:
+        return {}
+    rows = (
+        session.query(Job.external_id, Job.id)
+        .filter(Job.source == "adzuna", Job.external_id.in_(external_ids))
+        .all()
+    )
+    tracked = {}
+    for external_id, job_id in rows:
+        analysis = latest_match_analysis(session, job_id)
+        tracked[external_id] = {
+            "job_id": job_id,
+            "score": analysis.overall_score if analysis else None,
+            "fit": latest_assessment(session, job_id),
+        }
+    return tracked
+
+
+def _search_for_page(
+    session: Session, *, titles: list[str], locations: list[str], keywords: list[str], country: str, page: int
+) -> dict:
+    """Live Adzuna search across every title x location (see
+    app/services/search.py). Nothing here touches the DB -- a posting only
+    becomes a tracked `Job` when the user analyzes it (`browse_analyze_job`).
+    An empty page past the last real results is the "no more results" signal.
     """
-    searched = "what" in request.query_params or "where" in request.query_params
     page = max(page, 1)
-    result = {
-        "searched": searched, "error": None, "results": [],
-        "what": what, "where": where, "country": country, "page": page, "has_next": False,
-    }
-    if not searched:
-        return result
+    result = {"error": None, "cards": [], "page": page, "has_next": False, "failed": [],
+              "queries": len(query_pairs(titles, locations))}
 
     settings = AdzunaSettings()
     if not (settings.app_id and settings.app_key):
@@ -112,25 +155,24 @@ def _search_adzuna(session: Session, request: Request, *, what: str, where: str,
         return result
 
     source = AdzunaSource(app_id=settings.app_id, app_key=settings.app_key, country=country)
+    per_query = max(10, min(50, _CARDS_PER_PAGE // result["queries"]))
     try:
-        raw_jobs = source.search_page(what=what or None, where=where or None, page=page)
-    except httpx.HTTPError as exc:
+        found = search_jobs(source, titles, locations, page=page, per_page=per_query,
+                            keywords=keywords, areas=location_paths(session))
+    except Exception as exc:
         result["error"] = f"Adzuna search failed: {exc}"
         return result
 
-    candidate_ids = [j.external_id for j in raw_jobs if j.external_id is not None]
-    tracked_job_ids: dict[str, int] = {}
-    if candidate_ids:
-        tracked_job_ids = {
-            row.external_id: row.id
-            for row in session.query(Job.external_id, Job.id)
-            .filter(Job.source == "adzuna", Job.external_id.in_(candidate_ids))
-            .all()
-        }
-
-    result["results"] = [{"raw": j, "tracked_job_id": tracked_job_ids.get(j.external_id)} for j in raw_jobs]
-    result["has_next"] = len(raw_jobs) > 0
+    tracked = _tracked_by_external_id(session, [j.external_id for j in found.jobs if j.external_id])
+    result["cards"] = [{"raw": j, "tracked": tracked.get(j.external_id)} for j in found.jobs]
+    result["has_next"] = found.has_next
+    result["failed"] = found.failed_queries
     return result
+
+
+def _picked(values: list[str], split) -> list[str]:
+    """Picker values (one per tag) -- or a comma list typed into a URL -- as a clean list."""
+    return list(dict.fromkeys(term for value in values for term in split(value)))
 
 
 @router.get("/")
@@ -138,15 +180,49 @@ def job_list_page(
     request: Request,
     status: str | None = None,
     min_score: int | None = None,
-    what: str = "",
-    where: str = "",
-    country: str = DEFAULT_ADZUNA_COUNTRY,
+    titles: list[str] | None = Query(None),
+    locations: list[str] | None = Query(None),
+    keywords: list[str] | None = Query(None),
+    country: str | None = None,
     page: int = 1,
+    msg: str | None = None,
     session: Session = Depends(get_session),
 ):
+    """Landing page: the job search, prefilled from Settings -> Job search and
+    run straight away (a blank search box means "any"), as cards; plus your
+    tracked jobs below. Query parameters override the saved conditions for
+    this one search -- "Save as default" stores them.
+    """
+    config_error = None
+    try:
+        search_config = load_app_config(session, DEFAULT_CONFIG_PATH).search
+    except ConfigError as exc:
+        config_error = f"Settings are invalid (fix them on the Settings page): {'; '.join(exc.errors)}"
+        search_config = GlobalSearchConfig()
+
+    title_list = _picked(titles, split_terms) if titles is not None else search_config.titles
+    location_list = _picked(locations, split_places) if locations is not None else search_config.locations
+    keyword_list = _picked(keywords, split_terms) if keywords is not None else search_config.keywords
+    country = (country or search_config.country).strip().lower()
+    # Whatever is searched -- saved defaults or typed in -- is offered in the pickers from now on.
+    remember_user_terms(session, title=title_list, location=location_list, keyword=keyword_list)
+
+    search = _search_for_page(session, titles=title_list, locations=location_list, keywords=keyword_list,
+                              country=country, page=page)
+    search.update({
+        "title_list": title_list, "location_list": location_list, "keyword_list": keyword_list, "country": country,
+        "query_string": urlencode(
+            {"titles": title_list or [""], "locations": location_list or [""], "keywords": keyword_list or [""],
+             "country": country},
+            doseq=True,
+        ),
+        "is_default": (title_list, location_list, keyword_list, country)
+        == (search_config.titles, search_config.locations, search_config.keywords, search_config.country),
+    })
+
     jobs = list_jobs(session, status=status, min_score=min_score)
-    rows = [{"job": j, "score": (a.overall_score if (a := latest_match_analysis(session, j.id)) else None)} for j in jobs]
-    search = _search_adzuna(session, request, what=what, where=where, country=country, page=page)
+    rows = [{"job": j, "score": (a.overall_score if (a := latest_match_analysis(session, j.id)) else None),
+             "fit": latest_assessment(session, j.id)} for j in jobs]
     return templates.TemplateResponse(
         request,
         "job_list.html",
@@ -156,18 +232,289 @@ def job_list_page(
             "min_score": min_score,
             "search": search,
             "statuses": [s.value for s in JobStatus],
+            "has_resume": active_candidate(session) is not None,
+            "error": config_error,
+            "message": msg,
+        },
+    )
+
+
+@router.post("/search/defaults")
+def save_search_defaults(
+    titles: list[str] = Form([]), locations: list[str] = Form([]), keywords: list[str] = Form([]),
+    country: str = Form("ca"), session: Session = Depends(get_session),
+):
+    """"Save as default": the current search box values become Settings -> Job search."""
+    try:
+        current = load_app_config(session, DEFAULT_CONFIG_PATH).search
+        save_section(session, "search", {
+            **current.model_dump(), "titles": _picked(titles, split_terms),
+            "locations": _picked(locations, split_places), "keywords": _picked(keywords, split_terms), "country": country,
+        })
+    except ConfigError as exc:
+        return RedirectResponse(url=f"/?{urlencode({'msg': 'Not saved: ' + '; '.join(exc.errors)})}", status_code=303)
+    return RedirectResponse(url=f"/?{urlencode({'msg': 'Saved as your default search.'})}", status_code=303)
+
+
+@router.post("/resume/upload")
+async def upload_resume(
+    resume: UploadFile = File(...), next: str = Form("/"), session: Session = Depends(get_session)
+):
+    error = await _save_uploaded_resume(session, resume)
+    path, _, fragment = next.partition("#")
+    if not path.startswith("/") or path.startswith("//"):  # only ever redirect within this app
+        path, fragment = "/", ""
+    if path.startswith("/jobs/"):
+        query = f"?{urlencode({'error': error})}" if error else ""
+    else:
+        query = f"?{urlencode({'msg': error or 'Resume imported -- you can now analyze jobs against it.'})}"
+    return RedirectResponse(url=f"{path}{query}{'#' + fragment if fragment else ''}", status_code=303)
+
+
+def _analyze_and_tailor(session: Session, job: Job) -> str | None:
+    """Score `job` and, if it qualifies, generate its tailored resume. Returns
+    a human-readable reason when that didn't happen (so the dashboard can show
+    it instead of leaving the job silently stuck at DISCOVERED), else None.
+    """
+    try:
+        config = load_app_config(session, DEFAULT_CONFIG_PATH)
+        analysis = analyze_job(session, job, config)
+        if not analysis.filter_result.passed:
+            return "Skipped by hard filters: " + "; ".join(analysis.filter_result.reasons)
+        if not analysis.qualified:
+            return (
+                f"Scored {analysis.breakdown.overall_score}/100, below matching.minimum_score "
+                f"({config.matching.minimum_score}) -- no tailored resume generated."
+            )
+        generate_resume_bundle(session, job, config)
+    except ConfigError as exc:
+        return f"Settings are invalid (fix them on the Settings page): {'; '.join(exc.errors)}"
+    except NoActiveCandidateProfileError:
+        return "No resume imported yet -- upload your resume below, then click \"Analyze & tailor\"."
+    except AIProviderConfigError as exc:
+        return str(exc)
+    return None
+
+
+async def _import_uploaded_resume(session: Session, resume: UploadFile) -> tuple[ImportResult | None, str | None]:
+    """Save an uploaded resume and import it as the active candidate profile
+    (a no-op if its content matches the current one). Returns (result, None),
+    or (None, a message for the user) if the file can't be used.
+    """
+    suffix = Path(resume.filename or "").suffix.lower()
+    if suffix not in _ALLOWED_RESUME_SUFFIXES:
+        return None, "Resume must be a .docx or .pdf file."
+    data = await resume.read()
+    if not data:
+        return None, "That file is empty."
+    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    # Unique even for two uploads in the same second (the second, if identical,
+    # is deleted below -- it must never be the file the active resume points at).
+    dest_name = f"{int(time.time())}_{uuid.uuid4().hex[:6]}_{sanitize_filename(Path(resume.filename).stem)}{suffix}"
+    dest_path = UPLOAD_DIR / dest_name
+    dest_path.write_bytes(data)
+    # Relative to the project when possible, so the same database works for the
+    # native install and Docker (/app) alike.
+    stored_path = dest_path.relative_to(PROJECT_ROOT) if dest_path.is_relative_to(PROJECT_ROOT) else dest_path
+    try:
+        result = import_resume(session, stored_path if stored_path.exists() else dest_path)
+    except Exception as exc:  # unreadable/corrupt file
+        session.rollback()
+        dest_path.unlink(missing_ok=True)
+        return None, f"Couldn't read that resume ({type(exc).__name__}). Is it a valid Word or PDF file?"
+    if not result.created:
+        dest_path.unlink(missing_ok=True)  # same content as the current resume: keep nothing new
+    else:
+        try:  # keep Settings -> Candidate -> base resume pointing at the file in use
+            candidate = load_app_config(session, DEFAULT_CONFIG_PATH).candidate
+            save_section(session, "candidate", {**candidate.model_dump(), "base_resume": str(result.profile.raw_resume_path)})
+        except ConfigError:
+            pass
+    return result, None
+
+
+async def _save_uploaded_resume(session: Session, resume: UploadFile) -> str | None:
+    """Persist and import an uploaded resume as the active candidate profile.
+    Returns an error message for an unusable file, else None.
+    """
+    return (await _import_uploaded_resume(session, resume))[1]
+
+
+def _resume_file(candidate: CandidateProfile) -> Path | None:
+    for path in (Path(candidate.raw_resume_path), PROJECT_ROOT / candidate.raw_resume_path):
+        if path.is_file():
+            return path
+    return None
+
+
+@router.get("/resume")
+def resume_page(request: Request, msg: str | None = None, error: str | None = None,
+                session: Session = Depends(get_session)):
+    """Your base resume: what the app read from it, and where to replace it."""
+    current = active_candidate(session)
+    versions = session.query(CandidateProfile).order_by(CandidateProfile.version.desc()).limit(10).all()
+    return templates.TemplateResponse(request, "resume.html", {
+        "current": current, "versions": versions, "message": msg, "error": error,
+        "file_available": bool(current and _resume_file(current)),
+        "is_docx": bool(current and Path(current.raw_resume_path).suffix.lower() == ".docx"),
+        "unparsed": [part for part in (current.raw_unparsed_sections or "").split("\n\n---\n\n") if part.strip()]
+        if current else [],
+    })
+
+
+@router.post("/resume")
+async def resume_page_upload(resume: UploadFile = File(...), session: Session = Depends(get_session)):
+    result, error = await _import_uploaded_resume(session, resume)
+    if error:
+        return RedirectResponse(url=f"/resume?{urlencode({'error': error})}", status_code=303)
+    if not result.created:
+        message = "That's the same content as your current resume -- nothing changed."
+    else:
+        c = result.counts
+        message = (f"Resume uploaded and in use (version {result.profile.version}): {c['employments']} roles, "
+                   f"{c['bullets']} bullets, {c['skills']} skills. Check below that everything was read correctly.")
+    return RedirectResponse(url=f"/resume?{urlencode({'msg': message})}", status_code=303)
+
+
+@router.get("/resume/file")
+def download_base_resume(session: Session = Depends(get_session)):
+    current = active_candidate(session)
+    path = _resume_file(current) if current else None
+    if path is None:
+        raise HTTPException(status_code=404, detail="No base resume file on disk")
+    return FileResponse(path, filename=f"base_resume{path.suffix}")
+
+
+def _job_detail_response(request: Request, session: Session, job_id: int, *, error: str | None = None,
+                         message: str | None = None):
+    detail = get_job_detail(session, job_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=f"No job found with id={job_id}")
+    resume_address = None
+    if detail.tailored_resume is not None:
+        try:
+            resume_address = resolve_address(load_app_config(session, DEFAULT_CONFIG_PATH), detail.job, session)
+        except ConfigError:
+            pass
+    return templates.TemplateResponse(
+        request, "job_detail.html",
+        {
+            "resume_address": resume_address,
+            "description_preview": is_description_preview(detail.job),
+            "detail": detail, "actions": _actions_for(detail.job), "error": error, "message": message,
+            "fit": latest_assessment(session, job_id), "has_resume": active_candidate(session) is not None,
         },
     )
 
 
 @router.get("/jobs/{job_id}")
-def job_detail_page(request: Request, job_id: int, session: Session = Depends(get_session)):
-    detail = get_job_detail(session, job_id)
-    if detail is None:
+def job_detail_page(request: Request, job_id: int, error: str | None = None, msg: str | None = None,
+                    session: Session = Depends(get_session)):
+    return _job_detail_response(request, session, job_id, error=error, message=msg)
+
+
+@router.post("/jobs/{job_id}/description")
+def update_job_description(job_id: int, description: str = Form(...), session: Session = Depends(get_session)):
+    """Save the full job description (pasted over Adzuna's preview), then
+    re-score it and -- if it had one -- re-run the AI fit analysis on it."""
+    job = session.get(Job, job_id)
+    if job is None:
         raise HTTPException(status_code=404, detail=f"No job found with id={job_id}")
-    return templates.TemplateResponse(
-        request, "job_detail.html", {"detail": detail, "actions": _actions_for(detail.job)}
-    )
+    try:
+        replace_job_description(session, job, description)
+    except ValueError as exc:
+        return RedirectResponse(url=f"/jobs/{job_id}?{urlencode({'error': str(exc)})}#description", status_code=303)
+
+    notes = ["Full description saved."]
+    try:
+        config = load_app_config(session, DEFAULT_CONFIG_PATH)
+        if latest_match_analysis(session, job_id) is not None:
+            analyze_job(session, job, config, update_status=False)
+            notes.append("Keyword score updated.")
+    except (ConfigError, NoActiveCandidateProfileError):
+        session.rollback()
+    if latest_assessment(session, job_id) is not None:
+        error = _assess_fit(session, job, force=True)
+        notes.append(error or "AI analysis re-run on the full description.")
+    anchor = "fit" if latest_assessment(session, job_id) is not None else "description"
+    return RedirectResponse(url=f"/jobs/{job_id}?{urlencode({'msg': ' '.join(notes)})}#{anchor}", status_code=303)
+
+
+@router.post("/jobs/{job_id}/retailor")
+def retailor_job(job_id: int, session: Session = Depends(get_session)):
+    """Re-tailor an already-tailored job with AI (whatever its score), in
+    your resume's own design, without changing the job's status."""
+    job = session.get(Job, job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"No job found with id={job_id}")
+    try:
+        config = load_app_config(session, DEFAULT_CONFIG_PATH)
+        result = tailor_resume(session, job, config, update_status=False)
+    except ConfigError as exc:
+        return _job_redirect(job_id, error=f"Settings are invalid: {'; '.join(exc.errors)}")
+    except (TailorNoProfileError, AIProviderConfigError) as exc:
+        return _job_redirect(job_id, error=str(exc))
+    try:
+        result.tailored_resume.pdf_path = str(convert_to_pdf(result.docx_path))
+        session.commit()
+    except PdfConversionError:
+        pass  # DOCX is still there; PDF needs LibreOffice
+    return _job_redirect(job_id, msg="Resume re-tailored -- download it below.")
+
+
+def _job_redirect(job_id: int, **params: str) -> RedirectResponse:
+    return RedirectResponse(url=f"/jobs/{job_id}?{urlencode(params)}#resume", status_code=303)
+
+
+@router.post("/jobs/{job_id}/analyze")
+async def analyze_job_action(
+    request: Request,
+    job_id: int,
+    resume: UploadFile | None = File(None),
+    session: Session = Depends(get_session),
+):
+    """Re-run scoring + tailoring for one job from its detail page, optionally
+    importing a newly uploaded resume first -- the in-browser way out of a job
+    stuck at DISCOVERED (e.g. tracked before any resume was imported).
+    """
+    job = _get_job_or_404(session, job_id)
+    error = None
+    if resume is not None and resume.filename:
+        error = await _save_uploaded_resume(session, resume)
+    if error is None:
+        error = _analyze_and_tailor(session, job)
+    if error is not None:
+        return _job_detail_response(request, session, job_id, error=error)
+    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+
+
+def _assess_fit(session: Session, job: Job, *, force: bool) -> str | None:
+    """Score (free, deterministic) then run the AI fit assessment. Returns
+    a human-readable reason when the assessment couldn't run, else None.
+    """
+    try:
+        config = load_app_config(session, DEFAULT_CONFIG_PATH)
+        if job.status == JobStatus.DISCOVERED:
+            analyze_job(session, job, config)
+        assess_job_fit(session, job, config, force=force)
+    except ConfigError as exc:
+        return f"Settings are invalid (fix them on the Settings page): {'; '.join(exc.errors)}"
+    except NoActiveCandidateProfileError:
+        return "No resume imported yet -- upload your resume below, then click \"Analyze with AI\"."
+    except AIProviderConfigError as exc:
+        return str(exc)
+    except Exception as exc:  # the AI call itself (network, quota, bad response)
+        session.rollback()
+        return f"AI analysis failed: {exc}"
+    return None
+
+
+@router.post("/jobs/{job_id}/assess")
+def assess_job_action(job_id: int, session: Session = Depends(get_session)):
+    job = _get_job_or_404(session, job_id)
+    error = _assess_fit(session, job, force=latest_assessment(session, job_id) is not None)
+    query = f"?{urlencode({'error': error})}" if error else ""
+    return RedirectResponse(url=f"/jobs/{job_id}{query}#fit", status_code=303)
 
 
 @router.get("/jobs/{job_id}/resume.docx")
@@ -220,14 +567,14 @@ def _quick_form_response(request: Request, *, error: str, status_code: int = 400
 
 
 @router.get("/quick")
-def quick_tailor_form(request: Request):
+def quick_tailor_form(request: Request, session: Session = Depends(get_session)):
     return templates.TemplateResponse(request, "quick.html", {"error": None})
 
 
 @router.post("/quick")
 async def quick_tailor_submit(
     request: Request,
-    resume: UploadFile = File(...),
+    resume: UploadFile | None = File(None),
     description: str = Form(...),
     url: str = Form(""),
     company: str = Form(""),
@@ -243,25 +590,21 @@ async def quick_tailor_submit(
     if not description.strip():
         return _quick_form_response(request, error="Paste the job description text.")
 
-    suffix = Path(resume.filename or "").suffix.lower()
-    if suffix not in _ALLOWED_RESUME_SUFFIXES:
+    uploading = resume is not None and bool(resume.filename)
+    if uploading and Path(resume.filename).suffix.lower() not in _ALLOWED_RESUME_SUFFIXES:
         return _quick_form_response(request, error="Resume must be a .docx or .pdf file.")
+    if not uploading and active_candidate(session) is None:
+        return _quick_form_response(request, error="Upload your resume (here, or once on the My resume page) first.")
 
-    if not DEFAULT_CONFIG_PATH.exists():
-        return _quick_form_response(
-            request, error=f"Config file not found: {DEFAULT_CONFIG_PATH}. Run 'python cli.py init' first.", status_code=500
-        )
     try:
-        config = load_config(DEFAULT_CONFIG_PATH)
+        config = load_app_config(session, DEFAULT_CONFIG_PATH)
     except ConfigError as exc:
-        return _quick_form_response(request, error=f"config.yaml is invalid: {'; '.join(exc.errors)}", status_code=500)
+        return _quick_form_response(request, error=f"Settings are invalid: {'; '.join(exc.errors)}", status_code=500)
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-    dest_name = f"{int(time.time())}_{sanitize_filename(Path(resume.filename).stem)}{suffix}"
-    dest_path = UPLOAD_DIR / dest_name
-    dest_path.write_bytes(await resume.read())
-
-    import_resume(session, dest_path)
+    if uploading:
+        upload_error = await _save_uploaded_resume(session, resume)
+        if upload_error:
+            return _quick_form_response(request, error=upload_error)
 
     raw_job = import_manual_job(
         description=description, url=url or None, company=company or None, title=title or None
@@ -284,6 +627,44 @@ async def quick_tailor_submit(
     return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
 
 
+def _raw_job_from_form(
+    external_id: str, source_url: str, company: str, title: str, location: str, description: str, date_posted: str
+) -> RawJob:
+    parsed_date: datetime | None = None
+    if date_posted:
+        try:
+            parsed_date = datetime.fromisoformat(date_posted)
+        except ValueError:
+            parsed_date = None
+    return RawJob(
+        external_id=external_id or None, source="adzuna", source_url=source_url, company=company, title=title,
+        location=location or None, description=description, date_posted=parsed_date,
+    )
+
+
+@router.post("/browse/analyze")
+def browse_analyze_job(
+    external_id: str = Form(""),
+    source_url: str = Form(...),
+    company: str = Form(...),
+    title: str = Form(...),
+    location: str = Form(""),
+    description: str = Form(...),
+    date_posted: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    """A search card's "Analyze with AI": saves the posting as a tracked
+    job (the posting fields ride along as hidden inputs, since Adzuna has no
+    fetch-by-id endpoint), then compares it against your resume. Tailoring a
+    resume is a separate, explicit step on the job's page.
+    """
+    raw_job = _raw_job_from_form(external_id, source_url, company, title, location, description, date_posted)
+    job = ingest_raw_job(session, raw_job).job
+    error = _assess_fit(session, job, force=False)
+    query = f"?{urlencode({'error': error})}" if error else ""
+    return RedirectResponse(url=f"/jobs/{job.id}{query}#fit", status_code=303)
+
+
 @router.post("/browse/track")
 def browse_track_job(
     request: Request,
@@ -302,33 +683,12 @@ def browse_track_job(
     along as hidden form inputs from the results page rather than being
     re-fetched, since Adzuna's search API has no "fetch by id" endpoint.
     """
-    parsed_date: datetime | None = None
-    if date_posted:
-        try:
-            parsed_date = datetime.fromisoformat(date_posted)
-        except ValueError:
-            parsed_date = None
-
-    raw_job = RawJob(
-        external_id=external_id or None,
-        source="adzuna",
-        source_url=source_url,
-        company=company,
-        title=title,
-        location=location or None,
-        description=description,
-        date_posted=parsed_date,
-    )
+    raw_job = _raw_job_from_form(external_id, source_url, company, title, location, description, date_posted)
     ingest_result = ingest_raw_job(session, raw_job)
     job = ingest_result.job
 
-    if ingest_result.created and DEFAULT_CONFIG_PATH.exists():
-        try:
-            config = load_config(DEFAULT_CONFIG_PATH)
-            analysis = analyze_job(session, job, config)
-            if analysis.qualified:
-                generate_resume_bundle(session, job, config)
-        except (ConfigError, NoActiveCandidateProfileError, AIProviderConfigError):
-            pass  # job is still tracked -- just left at whatever status analysis reached
-
-    return RedirectResponse(url=f"/jobs/{job.id}", status_code=303)
+    error = _analyze_and_tailor(session, job) if ingest_result.created else None
+    # The job is tracked either way; a failed analysis just leaves it at
+    # whatever status it reached, with the reason shown on its detail page.
+    query = f"?{urlencode({'error': error})}" if error else ""
+    return RedirectResponse(url=f"/jobs/{job.id}{query}", status_code=303)

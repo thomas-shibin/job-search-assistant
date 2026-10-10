@@ -1,0 +1,22 @@
+services:
+  app:
+    build: .
+    image: job-search-assistant
+    restart: unless-stopped
+    env_file: .env
+    # Run as the owner of data/ (set by install.sh) so files it writes stay yours.
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    environment:
+      # The host .env's relative sqlite URL resolves against /app inside the container.
+      DATABASE_URL: sqlite:////app/data/job_assistant.db
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    # Dashboard on http://127.0.0.1:${APP_PORT} (localhost only); set APP_PORT in .env.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

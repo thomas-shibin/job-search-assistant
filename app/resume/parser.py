@@ -22,9 +22,13 @@ import re
 from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
+from typing import Iterator
 
 import pdfplumber
 from docx import Document
+from docx.oxml.ns import qn
+from docx.table import Table
+from docx.text.paragraph import Paragraph
 from sqlalchemy.orm import Session
 
 from app.models.candidate import (
@@ -170,10 +174,29 @@ class ImportResult:
     counts: dict[str, int]
 
 
+def _iter_docx_paragraphs(doc) -> Iterator[tuple[Paragraph, bool]]:
+    """Body paragraphs and table-cell paragraphs in document order, flagged
+    `in_table`. Resume templates often lay out skills (or the contact header)
+    as a table, which `doc.paragraphs` alone skips entirely.
+    """
+    for child in doc.element.body.iterchildren():
+        if child.tag == qn("w:p"):
+            yield Paragraph(child, doc), False
+        elif child.tag == qn("w:tbl"):
+            seen_cells: set[int] = set()
+            for row in Table(child, doc).rows:
+                for cell in row.cells:
+                    if id(cell._tc) in seen_cells:  # a merged cell repeats across the row
+                        continue
+                    seen_cells.add(id(cell._tc))
+                    for paragraph in cell.paragraphs:
+                        yield paragraph, True
+
+
 def _extract_docx_lines(path: Path) -> list[LineInfo]:
     doc = Document(str(path))
     lines: list[LineInfo] = []
-    for p in doc.paragraphs:
+    for p, in_table in _iter_docx_paragraphs(doc):
         text = p.text.strip()
         if not text:
             continue
@@ -182,7 +205,9 @@ def _extract_docx_lines(path: Path) -> list[LineInfo]:
         is_bold_whole_line = bool(runs) and all(r.bold for r in runs)
         is_heading_style = style_name.lower().startswith("heading")
         is_bullet_hint = "list" in style_name.lower()
-        is_heading_hint = not is_bullet_hint and (
+        # Short bold text inside a table is a cell label (e.g. a skill category),
+        # not a section heading.
+        is_heading_hint = not is_bullet_hint and not in_table and (
             is_heading_style or (len(text) <= 40 and (text.isupper() or is_bold_whole_line))
         )
         lines.append(LineInfo(text=text, is_heading_hint=is_heading_hint, is_bullet_hint=is_bullet_hint))

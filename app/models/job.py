@@ -41,6 +41,8 @@ class Job(Base):
     salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     currency: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    # e.g. "full_time permanent" / "contract" (from the source, when it says)
+    employment_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
     description: Mapped[str] = mapped_column(Text)
     date_posted: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     date_discovered: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

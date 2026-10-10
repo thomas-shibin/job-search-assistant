@@ -13,7 +13,7 @@ from typing import Any
 
 from openai import APIConnectionError, OpenAI, RateLimitError
 
-from app.ai.base import ExtractedJobRequirements, TailoredResumeDraft
+from app.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredResumeDraft
 from app.ai.usage import AIUsage
 from app.matching.scorer import MatchScoreBreakdown
 from app.utils.retry import with_retry
@@ -45,21 +45,47 @@ _TAILOR_SYSTEM_PROMPT = """You tailor a candidate's resume to a specific job pos
 the job posting, extracted job requirements, and the candidate's ground-truth profile (summary, skills, and a
 numbered list of accomplishment bullets, each with an id).
 
-Tailoring means reordering and re-emphasizing to highlight what's most relevant to this job -- it does NOT mean
-shortening the resume or deciding what the candidate is allowed to show. Every skill and every bullet from every
-employer must still be present in your response, even ones from older or seemingly less relevant roles.
+Tailoring means REWRITING the wording so a recruiter for THIS job immediately sees the match: lead each bullet
+with the part most relevant to the posting, use the posting's own terminology for things the candidate really
+did (e.g. if the posting says "event streaming" and the bullet describes Kafka pipelines, say so), and make the
+summary speak directly to this role. EVERY bullet must be rewritten -- new sentence structure, the job's
+vocabulary (see job_keywords), the most relevant outcome first. Returning a bullet's text unchanged, or with
+only a word or two swapped, is a failed answer. It does NOT mean shortening the resume or deciding what the
+candidate may show: every bullet keeps all of its facts.
+
+Truthfulness rules (a rewrite that breaks one is discarded):
+- Never add a number, percentage or metric that isn't in that exact source bullet (rephrasing "12+ years" as
+  "over 12 years" is fine; "15 years" is not).
+- Only mention technologies, tools, employers and domains that appear in that source bullet, the candidate's
+  summary or candidate_skills. Never claim experience the source doesn't state.
+- Never add an outcome, benefit or result the source doesn't state -- no "improving efficiency", "enhancing
+  delivery", "driving growth" tacked on. Rephrase what is there; don't embellish it.
+- Keep each bullet no longer than its source (shorter is fine) and the summary no longer than the candidate's
+  summary -- the resume's page layout must not change. Rewrites more than 25% longer are discarded.
 
 Respond with ONLY a JSON object (no markdown, no commentary) with these keys:
-- summary: a 2-4 sentence professional summary tailored to this job
+- summary: the candidate's summary rewritten for this job
 - skills_order: an array of strings containing EVERY entry from candidate_skills exactly once, reordered so the
-  most relevant to this job come first -- do not drop any entry, and each one must be copied exactly from
-  candidate_skills; never invent a skill not in that list
+  most relevant to this job come first -- copied exactly from candidate_skills; never invent a skill
 - bullets: an array of objects {"source_bullet_id": <int>, "text": <string>}, with EXACTLY ONE entry for EVERY
-  id present in candidate_bullets -- never omit a bullet or an entire employer's bullets, no matter how old or
-  unrelated the role seems; never invent a bullet that isn't in candidate_bullets. source_bullet_id MUST be one
-  of the ids given in candidate_bullets. The rewritten text may rephrase, reorder emphasis, or tighten wording --
-  but MUST NOT introduce any number, percentage, or metric that is not already present in that exact source
-  bullet's original text. When in doubt, keep the number unchanged or omit it rather than guessing."""
+  id present in candidate_bullets -- never omit a bullet or an employer's bullets, never invent a bullet;
+  source_bullet_id MUST be one of the ids given in candidate_bullets."""
+
+
+_FIT_SYSTEM_PROMPT = """You are an experienced technical recruiter. You will receive JSON with a job posting and a
+candidate's resume (summary, skills, employment history with accomplishments, education, certifications, projects,
+and other_resume_text: resume sections that weren't parsed into fields -- treat it as part of the resume).
+Judge honestly how well the candidate fits THIS job's actual requirements -- consider required vs nice-to-have
+skills, years and depth of relevant experience, seniority, domain, and location/remote constraints stated in the
+posting. Only credit the candidate for what the resume actually shows; never assume unstated experience.
+
+Respond with ONLY a JSON object (no markdown, no commentary) with these keys:
+- fit_score: integer 0-100 (85+ strong fit, 70-84 good, 50-69 partial, below 50 weak)
+- verdict: one of "strong", "good", "partial", "weak"
+- summary: 2-3 sentences explaining the overall fit, written to the candidate ("you")
+- matched: array of short strings, the job requirements the resume clearly meets (most important first, max 8)
+- gaps: array of short strings, requirements the resume doesn't show or only partly meets (most important first, max 8)
+- recommendation: one short sentence -- whether to apply, and what to emphasize or address if so"""
 
 
 class OpenAIProvider:
@@ -99,10 +125,14 @@ class OpenAIProvider:
         return ExtractedJobRequirements.model_validate(data)
 
     def tailor_resume(self, candidate, job, requirements, address) -> TailoredResumeDraft:
+        job_keywords = []
+        if requirements:
+            job_keywords = list(dict.fromkeys([*requirements.required_skills, *requirements.preferred_skills]))
         payload = {
             "job_title": job.title,
             "job_company": job.company,
             "job_description": job.description,
+            "job_keywords": job_keywords,
             "extracted_requirements": requirements.model_dump() if requirements else None,
             "candidate_summary": candidate.summary,
             "candidate_skills": [s.name for s in candidate.skills],
@@ -114,7 +144,7 @@ class OpenAIProvider:
         }
         response = self._create_completion(
             model=self._model,
-            temperature=0.2,
+            temperature=0.5,  # low temperatures tend to echo the source bullets back unchanged
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": _TAILOR_SYSTEM_PROMPT},
@@ -125,6 +155,27 @@ class OpenAIProvider:
         content = response.choices[0].message.content or "{}"
         data = json.loads(content)
         return TailoredResumeDraft.model_validate(data)
+
+    def assess_fit(self, candidate: dict, job: Any) -> FitAssessmentResult:
+        payload = {
+            "job": {
+                "title": job.title, "company": job.company, "location": job.location, "description": job.description,
+            },
+            "candidate": candidate,
+        }
+        response = self._create_completion(
+            model=self._model,
+            temperature=0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": _FIT_SYSTEM_PROMPT},
+                {"role": "user", "content": json.dumps(payload, default=str)},
+            ],
+        )
+        self._record_usage(response)
+        data = json.loads(response.choices[0].message.content or "{}")
+        data["fit_score"] = max(0, min(100, int(data.get("fit_score") or 0)))
+        return FitAssessmentResult.model_validate(data)
 
     def generate_match_explanation(self, score: MatchScoreBreakdown) -> str:
         response = self._create_completion(

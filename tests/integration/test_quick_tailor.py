@@ -51,9 +51,9 @@ def client(tmp_path, monkeypatch):
         ai=AIConfig(provider="mock"),
     )
     dummy_config_path = tmp_path / "config.yaml"
-    dummy_config_path.write_text("placeholder -- load_config is mocked below", encoding="utf-8")
+    dummy_config_path.write_text("placeholder -- load_app_config is mocked below", encoding="utf-8")
     monkeypatch.setattr(ui_routes, "DEFAULT_CONFIG_PATH", dummy_config_path)
-    monkeypatch.setattr(ui_routes, "load_config", lambda path: config)
+    monkeypatch.setattr(ui_routes, "load_app_config", lambda session, path: config)
 
     yield TestClient(main.app), TestSessionLocal
     main.app.dependency_overrides.clear()
@@ -143,3 +143,50 @@ def test_quick_tailor_reuses_existing_job_on_duplicate_description(client):
     session = SessionLocal()
     assert session.query(Job).count() == 1
     session.close()
+
+
+def _docx_upload():
+    return {"resume": ("my resume.docx", FIXTURE_RESUME.read_bytes(),
+                       "application/vnd.openxmlformats-officedocument.wordprocessingml.document")}
+
+
+def test_my_resume_page_uploads_shows_and_downloads_the_base_resume(client):
+    http, SessionLocal = client
+    assert "No resume yet" in http.get("/resume").text
+
+    response = http.post("/resume", files=_docx_upload(), follow_redirects=False)
+    assert response.status_code == 303 and "Resume+uploaded+and+in+use" in response.headers["location"]
+
+    page = http.get("/resume").text
+    assert "What the app read from it" in page and "Version 1" in page
+    assert "Reduced p95 API latency by 40%" in page and "Acme Cloud Systems" in page  # parsed from the fixture
+
+    again = http.post("/resume", files=_docx_upload(), follow_redirects=False)
+    assert "same+content" in again.headers["location"]  # identical file: no new version
+
+    download = http.get("/resume/file")
+    assert download.status_code == 200 and download.content == FIXTURE_RESUME.read_bytes()
+
+
+def test_my_resume_page_rejects_unreadable_files(client):
+    http, SessionLocal = client
+    bad = http.post("/resume", files={"resume": ("resume.docx", b"not really a docx", "application/octet-stream")},
+                    follow_redirects=False)
+    assert "Couldn%27t+read+that+resume" in bad.headers["location"] or "Couldn't" in bad.headers["location"]
+    wrong_type = http.post("/resume", files={"resume": ("resume.txt", b"text", "text/plain")}, follow_redirects=False)
+    assert ".docx+or+.pdf" in wrong_type.headers["location"]
+    from app.models.candidate import CandidateProfile
+
+    with SessionLocal() as session:
+        assert session.query(CandidateProfile).count() == 0
+
+
+def test_quick_tailor_uses_the_saved_resume_when_no_file_is_chosen(client):
+    http, SessionLocal = client
+    no_resume = http.post("/quick", data={"description": "Senior Backend Engineer with Java."})
+    assert "Upload your resume" in no_resume.text
+
+    http.post("/resume", files=_docx_upload())
+    response = http.post("/quick", data={"description": "Senior Backend Engineer with Java and AWS."},
+                         files={"resume": ("", b"", "application/octet-stream")}, follow_redirects=False)
+    assert response.status_code == 303 and response.headers["location"].startswith("/jobs/")

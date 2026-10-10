@@ -1,0 +1,18 @@
+{# Searchable multi-select over one kind of the search-term catalog (title,
+   keyword, location, company), with free entry for anything not listed.
+   Selected values submit as repeated `name` fields; the leading empty one
+   means "none selected" still reaches the server. Works without JS for the
+   preselected values; static/tagpicker.js adds search, add and remove. #}
+{% macro tag_picker(name, catalog, selected, placeholder="Type to search or add…", label=none) %}
+<div class="tag-picker" data-catalog="{{ catalog }}" data-name="{{ name }}">
+  <input type="hidden" name="{{ name }}" value="">
+  <div class="tp-box">
+    {% for value in selected %}
+    <span class="tp-tag"><input type="hidden" name="{{ name }}" value="{{ value }}"><span class="tp-text">{{ value }}</span><button type="button" class="tp-remove" aria-label="Remove {{ value }}">&times;</button></span>
+    {% endfor %}
+    <input type="text" class="tp-input" placeholder="{{ placeholder }}" autocomplete="off" role="combobox"
+           aria-autocomplete="list" aria-expanded="false"{% if label %} aria-label="{{ label }}"{% endif %}>
+  </div>
+  <ul class="tp-menu" role="listbox" hidden></ul>
+</div>
+{% endmacro %}

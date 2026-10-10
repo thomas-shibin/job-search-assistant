@@ -34,6 +34,21 @@ class TailoredResumeDraft(BaseModel):
     bullets: list[TailoredBulletDraft]
 
 
+class FitAssessmentResult(BaseModel):
+    """An AI read of how well the candidate's resume fits one job posting -- the
+    dashboard's "Analyze with AI". Complements (doesn't replace) the
+    deterministic keyword score: the model weighs experience and context that
+    keyword matching can't.
+    """
+
+    fit_score: int = Field(ge=0, le=100)
+    verdict: str  # "strong" | "good" | "partial" | "weak"
+    summary: str
+    matched: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+    recommendation: str = ""
+
+
 class AIProvider(Protocol):
     """Business logic depends only on this interface, never on a specific vendor SDK."""
 
@@ -49,6 +64,10 @@ class AIProvider(Protocol):
         address: Any,
     ) -> TailoredResumeDraft:
         """Implemented in Milestone 6."""
+        ...
+
+    def assess_fit(self, candidate: dict, job: Any) -> FitAssessmentResult:
+        """Judge the resume (`candidate`, see app/ai/fit.py) against `job`."""
         ...
 
     def generate_match_explanation(self, score: MatchScoreBreakdown) -> str:

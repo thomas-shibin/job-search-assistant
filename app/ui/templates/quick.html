@@ -1,42 +1,61 @@
 {% extends "base.html" %}
-{% block title %}Quick Tailor - Job Application Assistant{% endblock %}
+{% from "_icons.html" import icon %}
+{% block title %}Quick Tailor - Job Assistant{% endblock %}
+{% block crumb %}Quick Tailor{% endblock %}
 {% block content %}
-<h1>Quick tailor</h1>
-<p>
-  Upload your resume and paste a job description below. This tailors a resume for it
-  immediately (skipping the score-and-filter pipeline the main job list uses) and takes
-  you straight to the diff/download view.
-</p>
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Resume</p>
+    <h1>Quick tailor</h1>
+    <p class="lead">Found a job somewhere else? Paste its description and get your resume tailored to it right away.</p>
+  </div>
+</header>
 
-{% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
 
-<form method="post" action="/quick" enctype="multipart/form-data" class="quick-form">
-  <label>
-    Resume (.docx or .pdf)
-    <input type="file" name="resume" accept=".docx,.pdf" required>
-  </label>
+<div class="two-col">
+  <section class="panel">
+    <form method="post" action="/quick" enctype="multipart/form-data" class="quick-form">
+      <label>
+        Resume (.docx or .pdf) -- optional
+        <input type="file" name="resume" accept=".docx,.pdf">
+        <small class="muted">Leave empty to use your base resume from <a href="/resume">My resume</a>. A file chosen here becomes your new base resume.</small>
+      </label>
 
-  <label>
-    Job description
-    <textarea name="description" rows="14" placeholder="Paste the full job posting text here..." required></textarea>
-  </label>
+      <label>
+        Job description
+        <textarea name="description" rows="14" placeholder="Paste the full job posting text here..." required></textarea>
+      </label>
 
-  <details>
-    <summary>Optional: job URL / override company / title</summary>
-    <label>
-      Job posting URL
-      <input type="url" name="url" placeholder="https://...">
-    </label>
-    <label>
-      Company (if not guessed correctly)
-      <input type="text" name="company">
-    </label>
-    <label>
-      Title (if not guessed correctly)
-      <input type="text" name="title">
-    </label>
-  </details>
+      <details>
+        <summary>Optional: job URL / override company / title</summary>
+        <label>
+          Job posting URL
+          <input type="url" name="url" placeholder="https://...">
+        </label>
+        <label>
+          Company (if not guessed correctly)
+          <input type="text" name="company">
+        </label>
+        <label>
+          Title (if not guessed correctly)
+          <input type="text" name="title">
+        </label>
+      </details>
 
-  <button type="submit">Tailor my resume</button>
-</form>
+      <button type="submit" class="primary">{{ icon("pen") }} Tailor my resume</button>
+    </form>
+  </section>
+
+  <aside class="panel">
+    <div class="panel-head"><div><h2>How it works</h2></div></div>
+    <ol class="steps">
+      <li><div><strong>Your resume</strong>Uses the one on <a href="/resume">My resume</a>, or upload a different Word/PDF file.</div></li>
+      <li><div><strong>Paste the job</strong>The full posting gives the best keyword match.</div></li>
+      <li><div><strong>Review and download</strong>See every change side by side, then download DOCX or PDF.</div></li>
+    </ol>
+    <div class="divider"></div>
+    <p class="muted">This skips the scoring and filtering the job list uses. Your experience is never invented: rewrites that add claims are rejected and the original wording is kept.</p>
+  </aside>
+</div>
 {% endblock %}

@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% from "_settings_form.html" import section_form %}
+{% from "_icons.html" import icon %}
+{% from "_tag_picker.html" import tag_picker %}
+{% block title %}Watchlist - Job Assistant{% endblock %}
+{% block crumb %}Watchlist{% endblock %}
+
+{% macro watch_form(action, entry, button) %}
+  {% set e = entry %}
+  <form method="post" action="{{ action }}" class="settings-form watch-form" hx-boost="false">
+    <div class="settings-grid">
+      <div class="settings-field wide"><label>Name<input type="text" name="name" value="{{ e.name if e else '' }}" required placeholder="e.g. Java jobs in BC"></label></div>
+      {% for f, catalog, label, hint in [("locations", "location", "Locations", "e.g. Vancouver, BC or Ontario"), ("titles", "title", "Job titles", "Any title"), ("keywords", "keyword", "Keywords", "e.g. Kafka")] %}
+      <div class="settings-field">
+        <div class="field-label">{{ label }}</div>
+        {{ tag_picker(f, catalog, e[f] if e else [], hint, label) }}
+      </div>
+      {% endfor %}
+      <div class="settings-field">
+        <label>Alert when match score is at least
+          <span class="input-suffix"><input type="number" name="min_score" min="0" max="100" value="{{ (e.min_score if e.min_score is not none else '') if e else 80 }}" placeholder="any"><span>/ 100</span></span>
+        </label>
+        <small class="muted">Your keyword match score for the job. Empty = alert on every match.</small>
+      </div>
+      <div class="settings-field">
+        <input type="hidden" name="search" value="false">
+        <label class="check"><input type="checkbox" name="search" value="true" {% if not e or e.search %}checked{% endif %}> Search for these jobs on every scan</label>
+        <small class="muted">Runs this watch's own job search, so it also finds jobs your main job search doesn't cover. Uses some of the daily Adzuna requests.</small>
+      </div>
+      <div class="settings-field">
+        <label class="check"><input type="checkbox" name="enabled" value="true" {% if not e or e.enabled %}checked{% endif %}> Active</label>
+      </div>
+    </div>
+
+    {% set has_advanced = e and (e.companies or e.exclude_companies or e.exclude_keywords or e.min_salary or e.max_salary or e.job_types or e.posted_within_days) %}
+    <details class="more-filters" {% if has_advanced %}open{% endif %}>
+      <summary>{{ icon("sliders") }} More filters <span class="muted">companies, salary, job type, posting age</span></summary>
+      <div class="settings-grid">
+        {% for f, catalog, label, hint in [("companies", "company", "Only these companies", "Any company"), ("exclude_companies", "company", "Never these companies", "e.g. a staffing agency"), ("exclude_keywords", "keyword", "Skip jobs mentioning", "e.g. PHP, Intern")] %}
+        <div class="settings-field">
+          <div class="field-label">{{ label }}</div>
+          {{ tag_picker(f, catalog, e[f] if e else [], hint, label) }}
+        </div>
+        {% endfor %}
+        <div class="settings-field">
+          <div class="field-label">Salary per year</div>
+          <div class="range-inputs">
+            <input type="number" name="min_salary" min="0" step="1000" value="{{ e.min_salary if e and e.min_salary else '' }}" placeholder="Min" aria-label="Minimum salary">
+            <span>to</span>
+            <input type="number" name="max_salary" min="0" step="1000" value="{{ e.max_salary if e and e.max_salary else '' }}" placeholder="Max" aria-label="Maximum salary">
+          </div>
+          <small class="muted">Jobs that don't list a salary still match.</small>
+        </div>
+        <div class="settings-field">
+          <div class="field-label">Job type</div>
+          <div class="check-row">
+            {% for value, label in [("full_time", "Full-time"), ("part_time", "Part-time"), ("permanent", "Permanent"), ("contract", "Contract")] %}
+            <label class="check"><input type="checkbox" name="job_types" value="{{ value }}" {% if e and value in (e.job_types or []) %}checked{% endif %}> {{ label }}</label>
+            {% endfor %}
+          </div>
+          <small class="muted">None ticked = any type.</small>
+        </div>
+        <div class="settings-field">
+          <label>Posted within
+            <select name="posted_within_days">
+              {% for days, label in [("", "Any time"), (1, "24 hours"), (3, "3 days"), (7, "7 days"), (14, "14 days"), (30, "30 days")] %}
+              <option value="{{ days }}" {% if e and e.posted_within_days == days %}selected{% elif not e and days == '' %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+        </div>
+      </div>
+    </details>
+
+    <small class="muted">Pick from the lists or type your own and press Enter. Within a box any entry can match; every box you fill in must match.
+      A watch needs at least one location, title, keyword or company.</small>
+    <div class="form-foot"><button type="submit" class="primary">{{ button }}</button></div>
+  </form>
+{% endmacro %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Search</p>
+    <h1>Watchlist</h1>
+    <p class="lead">Saved searches that message you on Telegram the moment a scan finds a new matching job.
+    Set a few locations, titles or keywords -- each watch runs its own search, and a minimum match score keeps alerts to the jobs worth your time.</p>
+  </div>
+  <div class="page-actions">
+    <a class="button primary" href="/watchlist#add">{{ icon("plus") }} Add a watch</a>
+  </div>
+</header>
+
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+<section class="panel flush">
+  <div class="panel-head">
+    <div>
+      <h2>Watches</h2>
+      <p>{{ entries|selectattr("enabled")|list|length }} active of {{ entries|length }}</p>
+    </div>
+  </div>
+  <div class="table-wrap" style="margin-top: 1rem">
+    <table class="job-table">
+      <thead><tr><th>Name</th><th>Criteria</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for e in entries %}
+        <tr class="{{ '' if e.enabled else 'paused' }}">
+          <td class="cell-title">{{ e.name }}</td>
+          <td><div class="criteria">
+            {% for f, label in [("locations", "Locations"), ("titles", "Titles"), ("keywords", "Keywords"), ("companies", "Companies"), ("exclude_companies", "Not companies"), ("exclude_keywords", "Skip if mentions")] %}{% if e[f] %}<div><span class="muted">{{ label }}:</span> {{ e[f]|join(", ") }}</div>{% endif %}{% endfor %}
+            <div class="watch-chips">
+              {% if e.min_score is not none %}<span class="chip chip-on">Score ≥ {{ e.min_score }}</span>{% endif %}
+              {% if e.min_salary or e.max_salary %}<span class="chip">Salary {{ "{:,}".format(e.min_salary) if e.min_salary else "any" }} – {{ "{:,}".format(e.max_salary) if e.max_salary else "any" }}</span>{% endif %}
+              {% for t in e.job_types or [] %}<span class="chip">{{ t.replace("_", "-") }}</span>{% endfor %}
+              {% if e.posted_within_days %}<span class="chip">Last {{ e.posted_within_days }} day{{ "s" if e.posted_within_days != 1 }}</span>{% endif %}
+              {% if e.search and (e.locations or e.titles or e.keywords) %}<span class="chip">{{ icon("search") }}Searches</span>{% endif %}
+            </div></div>
+          </td>
+          <td><span class="status-badge {{ 'ok' if e.enabled else 'missing' }}">{{ "active" if e.enabled else "paused" }}</span></td>
+          <td><div class="row-actions">
+            <a class="button small" href="/watchlist?edit={{ e.id }}#edit">Edit</a>
+            <form method="post" action="/watchlist/watches/{{ e.id }}/toggle" hx-boost="false"><button type="submit" class="small">{{ "Pause" if e.enabled else "Resume" }}</button></form>
+            <form method="post" action="/watchlist/watches/{{ e.id }}/delete" hx-boost="false" onsubmit="return confirm('Delete {{ e.name|e }}?')"><button type="submit" class="small danger">Delete</button></form>
+          </div></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="empty">No watches yet. Add one below.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel flush" id="alerts">
+  <div class="panel-head">
+    <div>
+      <h2>Recent alerts</h2>
+      <p>Every watchlist decision from the scans: what was sent to Telegram, and what was skipped as a repeat of a role you'd already been told about (same company and title within 30 days).</p>
+    </div>
+    <div class="watch-chips">
+      <span class="chip chip-on">{{ alert_counts.get("sent", 0) + alert_counts.get("summarized", 0) }} sent this week</span>
+      <span class="chip">{{ alert_counts.get("duplicate", 0) }} duplicates skipped</span>
+      {% if alert_counts.get("failed") %}<span class="chip chip-warn">{{ alert_counts.get("failed") }} failed -- retried next scan</span>{% endif %}
+    </div>
+  </div>
+  <div class="table-wrap" style="margin-top: 1rem">
+    <table class="job-table">
+      <thead><tr><th>When</th><th>Job</th><th>Watch</th><th class="num">Score</th><th>Result</th></tr></thead>
+      <tbody>
+        {% for row in alerts %}
+        {% set a = row.alert %}
+        <tr>
+          <td class="cell-sub" style="white-space: nowrap">{{ a.created_at.strftime("%b %d, %H:%M") }}</td>
+          <td><a class="cell-title" href="/jobs/{{ row.job.id }}">{{ row.job.title }}</a><div class="cell-sub">{{ row.job.company }}{% if row.job.location %} · {{ row.job.location }}{% endif %}</div></td>
+          <td class="cell-sub">{{ a.watches | join(", ") }}</td>
+          <td class="num">{{ a.score if a.score is not none else "–" }}</td>
+          <td>
+            {% if a.status == "sent" %}<span class="status-badge ok">Sent</span>
+            {% elif a.status == "summarized" %}<span class="status-badge ok">Sent in summary</span>
+            {% elif a.status == "duplicate" %}<span class="status-badge">Skipped: duplicate</span>
+            {% else %}<span class="status-badge missing">Failed</span>{% endif %}
+            {% if a.detail and a.status != "summarized" %}<div class="cell-sub">{{ a.detail }}</div>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">No alerts yet. They appear here as scans find new jobs matching your watches.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+{% if edit %}
+<section class="panel" id="edit">
+  <div class="panel-head"><div><h2>Edit “{{ edit.name }}”</h2></div><a class="button ghost small" href="/watchlist">Cancel</a></div>
+  {{ watch_form("/watchlist/watches/" ~ edit.id, edit, "Save watch") }}
+</section>
+{% else %}
+<section class="panel" id="add">
+  <div class="panel-head"><div><h2>Add a watch</h2><p>Describe the jobs you want to hear about the moment they're posted.</p></div></div>
+  {{ watch_form("/watchlist/watches", none, "Add watch") }}
+</section>
+{% endif %}
+
+<section class="panel">
+  <div class="panel-head">
+    <div>
+      <h2>Telegram</h2>
+      <p>Where alerts are delivered.</p>
+    </div>
+    <div class="actions">
+      <form method="post" action="/watchlist/telegram/detect" hx-boost="false"><button type="submit">{{ icon("refresh") }} Detect chat ID</button></form>
+      <form method="post" action="/watchlist/telegram/test" hx-boost="false"><button type="submit">{{ icon("send") }} Send test message</button></form>
+    </div>
+  </div>
+  <ul class="checklist">
+    <li class="{{ 'ok' if token_set else 'missing' }}">Bot token (<code>TELEGRAM_BOT_TOKEN</code> in .env): {{ "set" if token_set else "missing" }}</li>
+    <li class="{{ 'ok' if chat_id else 'missing' }}">Chat: {{ chat_id or "not connected -- open your bot in Telegram, press Start, then Detect chat ID" }}</li>
+    <li class="{{ 'ok' if watchlist_enabled else 'missing' }}">Alerts: {{ "on" if watchlist_enabled else "off -- tick Enabled below" }}</li>
+  </ul>
+  {{ section_form("/settings/watchlist", settings_form, "Save alert settings") }}
+</section>
+{% endblock %}

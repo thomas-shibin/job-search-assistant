@@ -1,8 +1,7 @@
 """Deterministic DOCX rendering of a tailored resume from already-validated,
-structured data (Milestone 6/7). Builds a fresh, cleanly formatted document
-rather than editing the base resume's original file in place -- python-docx
-can't reliably round-trip arbitrary Word formatting/layout, and generating a
-consistent fresh layout is far more testable than template surgery.
+structured data (Milestone 6/7) -- the fallback used only when the base
+resume is a PDF, so there is no Word document to keep. A .docx base resume is
+tailored in place instead, keeping its own formatting (`app/documents/docx_edit.py`).
 
 Callers (see `app/resume/tailor.py`) are responsible for already having
 resolved which text to show for every section (validated AI text vs. a
@@ -64,7 +63,7 @@ def render_tailored_resume(
     `contact_line` (email/phone/links, extracted from the base resume's own
     header by `app/resume/parser.py`) and `address` (an explicit city/
     province/country override swapped in only for a job tied to a search
-    profile -- see `app/resume/tailor.py::_resolve_address`) are independent:
+    profile -- see `app/resume/tailor.py::resolve_address`) are independent:
     both render if both are given, rather than one trying to edit the other.
     """
     doc = Document()
@@ -76,7 +75,7 @@ def render_tailored_resume(
     name_run.font.size = Pt(18)
 
     if address is not None:
-        addr_para = doc.add_paragraph(f"{address.city}, {address.province}, {address.country}")
+        addr_para = doc.add_paragraph(address.one_line())
         addr_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     if contact_line:

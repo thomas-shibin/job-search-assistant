@@ -162,3 +162,21 @@ def test_tailor_resume_parses_json_response_and_sends_candidate_bullets():
     sent_content = client.chat.completions.last_call_kwargs["messages"][-1]["content"]
     sent_payload = json.loads(sent_content)
     assert sent_payload["candidate_bullets"] == [{"id": 7, "employment": "Engineer @ Acme", "text": "Did X"}]
+
+
+def test_assess_fit_sends_job_and_resume_and_parses_result():
+    payload = {
+        "fit_score": 130, "verdict": "strong", "summary": "You fit well.",
+        "matched": ["Java", "Spring Boot"], "gaps": ["Kubernetes"], "recommendation": "Apply.",
+    }
+    provider, client = _provider(_chat_response(json.dumps(payload)))
+    job = SimpleNamespace(title="Backend Engineer", company="Acme", location="Remote", description="Java, K8s")
+
+    result = provider.assess_fit({"skills": ["Java"], "employment": []}, job)
+
+    assert result.fit_score == 100  # clamped into 0-100
+    assert result.verdict == "strong" and result.gaps == ["Kubernetes"]
+    sent = json.loads(client.chat.completions.last_call_kwargs["messages"][1]["content"])
+    assert sent["job"]["title"] == "Backend Engineer"
+    assert sent["candidate"]["skills"] == ["Java"]
+    assert provider.last_usage.tokens_in == 100

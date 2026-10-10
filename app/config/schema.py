@@ -14,9 +14,27 @@ class CandidateConfig(BaseModel):
 
 
 class AddressProfile(BaseModel):
+    """An address to show on tailored resumes. Street, unit and postal code are
+    optional: with a street the resume shows the complete address, without one
+    just the city/province (in the resume's own format).
+    """
+
+    street: str | None = None
+    unit: str | None = None
     city: str
     province: str
+    postal_code: str | None = None
     country: str
+
+    @property
+    def has_street(self) -> bool:
+        return bool(self.street and self.street.strip())
+
+    def one_line(self) -> str:
+        """"1234 Main St, Unit 5, Toronto, ON M5V 1A1, Canada" (blank parts left out)."""
+        region = " ".join(part for part in (self.province, self.postal_code) if part and part.strip())
+        parts = (self.street, self.unit, self.city, region, self.country)
+        return ", ".join(part.strip() for part in parts if part and part.strip())
 
 
 _ADZUNA_COUNTRIES = {
@@ -36,22 +54,45 @@ class SearchProfile(BaseModel):
     # regardless of these being set.
     greenhouse_boards: list[str] = Field(default_factory=list)
     lever_companies: list[str] = Field(default_factory=list)
-    # Adzuna (docs/ARCHITECTURE.md, "Job Source Risk Assessment"): a public,
-    # key-authenticated job-aggregator API covering many employers per query,
-    # instead of one ATS board at a time. Reuses `titles` above as the search
-    # queries (one Adzuna search per title) and `locations[0]` as the location
-    # filter. Requires ADZUNA_APP_ID/ADZUNA_APP_KEY in .env (free signup at
-    # developer.adzuna.com) -- credentials never live in this file.
-    adzuna_enabled: bool = False
-    adzuna_country: str = "ca"
+    # Adzuna (many employers per query) is configured once, globally, under
+    # `search` below rather than per profile.
+
+
+def _picker(catalog: str) -> dict:
+    """Marks a list field the dashboard edits with a searchable multi-select
+    whose options come from the search-term catalog of this kind (app/catalog),
+    accepting custom values too (see app/ui/forms.py, _tag_picker.html).
+    """
+    return {"input": "tags", "catalog": catalog}
+
+
+class GlobalSearchConfig(BaseModel):
+    """The job-search conditions applied everywhere: the dashboard's job search
+    (prefilled and run on landing) and the scheduler's Adzuna scans. One Adzuna
+    query runs per title x location; leaving both empty searches every job in
+    `country`. A location containing "Remote" searches the whole country with
+    "remote" added to the keywords (see app/services/search.py). Needs ADZUNA_APP_ID/ADZUNA_APP_KEY in .env.
+    """
+
+    titles: list[str] = Field(default_factory=list, json_schema_extra=_picker("title"))
+    locations: list[str] = Field(default_factory=list, json_schema_extra=_picker("location"))
+    # Narrow every search: a job must mention at least one of these. Costs no
+    # extra Adzuna requests (they ride along on each title x location query).
+    keywords: list[str] = Field(default_factory=list, json_schema_extra=_picker("keyword"))
+    country: str = "ca"
+    # Also ingest these searches' newest results on every scheduled scan (feeds
+    # the watchlist alerts). Off = the dashboard search only.
+    scan_in_background: bool = True
+    # Requests/day your Adzuna plan allows (free tier: ~250). Scheduled scans use
+    # at most 60% of it, rotating through the title x location combinations when
+    # there are more than fit in one scan; the rest is left for dashboard searches.
+    adzuna_daily_limit: int = Field(default=250, ge=1)
 
     @model_validator(mode="after")
-    def adzuna_country_is_known(self) -> "SearchProfile":
-        if self.adzuna_enabled and self.adzuna_country not in _ADZUNA_COUNTRIES:
-            raise ValueError(
-                f"search_profiles[{self.name!r}].adzuna_country must be one of "
-                f"{sorted(_ADZUNA_COUNTRIES)}, got {self.adzuna_country!r}"
-            )
+    def country_is_known(self) -> "GlobalSearchConfig":
+        self.country = self.country.strip().lower()
+        if self.country not in _ADZUNA_COUNTRIES:
+            raise ValueError(f"search.country must be one of {sorted(_ADZUNA_COUNTRIES)}, got {self.country!r}")
         return self
 
 
@@ -122,6 +163,69 @@ class NotificationsConfig(BaseModel):
     minimum_score: int = 80
 
 
+JOB_TYPES = ("full_time", "part_time", "contract", "permanent")
+
+
+class Watch(BaseModel):
+    """One watchlist entry: a saved search that alerts you on Telegram.
+
+    Each list is "any of" ("Toronto or Vancouver"); every filter you fill in
+    must hold. Titles/companies match partial text, keywords whole words in the
+    title or description, locations by city ("Victoria, BC" matches Adzuna's
+    "Victoria, Capital") or province ("Ontario"). Unless `search` is off, the
+    scheduled scan also runs the watch's own Adzuna search, so it finds jobs
+    your main job search doesn't cover.
+    """
+
+    name: str
+    titles: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    companies: list[str] = Field(default_factory=list)
+    exclude_companies: list[str] = Field(default_factory=list)
+    exclude_keywords: list[str] = Field(default_factory=list)
+    # Alert only when your keyword match score (0-100) is at least this.
+    min_score: int | None = Field(default=None, ge=0, le=100)
+    # Salary range (yearly, the posting's currency). Jobs without a listed salary still pass.
+    min_salary: int | None = Field(default=None, ge=0)
+    max_salary: int | None = Field(default=None, ge=0)
+    job_types: list[str] = Field(default_factory=list)  # any of JOB_TYPES; empty = any
+    posted_within_days: int | None = Field(default=None, ge=1, le=90)
+    search: bool = True
+
+    @model_validator(mode="after")
+    def has_some_criteria(self) -> "Watch":
+        if not (self.companies or self.titles or self.keywords or self.locations):
+            raise ValueError(
+                f"watch {self.name!r} needs at least one location, title, keyword or company "
+                "(an empty watch would alert on every job)"
+            )
+        unknown = sorted(set(self.job_types) - set(JOB_TYPES))
+        if unknown:
+            raise ValueError(f"unknown job type(s) {unknown}; use {list(JOB_TYPES)}")
+        if self.min_salary is not None and self.max_salary is not None and self.min_salary > self.max_salary:
+            raise ValueError("minimum salary is higher than maximum salary")
+        return self
+
+
+class WatchlistConfig(BaseModel):
+    """Telegram alerts for newly discovered jobs matching any watch, independent
+    of the match score (spec: notifications are pluggable -- see
+    app/notifications/base.py). Needs TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in .env.
+    """
+
+    enabled: bool = False
+    # A newly added Greenhouse board can surface dozens of "new" jobs on its first
+    # scan; past this many alerts in one run, the rest are rolled into one summary.
+    max_alerts_per_run: int = 15
+    # Optional, e.g. "http://127.0.0.1:8001" -- adds a dashboard link to each alert.
+    dashboard_url: str | None = None
+    # Not a secret (useless without the bot token), so it's a regular setting the
+    # dashboard can detect and save. Falls back to TELEGRAM_CHAT_ID in .env.
+    telegram_chat_id: str | None = None
+    watches: list[Watch] = Field(default_factory=list)
+
+
 class SchedulerConfig(BaseModel):
     enabled: bool = True
     interval_minutes: int = 15
@@ -129,10 +233,12 @@ class SchedulerConfig(BaseModel):
 
 class AppConfig(BaseModel):
     candidate: CandidateConfig
+    search: GlobalSearchConfig = Field(default_factory=GlobalSearchConfig)
     address_profiles: dict[str, AddressProfile] = Field(default_factory=dict)
     search_profiles: list[SearchProfile] = Field(default_factory=list)
     matching: MatchingConfig = Field(default_factory=MatchingConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     resume: ResumeConfig = Field(default_factory=ResumeConfig)
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
+    watchlist: WatchlistConfig = Field(default_factory=WatchlistConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)

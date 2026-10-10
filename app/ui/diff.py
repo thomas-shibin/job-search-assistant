@@ -32,3 +32,27 @@ def inline_word_diff_html(before: str | None, after: str) -> Markup:
             parts.append(f"<ins>{escape(' '.join(after_words[j1:j2]))}</ins>")
 
     return Markup(" ".join(parts))
+
+
+def side_by_side_diff(before: str | None, after: str) -> tuple[Markup, Markup]:
+    """The same word diff as two readable lines: `before` with the removed words
+    marked <del>, `after` with the added words marked <ins>."""
+    if not before:
+        return Markup(""), Markup(escape(after))
+    before_words, after_words = before.split(), after.split()
+    old: list[str] = []
+    new: list[str] = []
+    matcher = difflib.SequenceMatcher(a=[w.casefold() for w in before_words], b=[w.casefold() for w in after_words],
+                                      autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        removed = str(escape(" ".join(before_words[i1:i2])))
+        added = str(escape(" ".join(after_words[j1:j2])))
+        if tag == "equal":
+            old.append(removed)
+            new.append(added)
+            continue
+        if removed:
+            old.append(f"<del>{removed}</del>")
+        if added:
+            new.append(f"<ins>{added}</ins>")
+    return Markup(" ".join(old)), Markup(" ".join(new))

@@ -32,6 +32,8 @@ def session(tmp_path, monkeypatch) -> Session:
     import app.scheduler.run as run_module
 
     monkeypatch.setattr(run_module, "_build_notification_provider", lambda: None)
+    # Never reach the real Adzuna API (or read real .env keys); Adzuna tests opt back in.
+    monkeypatch.setattr(run_module, "AdzunaSettings", lambda: SimpleNamespace(app_id=None, app_key=None))
 
     engine = create_engine(f"sqlite:///{tmp_path / 'test.db'}")
     Base.metadata.create_all(engine)
@@ -63,6 +65,20 @@ class _FakeSource:
         self._jobs = jobs
 
     def discover_jobs(self, search_profile):
+        return self._jobs
+
+
+class _FakeAdzuna:
+    """Records each (what, where) query `GlobalSearchSource` sends."""
+
+    def __init__(self, jobs):
+        self._jobs = jobs
+        self.queries = []
+        self.calls = []
+
+    def search_page(self, *, what, where, page, per_page, area=(), what_or=None, filters=None):
+        self.queries.append((what, where))
+        self.calls.append({"what": what, "where": where, "what_or": what_or, "filters": filters or {}})
         return self._jobs
 
 
@@ -152,26 +168,29 @@ def test_run_once_skips_disabled_search_profiles(session, monkeypatch):
     assert summary.jobs_discovered == 0
 
 
-def test_run_once_uses_adzuna_source_when_enabled_with_credentials(session, monkeypatch):
+def test_run_once_searches_every_global_title_and_location(session, monkeypatch):
     import app.scheduler.run as run_module
+    from app.config.schema import GlobalSearchConfig
 
     _seed_candidate(session)
     raw_job = RawJob(
-        source="adzuna", source_url="https://example.com/3", company="Gamma",
+        external_id="a1", source="adzuna", source_url="https://example.com/3", company="Gamma",
         title="Senior Backend Engineer", description="Java role.",
     )
-    monkeypatch.setattr(
-        run_module, "AdzunaSettings", lambda: SimpleNamespace(app_id="id", app_key="key")
-    )
-    monkeypatch.setattr(
-        run_module, "AdzunaSource", lambda app_id, app_key, country: _FakeSource([raw_job])
-    )
+    fake = _FakeAdzuna([raw_job])
+    monkeypatch.setattr(run_module, "AdzunaSettings", lambda: SimpleNamespace(app_id="id", app_key="key"))
+    monkeypatch.setattr(run_module, "AdzunaSource", lambda app_id, app_key, country: fake)
 
-    config = _config([SearchProfile(name="SP", address_profile="x", adzuna_enabled=True)])
+    config = _config([])
+    config.search = GlobalSearchConfig(titles=["Backend", "Java"], locations=["Victoria, BC", "Remote"])
+    config.scheduler.interval_minutes = 60  # hourly: all 4 combinations fit the daily Adzuna budget
 
     summary = run_module.run_once(session, config)
 
-    assert summary.jobs_new == 1
+    assert sorted(fake.queries) == [
+        ("Backend", "Victoria, BC"), ("Backend remote", None), ("Java", "Victoria, BC"), ("Java remote", None),
+    ]
+    assert summary.jobs_new == 1  # the same posting from 4 queries is ingested once
     source_result = session.query(SourceRunResult).one()
     assert source_result.source_name == "adzuna"
     assert source_result.status == "OK"
@@ -182,15 +201,69 @@ def test_run_once_skips_adzuna_when_credentials_missing(session, monkeypatch):
 
     _seed_candidate(session)
     monkeypatch.setattr(
-        run_module, "AdzunaSettings", lambda: SimpleNamespace(app_id=None, app_key=None)
-    )
-    monkeypatch.setattr(
         run_module, "AdzunaSource", lambda app_id, app_key, country: pytest.fail("should not be called")
     )
 
-    config = _config([SearchProfile(name="SP", address_profile="x", adzuna_enabled=True)])
+    config = _config([SearchProfile(name="SP", address_profile="x")])
 
     summary = run_module.run_once(session, config)
 
     assert summary.jobs_discovered == 0
     assert session.query(SourceRunResult).count() == 0
+
+
+def test_run_once_sends_watchlist_alerts_for_new_matching_jobs(session, monkeypatch):
+    import app.scheduler.run as run_module
+    from app.config.schema import Watch, WatchlistConfig
+    from app.notifications.watchlist import WatchlistAlerter
+
+    _seed_candidate(session)
+    raw_jobs = [
+        RawJob(source="greenhouse", source_url="https://example.com/1", company="Acme",
+               title="Senior Backend Engineer", description="Java role."),
+        RawJob(source="greenhouse", source_url="https://example.com/2", company="Other Co",
+               title="Senior Backend Engineer", description="Java role."),
+    ]
+    monkeypatch.setattr(run_module, "GreenhouseSource", lambda board_token: _FakeSource(raw_jobs))
+
+    sent = []
+    fake_client = SimpleNamespace(send_message=lambda chat_id, text: sent.append(text))
+    watchlist = WatchlistConfig(enabled=True, watches=[Watch(name="Acme watch", companies=["acme"])])
+    monkeypatch.setattr(
+        run_module, "build_watchlist_alerter", lambda config, **kwargs: WatchlistAlerter(watchlist, fake_client, "42")
+    )
+
+    config = _config([SearchProfile(name="SP", address_profile="x", greenhouse_boards=["acme"])])
+    run_module.run_once(session, config)
+    assert len(sent) == 1
+    assert "Acme watch" in sent[0] and "/100" in sent[0]
+
+    # A second scan sees the same jobs as duplicates -- no repeat alert.
+    run_module.run_once(session, config)
+    assert len(sent) == 1
+
+
+def test_watches_run_their_own_searches_alongside_the_job_search(session, monkeypatch):
+    import app.scheduler.run as run_module
+    from app.config.schema import GlobalSearchConfig, Watch
+
+    _seed_candidate(session)
+    raw_job = RawJob(source="adzuna", source_url="https://example.com/w", company="Acme",
+                     title="Java Contractor", description="Java role.")
+    fake = _FakeAdzuna([raw_job])
+    monkeypatch.setattr(run_module, "AdzunaSettings", lambda: SimpleNamespace(app_id="id", app_key="key"))
+    monkeypatch.setattr(run_module, "AdzunaSource", lambda app_id, app_key, country: fake)
+
+    config = _config([])
+    config.search = GlobalSearchConfig(titles=["Backend"], locations=["Toronto, ON"])
+    config.watchlist.watches = [Watch(name="BC contracts", locations=["Vancouver, BC"], keywords=["Java"],
+                                      min_salary=90000, job_types=["contract"])]
+    config.scheduler.interval_minutes = 60
+
+    run_module.run_once(session, config)
+
+    by_where = {call["where"]: call for call in fake.calls}
+    assert set(by_where) == {"Toronto, ON", "Vancouver, BC"}
+    assert by_where["Toronto, ON"]["filters"] == {}
+    assert by_where["Vancouver, BC"]["what_or"] == "Java"
+    assert by_where["Vancouver, BC"]["filters"] == {"salary_min": "90000", "contract": "1"}

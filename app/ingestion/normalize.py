@@ -33,6 +33,10 @@ class NormalizedJob(TypedDict):
     description: str
     date_posted: datetime | None
     remote_type: str | None
+    salary_min: int | None
+    salary_max: int | None
+    currency: str | None
+    employment_type: str | None
 
 
 def _clean(text: str) -> str:
@@ -74,4 +78,8 @@ def normalize_raw_job(raw: RawJob) -> NormalizedJob:
         description=description,
         date_posted=raw.date_posted,
         remote_type=infer_remote_type(location, description),
+        salary_min=raw.salary_min,
+        salary_max=raw.salary_max,
+        currency=raw.currency,
+        employment_type=raw.employment_type,
     )

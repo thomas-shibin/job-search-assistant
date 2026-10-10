@@ -7,11 +7,13 @@ milestone's scope.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.catalog.store import suggestions
 from app.database.session import get_session
+from app.models.catalog import TermKind
 from app.services.jobs import get_job_detail, latest_match_analysis, list_jobs
 
 router = APIRouter(prefix="/api")
@@ -66,3 +68,18 @@ def api_get_job(job_id: int, session: Session = Depends(get_session)):
         explanation=detail.match_analysis.explanation if detail.match_analysis else None,
         tailored_resume_validation_status=detail.tailored_resume.validation_status if detail.tailored_resume else None,
     )
+
+
+class TermSuggestion(BaseModel):
+    label: str
+    count: int
+    type: str | None
+
+
+@router.get("/terms/{kind}", response_model=list[TermSuggestion])
+def api_terms(kind: TermKind, response: Response, limit: int | None = None, session: Session = Depends(get_session)):
+    """Search-term catalog for one kind (title/keyword/location/company), most
+    common first -- the options behind every tag picker in the dashboard.
+    """
+    response.headers["Cache-Control"] = "private, max-age=60"
+    return suggestions(session, kind, limit=limit)

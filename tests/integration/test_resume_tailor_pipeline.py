@@ -121,20 +121,48 @@ def test_tailor_resume_without_active_candidate_raises(session):
         tailor_resume(session, job, _config(), ai_provider=MockAIProvider())
 
 
-def test_address_swapped_only_for_job_with_matching_search_profile(session):
+def test_address_follows_search_profile_then_the_jobs_province(session):
     _seed_candidate(session)
     config = _config(
-        address_profiles={"bc": AddressProfile(city="Victoria", province="BC", country="Canada")},
+        address_profiles={
+            "bc": AddressProfile(city="Victoria", province="BC", country="Canada"),
+            "ontario": AddressProfile(city="Toronto", province="ON", country="Canada"),
+        },
         search_profiles=[SearchProfile(name="BC Backend", address_profile="bc", locations=["Vancouver, BC"])],
     )
 
-    job_with_profile = _seed_job(session, search_profile_name="BC Backend", fingerprint="fp1", description_hash="dh1")
-    result = tailor_resume(session, job_with_profile, config, ai_provider=MockAIProvider())
-    assert "Victoria, BC, Canada" in _docx_text(result.docx_path)
+    # Found by a search profile: that profile's address, wherever the job is.
+    job = _seed_job(session, search_profile_name="BC Backend", location="Toronto, Ontario",
+                    fingerprint="fp1", description_hash="dh1")
+    assert "Victoria, BC, Canada" in _docx_text(tailor_resume(session, job, config, ai_provider=MockAIProvider()).docx_path)
 
-    job_without_profile = _seed_job(session, fingerprint="fp2", description_hash="dh2")
-    result2 = tailor_resume(session, job_without_profile, config, ai_provider=MockAIProvider())
-    assert "Victoria, BC, Canada" not in _docx_text(result2.docx_path)
+    # Found by the global search: the address in the job's own province.
+    job = _seed_job(session, location="Toronto, Ontario", fingerprint="fp2", description_hash="dh2")
+    assert "Toronto, ON, Canada" in _docx_text(tailor_resume(session, job, config, ai_provider=MockAIProvider()).docx_path)
+
+    # A province with no address profile (or a remote job) keeps the resume's own.
+    for i, location in enumerate(("Calgary, AB", "Remote")):
+        job = _seed_job(session, location=location, fingerprint=f"fp3{i}", description_hash=f"dh3{i}")
+        text = _docx_text(tailor_resume(session, job, config, ai_provider=MockAIProvider()).docx_path)
+        assert "Toronto, ON" not in text and "Victoria, BC, Canada" not in text
+
+
+def test_job_province_from_the_location_catalog(session):
+    from app.catalog.geo import province_of
+    from app.catalog.store import Term, upsert_terms
+    from app.models.catalog import TermKind, TermSource
+
+    upsert_terms(session, TermKind.LOCATION, [
+        Term("Mississauga, ON", geo_path=["Canada", "Ontario", "Peel region", "Mississauga"]),
+        Term("Richmond, BC", geo_path=["Canada", "British Columbia", "Greater Vancouver", "Richmond"]),
+        Term("Richmond, QC", geo_path=["Canada", "Québec", "Estrie", "Richmond"]),
+    ], TermSource.SCAN)
+
+    assert province_of(session, "Mississauga, Peel region") == "ON"
+    assert province_of(session, "Toronto, Ontario") == "ON"
+    assert province_of(session, "Montréal, Québec") == "QC"
+    assert province_of(session, "Richmond") is None  # in two provinces: can't tell
+    assert province_of(session, "Remote") is None
 
 
 def test_parsed_name_wins_over_config_name_by_default(session):
@@ -216,3 +244,77 @@ def _docx_text(path) -> str:
     from docx import Document
 
     return "\n".join(p.text for p in Document(str(path)).paragraphs)
+
+
+def test_location_stated_in_the_description_beats_the_listing(session):
+    from app.catalog.geo import stated_province
+    from app.catalog.store import Term, upsert_terms
+    from app.models.catalog import TermKind, TermSource
+
+    upsert_terms(session, TermKind.LOCATION, [
+        Term("Vancouver, BC", geo_path=["Canada", "British Columbia", "Greater Vancouver", "Vancouver"]),
+    ], TermSource.SCAN)
+
+    assert stated_province(session, "Role: Java Location: Vancouver folks its Hybrid, One day office") == "BC"
+    assert stated_province(session, "Work location - Calgary, Alberta") == "AB"
+    assert stated_province(session, "Location: Remote") is None
+
+    _seed_candidate(session)
+    config = _config(address_profiles={
+        "bc": AddressProfile(city="Victoria", province="BC", country="Canada"),
+        "on": AddressProfile(city="Toronto", province="ON", country="Canada"),
+    })
+    job = _seed_job(session, location="Mississauga, Ontario", description="Java role. Location: Vancouver (hybrid).")
+    text = _docx_text(tailor_resume(session, job, config, ai_provider=MockAIProvider()).docx_path)
+    assert "Victoria, BC, Canada" in text and "Toronto" not in text
+
+
+def test_address_rules_for_one_profile_and_no_profiles(session):
+    from app.resume.tailor import resolve_address
+
+    home = AddressProfile(street="1234 Main St", unit="Unit 5", city="Victoria", province="BC",
+                          postal_code="V8W 1A1", country="Canada")
+    assert home.one_line() == "1234 Main St, Unit 5, Victoria, BC V8W 1A1, Canada"
+
+    ontario_job = _seed_job(session, location="Toronto, Ontario", fingerprint="o", description_hash="o")
+    remote_job = _seed_job(session, location="Remote", fingerprint="r", description_hash="r")
+
+    # Exactly one profile: always that address, wherever (or whether) the job is.
+    one = _config(address_profiles={"home": home})
+    assert resolve_address(one, ontario_job, session) == home
+    assert resolve_address(one, remote_job, session) == home
+
+    # No profiles: the job's own city and province, when it has one.
+    none = _config(address_profiles={})
+    picked = resolve_address(none, ontario_job, session)
+    assert (picked.city, picked.province, picked.country) == ("Toronto", "ON", "Canada")
+    assert resolve_address(none, remote_job, session) is None
+
+    # Turned off: nothing changes.
+    off = _config(address_profiles={"home": home})
+    off.resume.change_address = False
+    assert resolve_address(off, ontario_job, session) is None
+
+
+def test_full_street_address_replaces_the_resume_location_line(tmp_path):
+    from docx import Document
+
+    from app.documents.docx_edit import tailor_docx
+
+    for original in ("Victoria, Canada", "99 Old Rd, Victoria, BC V8W 2B2"):
+        base, out = tmp_path / "base.docx", tmp_path / "out.docx"
+        doc = Document()
+        doc.add_paragraph("Jordan Casey")
+        doc.add_paragraph(original)
+        doc.add_paragraph("jordan@example.com | 555-123-4567")
+        doc.save(str(base))
+
+        tailor_docx(base, out, [], location_line="1234 Main St, Unit 5, Toronto, ON M5V 1A1, Canada", full_address=True)
+        assert [p.text for p in Document(str(out)).paragraphs] == [
+            "Jordan Casey", "1234 Main St, Unit 5, Toronto, ON M5V 1A1, Canada", "jordan@example.com | 555-123-4567",
+        ]
+
+        # Without a street, a "City, Country" line keeps its shape; a street-address line is fully replaced.
+        tailor_docx(base, out, [], location_line="Toronto, ON, Canada")
+        expected = "Toronto, Canada" if original == "Victoria, Canada" else "Toronto, ON, Canada"
+        assert Document(str(out)).paragraphs[1].text == expected

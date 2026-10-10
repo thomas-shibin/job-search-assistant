@@ -42,6 +42,15 @@ class BulletDiff:
     generated_text: str
     validation_passed: bool
     rejection_reason: str | None
+    role: str | None = None  # "Senior Software Engineer · AOT Technologies"
+
+    @property
+    def changed(self) -> bool:
+        """Reworded in the resume. A bullet with no source (a rejected, made-up
+        bullet) never reaches the resume, so it isn't a change."""
+        if self.source_text is None:
+            return False
+        return " ".join(self.source_text.split()) != " ".join(self.generated_text.split())
 
 
 @dataclass
@@ -49,7 +58,19 @@ class JobDetail:
     job: Job
     match_analysis: MatchAnalysis | None
     tailored_resume: TailoredResume | None
-    bullet_diffs: list[BulletDiff] = field(default_factory=list)
+    bullet_diffs: list[BulletDiff] = field(default_factory=list)  # in resume order
+    original_summary: str | None = None  # the base resume's summary the tailored one replaced
+
+    @property
+    def bullet_groups(self) -> list[tuple[str | None, list[BulletDiff]]]:
+        """Bullet diffs grouped by role, in resume order."""
+        groups: list[tuple[str | None, list[BulletDiff]]] = []
+        for diff in self.bullet_diffs:
+            if groups and groups[-1][0] == diff.role:
+                groups[-1][1].append(diff)
+            else:
+                groups.append((diff.role, [diff]))
+        return groups
 
 
 def get_job_detail(session: Session, job_id: int) -> JobDetail | None:
@@ -66,19 +87,58 @@ def get_job_detail(session: Session, job_id: int) -> JobDetail | None:
     )
 
     bullet_diffs: list[BulletDiff] = []
+    original_summary: str | None = None
     if tailored_resume is not None:
         provenance = (
             session.query(TailoredBulletProvenance).filter_by(tailored_resume_id=tailored_resume.id).all()
         )
+        ordered: list[tuple[tuple, BulletDiff]] = []
         for p in provenance:
             source_bullet = session.get(AccomplishmentBullet, p.source_bullet_id) if p.source_bullet_id else None
-            bullet_diffs.append(
-                BulletDiff(
-                    source_text=source_bullet.text if source_bullet else None,
-                    generated_text=p.generated_text,
-                    validation_passed=p.validation_passed,
-                    rejection_reason=p.rejection_reason,
-                )
+            employment = source_bullet.employment if source_bullet else None
+            if employment is not None and original_summary is None:
+                original_summary = employment.candidate_profile.summary
+            # Resume order: current role first, then newest start date; bullets as written.
+            sort_key = (
+                (0, not employment.is_current, -(employment.start_date.toordinal() if employment.start_date else 0),
+                 employment.id, source_bullet.order_index)
+                if employment is not None else (1,)
             )
+            ordered.append((sort_key, BulletDiff(
+                source_text=source_bullet.text if source_bullet else None,
+                generated_text=p.generated_text,
+                validation_passed=p.validation_passed,
+                rejection_reason=p.rejection_reason,
+                role=f"{employment.title} · {employment.company}" if employment is not None else None,
+            )))
+        bullet_diffs = [diff for _, diff in sorted(ordered, key=lambda item: item[0])]
 
-    return JobDetail(job=job, match_analysis=match_analysis, tailored_resume=tailored_resume, bullet_diffs=bullet_diffs)
+    return JobDetail(job=job, match_analysis=match_analysis, tailored_resume=tailored_resume,
+                     bullet_diffs=bullet_diffs, original_summary=original_summary)
+
+
+# Adzuna's API shares at most this many characters of a description; the full
+# text is only on the posting page (which Adzuna doesn't allow fetching).
+ADZUNA_PREVIEW_CHARS = 500
+
+
+def is_description_preview(job: Job) -> bool:
+    """True when `job.description` is (probably) Adzuna's cut-off preview."""
+    return job.source == "adzuna" and len(job.description or "") >= ADZUNA_PREVIEW_CHARS - 10
+
+
+def replace_job_description(session: Session, job: Job, text: str) -> None:
+    """Replace a job's description (e.g. Adzuna's preview with the full posting
+    pasted by the user) and drop everything derived from the old text, so the
+    next scoring / AI analysis / tailoring reads the new one.
+    """
+    from app.ingestion.fingerprint import compute_description_hash
+    from app.models.job import JobRequirements
+
+    cleaned = "\n".join(line.rstrip() for line in text.strip().splitlines())
+    if len(cleaned) < 50:
+        raise ValueError("That's too short to be a job description -- paste the full posting text.")
+    job.description = cleaned
+    job.description_hash = compute_description_hash(cleaned)
+    session.query(JobRequirements).filter_by(job_id=job.id).delete()
+    session.commit()

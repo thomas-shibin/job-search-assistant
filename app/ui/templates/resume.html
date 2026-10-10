@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My resume - Job Assistant{% endblock %}
+{% block crumb %}My resume{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Resume</p>
+    <h1>My resume</h1>
+    <p class="lead">Your base resume is what every AI analysis compares against and what every tailored resume is made from.</p>
+  </div>
+  {% if current and file_available %}
+  <div class="page-actions">
+    <a class="button" href="/resume/file" hx-boost="false" download>{{ icon("download") }} Download current</a>
+  </div>
+  {% endif %}
+</header>
+
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+<div class="two-col">
+  <div>
+    {% if current %}
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>{{ current.full_name or "Your resume" }}</h2>
+          <p>Version {{ current.version }} · imported {{ current.parsed_at.strftime("%b %d, %Y %H:%M") }} · {{ current.raw_resume_path.split("/")[-1] }}</p>
+        </div>
+        <span class="status-badge {{ 'ok' if is_docx else 'missing' }}">{{ "Word file" if is_docx else "PDF file" }}</span>
+      </div>
+      {% if not is_docx %}
+        <div class="warning-box">{{ icon("alert") }}<div class="alert-body">This is a PDF, so tailored resumes get a plain generated layout.
+          Upload the Word (.docx) version to keep your own design in every tailored resume.</div></div>
+      {% endif %}
+      {% if not file_available %}
+        <div class="warning-box">{{ icon("alert") }}<div class="alert-body">The file itself is no longer on disk, so tailored resumes can't use its design. Upload it again.</div></div>
+      {% endif %}
+
+      <div class="stats resume-stats">
+        <div class="stat"><div class="stat-label">Roles</div><div class="stat-value">{{ current.employments | length }}</div></div>
+        <div class="stat"><div class="stat-label">Bullets</div><div class="stat-value">{{ current.employments | map(attribute="bullets") | map("length") | sum }}</div></div>
+        <div class="stat"><div class="stat-label">Skills</div><div class="stat-value">{{ current.skills | length }}</div></div>
+        <div class="stat"><div class="stat-label">Education</div><div class="stat-value">{{ current.education | length }}</div></div>
+      </div>
+
+      <h3>What the app read from it</h3>
+      <p class="muted">Check this matches your resume. Anything missing here can't be used for matching or tailoring.</p>
+
+      {% if current.contact_line %}<div class="parsed-block"><div class="change-label">Contact</div>{{ current.contact_line }}</div>{% endif %}
+      <div class="parsed-block"><div class="change-label">Summary</div>{{ current.summary or "— not found" }}</div>
+      <div class="parsed-block"><div class="change-label">Skills</div>
+        {% if current.skills %}<div class="skill-tags">{% for s in current.skills %}<span class="chip">{{ s.name }}</span>{% endfor %}</div>{% else %}— not found{% endif %}
+      </div>
+      <div class="parsed-block"><div class="change-label">Experience</div>
+        {% for emp in current.employments %}
+          <details class="parsed-role" {% if loop.first %}open{% endif %}>
+            <summary><strong>{{ emp.title }}</strong> · {{ emp.company }}
+              <span class="muted">{% if emp.start_date %}{{ emp.start_date.strftime("%b %Y") }} – {{ "Present" if emp.is_current or not emp.end_date else emp.end_date.strftime("%b %Y") }}{% endif %} · {{ emp.bullets | length }} bullets</span></summary>
+            <ul>{% for b in emp.bullets | sort(attribute="order_index") %}<li>{{ b.text }}</li>{% endfor %}</ul>
+          </details>
+        {% else %}— not found{% endfor %}
+      </div>
+      {% if current.education %}
+      <div class="parsed-block"><div class="change-label">Education</div>
+        <ul>{% for e in current.education %}<li>{{ e.degree or "" }}{% if e.field_of_study %} in {{ e.field_of_study }}{% endif %}{% if e.degree or e.field_of_study %}, {% endif %}{{ e.institution }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+      {% if current.certifications %}
+      <div class="parsed-block"><div class="change-label">Certifications</div>
+        <ul>{% for c in current.certifications %}<li>{{ c.name }}{% if c.issuer %} — {{ c.issuer }}{% endif %}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+      {% if unparsed %}
+      <details class="parsed-block parsed-other">
+        <summary><span class="change-label">Other text</span> <span class="muted">— {{ unparsed | length }} part{{ "s" if unparsed | length != 1 }} not sorted into a section; still sent to the AI as part of your resume</span></summary>
+        {% for part in unparsed %}<pre>{{ part }}</pre>{% endfor %}
+      </details>
+      {% endif %}
+    </section>
+    {% else %}
+    <section class="panel">
+      <div class="empty-state" style="border: 0; padding: 2rem 1rem">
+        {{ icon("file") }}
+        <p><strong>No resume yet</strong></p>
+        <p class="muted">Upload your resume to analyze jobs against it and generate tailored versions.</p>
+      </div>
+    </section>
+    {% endif %}
+  </div>
+
+  <aside>
+    <section class="panel" id="upload">
+      <div class="panel-head"><div><h2>{{ "Replace your resume" if current else "Upload your resume" }}</h2></div></div>
+      <form method="post" action="/resume" enctype="multipart/form-data" hx-boost="false" class="quick-form"
+            onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').lastChild.textContent = ' Reading…'">
+        <label>Word (.docx) or PDF
+          <input type="file" name="resume" accept=".docx,.pdf" required>
+        </label>
+        <button type="submit" class="primary">{{ icon("upload") }} Upload and use</button>
+      </form>
+      <div class="divider"></div>
+      <ul class="steps">
+        <li><div><strong>Use Word if you can</strong>Tailored resumes keep your exact design: fonts, layout, tables. Only the wording changes.</div></li>
+        <li><div><strong>Takes effect right away</strong>New analyses and tailored resumes use it. Ones already made keep the version they were made from.</div></li>
+        <li><div><strong>Nothing leaves your machine</strong>Reading the file is done locally; only AI analysis and tailoring send its text to the AI.</div></li>
+      </ul>
+    </section>
+
+    {% if versions | length > 1 %}
+    <section class="panel">
+      <div class="panel-head" style="margin-bottom: 0.25rem"><div><h2>History</h2></div></div>
+      <ul class="facts">
+        {% for v in versions %}
+        <li><span>Version {{ v.version }}{% if v.is_active %} <span class="status-badge ok">in use</span>{% endif %}</span><span>{{ v.parsed_at.strftime("%b %d, %Y") }}</span></li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

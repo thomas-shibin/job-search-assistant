@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from app.config.loader import ConfigError, load_config, validate_config
+from app.config.loader import ConfigError, validate_config
 from app.utils.logging import configure_logging
 
 app = typer.Typer(help="Local AI Job Application Assistant CLI")
@@ -13,6 +13,29 @@ app = typer.Typer(help="Local AI Job Application Assistant CLI")
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 EXAMPLE_CONFIG_PATH = PROJECT_ROOT / "config" / "config.example.yaml"
+
+_CONFIG_HELP = "config.yaml to import if the database has no settings yet (settings live in the DB)"
+
+
+def _print_config_errors(errors: list[str]) -> None:
+    typer.echo("Configuration is INVALID:", err=True)
+    for err in errors:
+        typer.echo(f"  - {err}", err=True)
+
+
+def _load_settings(config_path: Path):
+    """Effective settings from the database (importing `config_path` on first use)."""
+    from app.config.store import load_app_config
+    from app.database.session import SessionLocal
+
+    session = SessionLocal()
+    try:
+        return load_app_config(session, config_path)
+    except ConfigError as exc:
+        _print_config_errors(exc.errors)
+        raise typer.Exit(code=1)
+    finally:
+        session.close()
 
 
 @app.command()
@@ -33,39 +56,55 @@ def init() -> None:
         typer.echo(f"{DEFAULT_CONFIG_PATH} already exists, leaving it as-is")
 
     typer.echo("\nNext steps:")
-    typer.echo(f"  1. Edit {DEFAULT_CONFIG_PATH} with your real candidate info and search profiles")
-    typer.echo("  2. Place your base resume at the path referenced by candidate.base_resume")
-    typer.echo("  3. Run 'alembic upgrade head' to create the local database")
-    typer.echo("  4. Run 'jobassistant validate-config' to confirm everything is wired up")
+    typer.echo("  1. Run 'alembic upgrade head' to create the local database")
+    typer.echo("  2. Run 'python cli.py serve' and open http://127.0.0.1:8000")
+    typer.echo("  3. Upload your resume on the 'My resume' page; adjust everything else under Settings")
 
 
 @app.command("validate-config")
 def validate_config_cmd(
-    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
 ) -> None:
-    """Load and validate config.yaml, reporting any errors."""
+    """Validate the settings stored in the database, reporting any errors."""
     configure_logging()
 
-    if not config_path.exists():
-        typer.echo(f"Config file not found: {config_path}", err=True)
-        raise typer.Exit(code=1)
-
-    try:
-        config = load_config(config_path)
-    except ConfigError as exc:
-        typer.echo("Configuration is INVALID:", err=True)
-        for err in exc.errors:
-            typer.echo(f"  - {err}", err=True)
-        raise typer.Exit(code=1)
+    config = _load_settings(config_path)
 
     errors = validate_config(config, base_dir=PROJECT_ROOT)
     if errors:
-        typer.echo("Configuration is INVALID:", err=True)
-        for err in errors:
-            typer.echo(f"  - {err}", err=True)
+        _print_config_errors(errors)
         raise typer.Exit(code=1)
 
     typer.echo("Configuration is OK.")
+
+
+@app.command("import-config")
+def import_config_cmd(
+    config_path: Path = typer.Argument(DEFAULT_CONFIG_PATH, help="YAML file to import"),
+    force: bool = typer.Option(False, "--force", help="Overwrite settings already in the database"),
+    keep_watches: bool = typer.Option(False, "--keep-watches", help="Leave existing watchlist entries alone"),
+) -> None:
+    """Import a config.yaml into the database. Settings are edited in the dashboard
+    afterwards; this happens automatically on first start, so it's only needed to
+    deliberately reset settings from a file (--force).
+    """
+    configure_logging()
+
+    from app.config.store import has_settings, import_yaml_config
+    from app.database.session import SessionLocal
+
+    session = SessionLocal()
+    try:
+        if has_settings(session) and not force:
+            typer.echo("Settings already exist in the database. Pass --force to overwrite them from the file.", err=True)
+            raise typer.Exit(code=1)
+        import_yaml_config(session, config_path, replace_watches=not keep_watches)
+    except ConfigError as exc:
+        _print_config_errors(exc.errors)
+        raise typer.Exit(code=1)
+    finally:
+        session.close()
+    typer.echo(f"Imported {config_path} into the database.")
 
 
 def _not_implemented(command: str, milestone: int) -> None:
@@ -207,7 +246,7 @@ def _print_breakdown(result) -> None:
 def analyze(
     job_id: int = typer.Argument(None, help="Job id to analyze. Omit and use --all to analyze every DISCOVERED job."),
     all_jobs: bool = typer.Option(False, "--all", help="Analyze every job currently in DISCOVERED status"),
-    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
 ) -> None:
     """Run hard filters and deterministic scoring on discovered jobs.
 
@@ -223,17 +262,7 @@ def analyze(
         typer.echo("Provide a JOB_ID or pass --all.", err=True)
         raise typer.Exit(code=1)
 
-    if not config_path.exists():
-        typer.echo(f"Config file not found: {config_path}", err=True)
-        raise typer.Exit(code=1)
-
-    try:
-        config = load_config(config_path)
-    except ConfigError as exc:
-        typer.echo("Configuration is INVALID:", err=True)
-        for err in exc.errors:
-            typer.echo(f"  - {err}", err=True)
-        raise typer.Exit(code=1)
+    config = _load_settings(config_path)
 
     from app.ai.factory import AIProviderConfigError, build_ai_provider
     from app.ai.settings import AISettings
@@ -289,24 +318,14 @@ def analyze(
 @app.command("generate-resume")
 def generate_resume(
     job_id: int,
-    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
 ) -> None:
     """Generate a tailored, truthfulness-validated resume (DOCX, and PDF if LibreOffice
     is available) for a job, and organize its artifact bundle under data/applications/.
     """
     configure_logging()
 
-    if not config_path.exists():
-        typer.echo(f"Config file not found: {config_path}", err=True)
-        raise typer.Exit(code=1)
-
-    try:
-        config = load_config(config_path)
-    except ConfigError as exc:
-        typer.echo("Configuration is INVALID:", err=True)
-        for err in exc.errors:
-            typer.echo(f"  - {err}", err=True)
-        raise typer.Exit(code=1)
+    config = _load_settings(config_path)
 
     from app.ai.factory import AIProviderConfigError
     from app.database.session import SessionLocal
@@ -425,22 +444,12 @@ def open_application(job_id: int) -> None:
 
 @app.command()
 def run(
-    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
 ) -> None:
     """Run the full discover -> analyze -> tailor pipeline once (Milestone 11)."""
     configure_logging()
 
-    if not config_path.exists():
-        typer.echo(f"Config file not found: {config_path}", err=True)
-        raise typer.Exit(code=1)
-
-    try:
-        config = load_config(config_path)
-    except ConfigError as exc:
-        typer.echo("Configuration is INVALID:", err=True)
-        for err in exc.errors:
-            typer.echo(f"  - {err}", err=True)
-        raise typer.Exit(code=1)
+    config = _load_settings(config_path)
 
     from app.database.session import SessionLocal
     from app.scheduler.run import run_once
@@ -462,41 +471,146 @@ def run(
 
 @app.command()
 def serve(
-    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help="Path to config.yaml"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8000, "--port"),
 ) -> None:
-    """Start the dashboard web server, plus the background scheduler if
-    config.yaml's scheduler.enabled is true (Milestone 11).
+    """Start the dashboard web server plus the background scheduler (Milestone
+    11). Scans run while scheduler.enabled is on in Settings.
     """
     configure_logging()
 
-    if not config_path.exists():
-        typer.echo(f"Config file not found: {config_path}", err=True)
-        raise typer.Exit(code=1)
-
-    try:
-        config = load_config(config_path)
-    except ConfigError as exc:
-        typer.echo("Configuration is INVALID:", err=True)
-        for err in exc.errors:
-            typer.echo(f"  - {err}", err=True)
-        raise typer.Exit(code=1)
+    config = _load_settings(config_path)
 
     import uvicorn
 
     from app.scheduler.background import start_background_scheduler
 
-    background_scheduler = None
-    if config.scheduler.enabled:
-        background_scheduler = start_background_scheduler(config, config_path)
-        typer.echo(f"Background scheduler started (every {config.scheduler.interval_minutes} minutes).")
+    # Always started: scans can be switched on/off and re-timed from the dashboard.
+    background_scheduler = start_background_scheduler(config, config_path)
+    state = "on" if config.scheduler.enabled else "paused (enable it on the Settings page)"
+    typer.echo(f"Background scheduler {state}, every {config.scheduler.interval_minutes} minutes.")
 
     try:
         uvicorn.run("main:app", host=host, port=port)
     finally:
-        if background_scheduler is not None:
-            background_scheduler.shutdown(wait=False)
+        background_scheduler.shutdown(wait=False)
+
+
+
+@app.command("telegram-setup")
+def telegram_setup(
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
+) -> None:
+    """Detect and save your Telegram chat id (same as the Watchlist page's
+    "Detect chat ID" button): send your bot any message first. Needs
+    TELEGRAM_BOT_TOKEN in .env.
+    """
+    from app.database.session import SessionLocal
+    from app.notifications.telegram import TelegramError
+    from app.services.telegram import detect_and_save_chat_id
+
+    config = _load_settings(config_path)
+    session = SessionLocal()
+    try:
+        chat = detect_and_save_chat_id(session, config)
+    except TelegramError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+    finally:
+        session.close()
+    typer.echo(f"Saved Telegram chat id {chat['id']}. Run `python cli.py telegram-test` to check it.")
+
+
+@app.command("telegram-test")
+def telegram_test(
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
+) -> None:
+    """Send a test message to your Telegram chat."""
+    from app.notifications.telegram import TelegramError
+    from app.services.telegram import send_test_message
+
+    try:
+        send_test_message(_load_settings(config_path))
+    except TelegramError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=1)
+    typer.echo("Test message sent.")
+
+
+@app.command("rebuild-resumes")
+def rebuild_resumes(
+    job_id: int = typer.Option(None, "--job", help="Only this job (default: every job with a tailored resume)"),
+    pdf: bool = typer.Option(True, help="Also regenerate the PDF (needs LibreOffice)"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
+) -> None:
+    """Re-create tailored resume files in your base resume's current design,
+    from the wording already saved for each job -- no AI calls. Use after
+    changing the look of your base resume.
+    """
+    from sqlalchemy import func
+
+    from app.database.session import SessionLocal
+    from app.documents.libreoffice import PdfConversionError, convert_to_pdf
+    from app.models.resume import TailoredResume
+    from app.resume.tailor import rebuild_tailored_resume
+
+    config = _load_settings(config_path)
+    rebuilt = skipped = pdf_failed = 0
+    with SessionLocal() as session:
+        latest = session.query(func.max(TailoredResume.id)).group_by(TailoredResume.job_id)
+        if job_id is not None:
+            latest = latest.filter(TailoredResume.job_id == job_id)
+        rows = session.query(TailoredResume).filter(TailoredResume.id.in_(latest)).order_by(TailoredResume.job_id).all()
+        for tailored in rows:
+            path = rebuild_tailored_resume(session, tailored, config)
+            if path is None:
+                skipped += 1
+                continue
+            rebuilt += 1
+            if pdf:
+                try:
+                    tailored.pdf_path = str(convert_to_pdf(path))
+                    session.commit()
+                except PdfConversionError as exc:
+                    pdf_failed += 1
+                    typer.echo(f"  job {tailored.job_id}: PDF failed ({exc})", err=True)
+            typer.echo(f"  job {tailored.job_id}: {path}")
+    typer.echo(f"Rebuilt {rebuilt} resumes" + (f", skipped {skipped} (source resume gone)" if skipped else "")
+               + (f", {pdf_failed} PDFs failed" if pdf_failed else "") + ".")
+
+
+@app.command("catalog-scan")
+def catalog_scan(
+    country: str = typer.Option(None, help="Adzuna country code (default: Settings -> Job search country)"),
+    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
+) -> None:
+    """Fill the search-term catalog (the job title/keyword/location/company
+    suggestions) from a quick scan of the whole job market -- about 50 Adzuna
+    requests. Needs ADZUNA_APP_ID/ADZUNA_APP_KEY in .env.
+    """
+    from app.catalog.scan import plural, scan_market
+    from app.catalog.store import counts, seed_catalog
+    from app.database.session import SessionLocal
+    from app.sources.adzuna import AdzunaSource
+    from app.sources.settings import AdzunaSettings
+
+    settings = AdzunaSettings()
+    if not (settings.app_id and settings.app_key):
+        typer.echo("Set ADZUNA_APP_ID and ADZUNA_APP_KEY in .env first.", err=True)
+        raise typer.Exit(code=1)
+    country = (country or _load_settings(config_path).search.country).lower()
+    adzuna = AdzunaSource(app_id=settings.app_id, app_key=settings.app_key, country=country)
+    with SessionLocal() as session:
+        seed_catalog(session)
+        report = scan_market(session, adzuna, country=country, progress=lambda m: typer.echo(f"  {m}"))
+        totals = counts(session)
+    typer.echo(f"Scanned {report.postings} postings with {report.requests} requests.")
+    typer.echo("New: " + ", ".join(plural(n, kind) for kind, n in report.new_terms.items())
+               + f"; dropped {report.removed} no longer seen")
+    typer.echo("Catalog now: " + ", ".join(plural(n, kind) for kind, n in sorted(totals.items())))
+    for error in report.errors:
+        typer.echo(f"  failed: {error}", err=True)
 
 
 def main() -> None:

@@ -17,6 +17,10 @@ class RawJob(BaseModel):
     location: str | None = None
     description: str
     date_posted: datetime | None = None
+    salary_min: int | None = None
+    salary_max: int | None = None
+    currency: str | None = None
+    employment_type: str | None = None  # e.g. "full_time permanent", "contract"
     raw_payload: dict = Field(default_factory=dict)
 
 

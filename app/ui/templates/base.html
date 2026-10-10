@@ -1,22 +1,73 @@
 <!doctype html>
+{% from "_icons.html" import icon %}
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>{% block title %}Job Application Assistant{% endblock %}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Job Assistant{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232453d4'/%3E%3Cpath d='M9 12h14v10H9z M13 12V9h6v3' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script src="/static/tagpicker.js" defer></script>
+  <script>
+    // Sidebar state lives on <html>, which hx-boost never swaps, so it survives
+    // navigation. Wide screens: shown unless hidden (remembered). Narrow
+    // screens: hidden, slides over the page when pulled out.
+    (function () {
+      var root = document.documentElement;
+      try { if (localStorage.getItem("navHidden") === "1") root.classList.add("nav-hidden"); } catch (e) {}
+      window.toggleNav = function () {
+        if (window.matchMedia("(max-width: 860px)").matches) {
+          root.classList.toggle("nav-open");
+          return;
+        }
+        var hidden = root.classList.toggle("nav-hidden");
+        try { localStorage.setItem("navHidden", hidden ? "1" : "0"); } catch (e) {}
+      };
+      document.addEventListener("htmx:beforeSwap", function () { root.classList.remove("nav-open"); });
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape") root.classList.remove("nav-open"); });
+    })();
+  </script>
 </head>
 <body hx-boost="true">
-  <header class="topbar">
-    <a class="brand" href="/">Job Application Assistant</a>
+  {% set path = request.url.path if request is defined else "" %}
+  {% macro nav_link(path, href, name, label) %}
+    {% set active = path == href or (href != "/" and path.startswith(href)) or (href == "/" and path.startswith("/jobs")) %}
+    <a href="{{ href }}" class="{{ 'active' if active else '' }}"{% if active %} aria-current="page"{% endif %}>{{ icon(name) }}<span>{{ label }}</span></a>
+  {% endmacro %}
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/">
+      <span class="brand-mark">{{ icon("briefcase") }}</span>
+      <span class="brand-name">Job Assistant<small>Career workspace</small></span>
+    </a>
+    <div class="nav-label">Search</div>
     <nav>
-      <a href="/quick">Quick Tailor</a>
-      <a href="/">Jobs</a>
-      <a href="/costs">AI Costs</a>
+      {{ nav_link(path, "/", "search", "Find jobs") }}
+      {{ nav_link(path, "/watchlist", "bell", "Watchlist") }}
     </nav>
+    <div class="nav-label">Resume</div>
+    <nav>
+      {{ nav_link(path, "/resume", "file", "My resume") }}
+      {{ nav_link(path, "/quick", "pen", "Quick Tailor") }}
+    </nav>
+    <div class="nav-label">Account</div>
+    <nav>
+      {{ nav_link(path, "/settings", "sliders", "Settings") }}
+      {{ nav_link(path, "/costs", "chart", "AI usage") }}
+    </nav>
+    <div class="sidebar-foot">Runs locally &middot; your data stays on this machine</div>
+  </aside>
+  <div class="nav-backdrop" onclick="toggleNav()"></div>
+  <header class="topbar">
+    <button type="button" class="nav-toggle" onclick="toggleNav()" aria-controls="sidebar" aria-label="Show or hide menu" title="Show or hide menu">{{ icon("menu") }}</button>
+    <div class="crumbs"><span>Job Assistant</span><span aria-hidden="true">/</span><strong>{% block crumb %}Home{% endblock %}</strong></div>
+    <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
   </header>
   <main>
-    {% if message %}<div class="flash">{{ message }}</div>{% endif %}
+    {% if message %}<div class="flash">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

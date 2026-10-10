@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import re
 
-from app.ai.base import ExtractedJobRequirements, TailoredBulletDraft, TailoredResumeDraft
+from app.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredBulletDraft, TailoredResumeDraft
 from app.ai.usage import AIUsage
 from app.matching.scorer import MatchScoreBreakdown
 
@@ -173,6 +173,24 @@ class MockAIProvider:
             summary=candidate.summary or f"Experienced professional applying for {job.title}.",
             skills_order=prioritized + rest,
             bullets=bullets,
+        )
+
+    def assess_fit(self, candidate: dict, job) -> FitAssessmentResult:
+        """Zero-cost stand-in: the share of the posting's detected skills that
+        appear in the candidate's skill list.
+        """
+        required, preferred = _extract_skill_buckets(job.description)
+        wanted = list(dict.fromkeys(required + preferred))
+        have = {s.lower() for s in candidate.get("skills", [])}
+        matched = [s for s in wanted if s.lower() in have]
+        gaps = [s for s in wanted if s.lower() not in have]
+        score = round(100 * len(matched) / len(wanted)) if wanted else 50
+        verdict = "strong" if score >= 85 else "good" if score >= 70 else "partial" if score >= 50 else "weak"
+        self.last_usage = AIUsage()
+        return FitAssessmentResult(
+            fit_score=score, verdict=verdict, matched=matched[:8], gaps=gaps[:8],
+            summary=f"Mock assessment: you list {len(matched)} of the {len(wanted)} skills detected in this posting.",
+            recommendation="Switch Settings -> AI -> provider to openai for a real assessment.",
         )
 
     def generate_match_explanation(self, score: MatchScoreBreakdown) -> str:

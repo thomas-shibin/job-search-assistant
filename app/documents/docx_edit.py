@@ -1,0 +1,232 @@
+"""Tailors a resume by editing a copy of the candidate's own .docx in place:
+every paragraph, table, font, colour, spacing, bullet style, header and page
+setup stays exactly as designed -- only the wording of the paragraphs being
+tailored (summary, experience bullets) changes, plus the location line when a
+job calls for a different address.
+
+Formatting inside a rewritten paragraph is kept word by word: the new text is
+aligned against the old (difflib over words), and each new word takes the
+formatting of the old word it lines up with -- so a bolded "Kafka" that
+survives the rewrite stays bold, and inserted words borrow their neighbour's
+formatting.
+"""
+from __future__ import annotations
+
+import copy
+import difflib
+import re
+import shutil
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterator
+
+from docx import Document
+from docx.oxml.ns import qn
+from docx.text.paragraph import Paragraph
+from docx.text.run import Run
+
+_BULLET_PREFIX = re.compile(r"^[\s•●○◦▪▫■□‣⁃∙·\-–—*]+")
+_WORD = re.compile(r"\S+\s*|\s+")
+_MC_FALLBACK = "{http://schemas.openxmlformats.org/markup-compatibility/2006}Fallback"
+_MAX_SPAN = 8  # a source text (e.g. a summary) may span up to this many consecutive paragraphs
+
+
+@dataclass
+class EditReport:
+    replaced: int = 0
+    unchanged: int = 0
+    not_found: list[str] = field(default_factory=list)
+    address_replaced: bool = False
+
+
+def _key(text: str) -> str:
+    """Comparison key: bullet glyphs, case and spacing don't matter."""
+    return " ".join(_BULLET_PREFIX.sub("", text).split()).casefold()
+
+
+def _all_paragraphs(doc) -> Iterator[Paragraph]:
+    """Every paragraph in reading order: body, tables, text boxes, then headers/footers."""
+    parts = [doc.element.body]
+    for section in doc.sections:
+        for part in (section.header, section.footer, section.first_page_header, section.first_page_footer):
+            if not part.is_linked_to_previous:
+                parts.append(part._element)
+    for part in parts:
+        for p in part.iter(qn("w:p")):
+            # A text box is stored twice (modern + legacy fallback copy); edit the one Word shows.
+            if not any(ancestor.tag == _MC_FALLBACK for ancestor in p.iterancestors()):
+                yield Paragraph(p, None)
+
+
+def _text_runs(paragraph: Paragraph) -> list:
+    return [run for run in paragraph.runs if run.text]
+
+
+def set_paragraph_text(paragraph: Paragraph, new_text: str) -> None:
+    """Replace a paragraph's wording, keeping its paragraph formatting and, word
+    by word, the character formatting of the text it replaces.
+    """
+    # Hyperlinked words would otherwise survive next to the new text: keep their
+    # runs (and formatting) as plain runs; the link itself goes with the old wording.
+    for link in paragraph._p.findall(qn("w:hyperlink")):
+        for r in link.findall(qn("w:r")):
+            link.addprevious(r)
+        link.getparent().remove(link)
+    runs = _text_runs(paragraph)
+    if not runs:
+        paragraph.add_run(new_text)
+        return
+    old_text = "".join(run.text for run in runs)
+    prefix = _BULLET_PREFIX.match(old_text)
+    if prefix and not _BULLET_PREFIX.match(new_text):
+        new_text = prefix.group(0) + new_text  # keep a typed-in "• " bullet
+
+    # Which run owns each old word.
+    owner: list[int] = []
+    old_words: list[str] = []
+    position, run_starts = 0, []
+    for run in runs:
+        run_starts.append(position)
+        position += len(run.text)
+    for match in _WORD.finditer(old_text):
+        old_words.append(match.group(0))
+        owner.append(max(i for i, start in enumerate(run_starts) if start <= match.start()))
+
+    new_words = _WORD.findall(new_text)
+    assigned: list[int] = []
+    matcher = difflib.SequenceMatcher(a=[w.strip().casefold() for w in old_words],
+                                      b=[w.strip().casefold() for w in new_words], autojunk=False)
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "delete":
+            continue
+        for offset in range(j2 - j1):
+            if tag == "equal" or (tag == "replace" and i1 + offset < i2):
+                assigned.append(owner[i1 + offset])
+            else:  # inserted words: format like the word before them
+                assigned.append(assigned[-1] if assigned else owner[min(i1, len(owner) - 1)])
+
+    # Group consecutive words that share a source run into one new run each.
+    groups: list[tuple[int, str]] = []
+    for word, run_index in zip(new_words, assigned):
+        if groups and groups[-1][0] == run_index:
+            groups[-1] = (run_index, groups[-1][1] + word)
+        else:
+            groups.append((run_index, word))
+
+    anchor = runs[0]._r
+    for run_index, text in groups:
+        new_r = copy.deepcopy(runs[run_index]._r)
+        for child in list(new_r):
+            if child.tag != qn("w:rPr"):
+                new_r.remove(child)
+        anchor.addprevious(new_r)
+        Run(new_r, paragraph).text = text
+    for run in runs:
+        run._r.getparent().remove(run._r)
+
+
+def _remove_paragraph(paragraph: Paragraph) -> None:
+    element = paragraph._p
+    element.getparent().remove(element)
+
+
+def tailor_docx(
+    base_path: Path, out_path: Path, replacements: list[tuple[str, str]], *,
+    location_line: str | None = None, full_address: bool = False,
+) -> EditReport:
+    """Copy `base_path` to `out_path`, then for each (original text, new text)
+    rewrite the paragraph(s) holding the original text. Text found in several
+    consecutive paragraphs (a multi-paragraph summary) is rewritten into the
+    first and the rest are removed. `location_line` replaces the address line in
+    the resume's header: a complete street address (`full_address`) as given,
+    a "City, Province, Country" one in the shape the resume already uses.
+    """
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(base_path, out_path)
+    doc = Document(str(out_path))
+    paragraphs = [p for p in _all_paragraphs(doc) if p.text.strip()]
+    keys = [_key(p.text) for p in paragraphs]
+    used: set[int] = set()
+    report = EditReport()
+
+    for original, new in replacements:
+        target = _key(original)
+        if not target:
+            continue
+        span = _find_span(keys, target, used)
+        if span is None:
+            report.not_found.append(original)
+            continue
+        start, end = span
+        used.update(range(start, end))
+        if _key(new) == target and end - start == 1:
+            report.unchanged += 1
+            continue
+        set_paragraph_text(paragraphs[start], new)
+        for extra in paragraphs[start + 1:end]:
+            _remove_paragraph(extra)
+        report.replaced += 1
+
+    if location_line:
+        report.address_replaced = _replace_location_line(paragraphs, location_line, full_address=full_address)
+
+    doc.save(str(out_path))
+    return report
+
+
+def _find_span(keys: list[str], target: str, used: set[int]) -> tuple[int, int] | None:
+    for i, key in enumerate(keys):
+        if i in used or not key:
+            continue
+        if key == target:
+            return i, i + 1
+        if not target.startswith(key):
+            continue
+        joined = key
+        for j in range(i + 1, min(i + _MAX_SPAN, len(keys))):
+            if j in used:
+                break
+            joined = f"{joined} {keys[j]}"
+            if joined == target:
+                return i, j + 1
+            if not target.startswith(joined):
+                break
+    return None
+
+
+_PLACE = re.compile(r"^[A-Za-zÀ-ÿ.'\- ]{2,40}(,\s*[A-Za-zÀ-ÿ.'\- ]{2,40}){1,2}$")
+_COUNTRIES = {"canada", "usa", "united states", "india", "uk", "united kingdom"}
+_NOT_ADDRESS = re.compile(r"@|https?:|www\.|linkedin|github|\.com\b", re.I)
+_PHONE = re.compile(r"^[\s+()\-.\d]{7,}$")
+_STREET = re.compile(r"\d+[A-Za-z]?\s+[A-Za-zÀ-ÿ]")  # "1234 Main", "12B Elm"
+_POSTAL = re.compile(r"\b[A-Z]\d[A-Z]\s?\d[A-Z]\d\b|\b\d{5}(?:-\d{4})?\b", re.I)  # Canadian / US
+
+
+def _is_address_line(text: str) -> bool:
+    """A header line holding the candidate's address: "Victoria, Canada" or a full
+    "1234 Main St, Unit 5, Victoria, BC V8W 1A1" -- never the email/phone/links."""
+    if not text or len(text) > 140 or "," not in text or _NOT_ADDRESS.search(text) or _PHONE.match(text):
+        return False
+    return bool(_PLACE.match(text) or _STREET.search(text) or _POSTAL.search(text))
+
+
+def _replace_location_line(paragraphs: list[Paragraph], location_line: str, *, full_address: bool = False) -> bool:
+    """Swap the address line in the header (the first lines, before any section) for `location_line`."""
+    for paragraph in paragraphs[:12]:
+        text = paragraph.text.strip()
+        if not _is_address_line(text):
+            continue
+        parts = [p.strip() for p in text.split(",")]
+        new_parts = [p.strip() for p in location_line.split(",")]
+        if full_address or not _PLACE.match(text):
+            replacement = location_line  # a complete address, or the resume already shows one
+        elif len(parts) == 2 and parts[1].casefold() in _COUNTRIES and len(new_parts) >= 3:
+            replacement = f"{new_parts[0]}, {new_parts[-1]}"  # "Victoria, Canada" -> "Toronto, Canada"
+        elif len(parts) == 2 and len(new_parts) >= 2:
+            replacement = f"{new_parts[0]}, {new_parts[1]}"
+        else:
+            replacement = location_line
+        if _key(replacement) != _key(text):
+            set_paragraph_text(paragraph, replacement)
+        return True
+    return False

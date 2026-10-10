@@ -1,86 +1,55 @@
+# Starting settings for a new installation. They're imported into the database
+# the first time the app starts; after that, change everything on the
+# dashboard's Settings and Watchlist pages (edits to this file are ignored unless
+# re-imported with `python cli.py import-config --force`). Upload your resume on
+# the "My resume" page.
 candidate:
-  name: "Candidate Name"
+  name: "Your Name"
+  # Set automatically when you upload a resume on the "My resume" page.
   base_resume: "./data/resumes/base_resume.docx"
-  # By default the name parsed off your resume's own header wins over `name`
-  # above (which is easy to forget to edit). Set true to force `name` to
-  # always win instead, e.g. for a different spelling/nickname than the file.
+  # By default the name read from your resume's header wins over `name` above.
+  # Set true to always use `name` instead (e.g. a nickname or different spelling).
   override_parsed_name: false
 
-address_profiles:
-  british_columbia:
-    city: "Victoria"
-    province: "BC"
-    country: "Canada"
+# Addresses for tailored resumes (Settings -> Address profiles). Optional: with
+# none, a tailored resume shows the job's own city and province; with one, that
+# address is always used; with several, the one in the job's province is used.
+# street/unit/postal_code are optional -- with a street the full address is shown.
+address_profiles: {}
+#  home:
+#    street: "1234 Example St"
+#    unit: "Unit 5"
+#    city: "Toronto"
+#    province: "ON"
+#    postal_code: "M5V 1A1"
+#    country: "Canada"
 
-  ontario:
-    city: "Toronto"
-    province: "ON"
-    country: "Canada"
+# The job search used by the Find jobs page and by scheduled scans: one search
+# per title x location. Empty lists search every job in `country`.
+# Needs ADZUNA_APP_ID / ADZUNA_APP_KEY in .env (free at developer.adzuna.com).
+search:
+  titles: []
+  locations: []
+  keywords: []
+  country: "ca"
+  scan_in_background: true
+  adzuna_daily_limit: 250
 
-search_profiles:
-  - name: "BC Backend"
-    enabled: true
-    locations:
-      - "Victoria, BC"
-      - "Vancouver, BC"
-      - "Remote Canada"
-    address_profile: "british_columbia"
-    titles:
-      - "Senior Software Engineer"
-      - "Senior Backend Engineer"
-      - "Senior Java Developer"
-      - "Staff Software Engineer"
-    # Automated discovery (Milestone 12), on top of manual `discover`: public,
-    # unauthenticated job-board APIs. Board tokens/company slugs are the same
-    # ones in the company's careers-page URL, e.g. boards.greenhouse.io/<token>
-    # or jobs.lever.co/<company>. Empty by default -- scheduler.enabled and
-    # `run`/`serve` only ever poll what's listed here.
-    greenhouse_boards: []
-    lever_companies: []
-    # Adzuna: a job-aggregator API (covers many employers per query, not just
-    # one ATS board) -- searches using the `titles`/`locations` above. Needs
-    # ADZUNA_APP_ID/ADZUNA_APP_KEY in .env (free signup at
-    # developer.adzuna.com); disabled here until those are set.
-    adzuna_enabled: false
-    adzuna_country: "ca"
-
-  - name: "Ontario Backend"
-    enabled: true
-    locations:
-      - "Toronto, ON"
-      - "Mississauga, ON"
-    address_profile: "ontario"
-    titles:
-      - "Senior Software Engineer"
-      - "Senior Backend Engineer"
-      - "Senior Java Developer"
+# Company job boards (Greenhouse / Lever) to watch, e.g.
+#  - name: "My companies"
+#    address_profile: ""
+#    greenhouse_boards: ["shopify"]     # from boards.greenhouse.io/<token>
+#    lever_companies: ["netflix"]       # from jobs.lever.co/<company>
+search_profiles: []
 
 matching:
   minimum_score: 75
-
-  required_or_high_value_skills:
-    - Java
-    - Spring Boot
-    - REST APIs
-    - Distributed Systems
-
-  preferred_skills:
-    - AWS
-    - Kubernetes
-    - Docker
-    - PostgreSQL
-    - MongoDB
-    - Kafka
-    - OAuth2
-    - Keycloak
-
-  negative_keywords:
-    - "Frontend Developer"
-    - "React Developer"
-    - "PHP Developer"
-    - "iOS Developer"
-
-  # Must sum to 100. See docs/ARCHITECTURE.md for the scoring model.
+  # Skills that matter most for your target roles, e.g. ["Java", "AWS"].
+  required_or_high_value_skills: []
+  preferred_skills: []
+  # Job titles to skip, e.g. ["Intern", "PHP Developer"].
+  negative_keywords: []
+  # Must sum to 100.
   weights:
     technical_skills: 30
     relevant_experience: 20
@@ -91,17 +60,13 @@ matching:
     domain_experience: 5
     education: 5
 
-# AI-based job-requirement extraction (Milestone 5). Disabled by default so
-# `analyze` never makes a billed call until you opt in here and set
-# OPENAI_API_KEY in .env. Set provider to "mock" to exercise this pipeline
-# stage with a free, deterministic heuristic instead of a real API call.
+# AI (needs OPENAI_API_KEY in .env). "Analyze with AI" and resume tailoring use it
+# whenever you click them; `enabled` additionally runs AI requirement extraction
+# on every job scheduled scans find (a small cost per job).
 ai:
   enabled: false
   provider: openai
   model: gpt-4o-mini
-  # Off by default: the deterministic, templated explanation (see "Analyzing
-  # jobs" in the README) is free and reproducible. Turning this on replaces
-  # it with an AI-polished version, at the cost of one extra call per job.
   generate_match_explanations: false
 
 resume:
@@ -116,6 +81,12 @@ resume:
 notifications:
   minimum_score: 80
 
+# Telegram alerts for new jobs matching a watch (set up on the Watchlist page).
+watchlist:
+  enabled: false
+  max_alerts_per_run: 15
+  watches: []
+
 scheduler:
   enabled: true
-  interval_minutes: 15
+  interval_minutes: 60

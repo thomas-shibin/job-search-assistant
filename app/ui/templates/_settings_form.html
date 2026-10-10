@@ -1,0 +1,67 @@
+{# Renders a node tree from app/ui/forms.py. Field names carry the type suffixes parse_form expects. #}
+{% from "_tag_picker.html" import tag_picker %}
+{% macro help(node) %}{% if node.help %}<small class="muted">{{ node.help }}</small>{% endif %}{% endmacro %}
+
+{% macro field(node) %}
+  {% if node.kind == "bool" %}
+    <label class="check">
+      <input type="hidden" name="{{ node.name }}" value="false">
+      <input type="checkbox" name="{{ node.name }}" value="true" {% if node.value %}checked{% endif %}>
+      {{ node.label }}
+    </label>
+    {{ help(node) }}
+  {% elif node.kind == "int" %}
+    <label>{{ node.label }}<input type="number" name="{{ node.name }}" value="{{ node.value if node.value is not none else '' }}" required></label>
+    {{ help(node) }}
+  {% elif node.kind == "text" %}
+    <label>{{ node.label }}<input type="text" name="{{ node.name }}" value="{{ node.value }}"></label>
+    {{ help(node) }}
+  {% elif node.kind == "tags" %}
+    <div class="field-label">{{ node.label }}</div>
+    {{ tag_picker(node.name, node.catalog, node.value, label=node.label) }}
+    {{ help(node) }}
+  {% elif node.kind == "lines" %}
+    <label>{{ node.label }}
+      <textarea name="{{ node.name }}" rows="{{ [node.value.count('\n') + 2, 3]|max }}" placeholder="One per line">{{ node.value }}</textarea>
+    </label>
+    {{ help(node) }}
+  {% elif node.kind == "group" %}
+    <fieldset class="settings-group">
+      <legend>{{ node.label }}</legend>
+      {{ help(node) }}
+      <div class="settings-grid">{% for child in node.children %}<div class="settings-field">{{ field(child) }}</div>{% endfor %}</div>
+    </fieldset>
+  {% elif node.kind in ("list", "dict") %}
+    {% for item in node.entries %}
+      <details class="settings-item" {% if not item.new and loop.length <= 3 %}open{% endif %}>
+        <summary>
+          {% if item.new %}+ Add new
+          {% elif node.kind == "dict" %}{{ item.key }}
+          {% else %}{{ (item.children|selectattr("path", "equalto", item.path ~ ".name")|first).value or "Entry " ~ loop.index }}{% endif %}
+        </summary>
+        {% if item.new %}<input type="hidden" name="{{ item.path }}._new" value="1">{% endif %}
+        {% if node.kind == "dict" %}
+          <label>Key<input type="text" name="{{ item.path }}._key" value="{{ item.key }}" {% if not item.new %}required{% endif %}></label>
+        {% endif %}
+        <div class="settings-grid">{% for child in item.children %}<div class="settings-field">{{ field(child) }}</div>{% endfor %}</div>
+        {% if not item.new %}
+          <label class="check danger-text">
+            <input type="hidden" name="{{ item.path }}._delete:bool" value="false">
+            <input type="checkbox" name="{{ item.path }}._delete:bool" value="true"> Delete on save
+          </label>
+        {% endif %}
+      </details>
+    {% endfor %}
+  {% endif %}
+{% endmacro %}
+
+{% macro section_form(action, form, button="Save") %}
+  <form method="post" action="{{ action }}" class="settings-form" hx-boost="false">
+    {% if form.kind == "group" %}
+      <div class="settings-grid">{% for child in form.children %}<div class="settings-field {% if child.kind in ('group', 'list', 'dict') %}wide{% endif %}">{{ field(child) }}</div>{% endfor %}</div>
+    {% else %}
+      {{ field(form) }}
+    {% endif %}
+    <div class="form-foot"><button type="submit" class="primary">{{ button }}</button></div>
+  </form>
+{% endmacro %}

@@ -1,5 +1,8 @@
 # Local AI Job Application Assistant
 
+> **Installing on another computer?** See [INSTALL.md](INSTALL.md) -- one-command installers
+> for Windows (`install.cmd`) and Linux (`./install.sh`), with or without Docker.
+
 A local, human-in-the-loop tool that discovers jobs, scores them against your resume,
 generates a truthful tailored resume for strong matches, and lets you review and approve
 before anything is submitted. See `docs/ARCHITECTURE.md` for the full design and
@@ -8,13 +11,16 @@ what each one covers.
 
 ## Requirements
 
-- Windows with PowerShell
-- Python 3.11+ (the project targets 3.12+ per the long-term design, but runs on 3.11)
-- [Git for Windows](https://git-scm.com/download/win) (not required to run the app, but
-  needed to commit — it wasn't detected on this machine during scaffolding)
+- Windows (PowerShell) or Ubuntu/Linux (bash) — the same code runs on both
+- Python 3.11+ (the project targets 3.12+ per the long-term design, but runs on 3.11;
+  tested on 3.14 on Ubuntu)
 - [LibreOffice](https://www.libreoffice.org/download/download/), specifically the
-  `soffice` binary on your `PATH` — used for DOCX -> PDF conversion of tailored resumes.
-  Optional: `generate-resume` still produces a usable DOCX without it, just no PDF.
+  `soffice` binary — used for DOCX -> PDF conversion of tailored resumes. On Windows it is
+  also found in its default `Program Files` install folder; on Ubuntu `sudo apt install
+  libreoffice` puts it on `PATH`. Optional: `generate-resume` still produces a usable DOCX
+  without it, just no PDF.
+- Desktop notifications: nothing extra on Windows (`win10toast` installs automatically);
+  on Ubuntu, `notify-send` (package `libnotify-bin`, preinstalled on the desktop edition).
 
 ## Setup (PowerShell)
 
@@ -44,6 +50,40 @@ python cli.py validate-config
 # Parse your base resume into the structured candidate profile
 python cli.py import-resume data\resumes\base_resume.docx
 ```
+
+## Setup (Ubuntu / Linux)
+
+```bash
+# From the project root (Ubuntu: sudo apt install python3-venv libreoffice libnotify-bin)
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+
+python cli.py init
+cp .env.example .env && nano .env          # fill in your OpenAI API key
+nano config/config.yaml                    # candidate info, search profiles, resume path
+alembic upgrade head
+python cli.py validate-config
+python cli.py import-resume data/resumes/base_resume.docx
+```
+
+Every command below works the same on both platforms — only the venv activation line and
+path separators differ (`.\.venv\Scripts\Activate.ps1` vs `source .venv/bin/activate`).
+
+## Running with Docker (Windows or Linux)
+
+```bash
+docker compose up --build -d      # dashboard on http://127.0.0.1:8001
+docker compose logs -f app
+docker compose exec app python cli.py validate-config   # any CLI command, inside the container
+docker compose down
+```
+
+The container bind-mounts `data/` and `config/`, so it shares the database, resumes and
+settings with a native install, and applies migrations on every start. It reads `.env`
+via `env_file` — Compose expands `$` in `.env` values, so wrap any value containing `$` in
+single quotes (`KEY='pa$word'`). Desktop notifications don't reach the host from a container
+(they're skipped with a log warning); `open-application` needs a browser, so run that one natively.
 
 ## Importing your base resume (Milestone 2)
 
@@ -174,9 +214,20 @@ python cli.py generate-resume 1
 ```
 
 This runs the full chain for job id `1`: AI tailoring (summary rewrite, skill
-reordering, bullet rephrasing) -> a deterministic truthfulness check -> a rendered DOCX
+reordering, bullet rephrasing) -> a deterministic truthfulness check -> a DOCX
 (and PDF, if LibreOffice is on `PATH`) -> an artifact bundle under
 `data\applications\<company>_<title>_<job_id>\` -> the job moves to `READY_FOR_REVIEW`.
+
+The DOCX is **your own base resume with only the wording changed**: the file is copied
+and only the summary and experience bullets are rewritten (and the location line, when a
+job is elsewhere -- see the address rules below), so layout, fonts, tables, colours and
+spacing stay exactly as you designed them. The skills section is left as written. Only a
+PDF base resume gets a plain generated layout instead, since there is no Word design to
+keep. Changed your resume's design? `python cli.py rebuild-resumes` re-creates every
+tailored resume in the new design from the wording already saved (no AI calls).
+
+Rewording needs AI: with `ai.enabled: false` (Settings → AI) the built-in stand-in keeps
+every bullet word for word, so a "tailored" resume is your original.
 
 **Truthfulness guardrail** (spec §8, `app/resume/validator.py`): every AI-rewritten bullet
 must cite the `AccomplishmentBullet` id it came from, and its text may not introduce any
@@ -188,8 +239,16 @@ actual profile, never invent one. `TailoredResume.validation_status` is `PASSED`
 nothing needed a fallback; otherwise `PARTIAL` (still usable — check the dashboard's diff
 view to see what was kept verbatim and why).
 
-Address swap (`resume.change_address`) only applies to a job discovered under a search
-profile — a manually imported job has nothing to swap to, so it keeps no address override.
+Address (`resume.change_address`, address profiles in Settings): the location line in your
+resume's header is swapped for the job. Add a complete address -- street, unit/building and
+postal code are optional -- and the resume shows it in full; without a street it shows the
+city and province in the shape your resume already uses ("Victoria, Canada" -> "Toronto,
+Canada"). Which address is used, first match wins: the address of the search profile that
+found the job; the address profile in the job's province (as the posting states it --
+"Location: Vancouver" -- else as listed); your only address profile, if you have exactly one;
+with no address profiles at all, the job's own city and province. Otherwise (e.g. a remote
+job) your resume's own line stays. After changing addresses, run `python cli.py
+rebuild-resumes` to update resumes you've already generated.
 
 Once a resume is generated, move the job through its lifecycle with:
 
@@ -219,35 +278,111 @@ resume source (accepted vs. fallback, with the rejection reason shown), and butt
 every lifecycle action above. A minimal JSON API backed by the same service layer lives
 under `/api/jobs` for anything else that wants to talk to this data later.
 
+### Finding jobs (landing page)
+
+The landing page opens with your **default job search** (Settings → Job search) already
+filled in and run. Job titles, locations and keywords are picked from searchable
+dropdowns: type to filter, press Enter to pick, or add anything that isn't listed.
+One Adzuna search runs per title × location, and the merged results are shown
+newest-first as cards. Keywords narrow every search (a job must mention at least one) at
+no extra cost. An empty box means "any", so empty titles and locations search every job
+in the country. "Remote" finds remote jobs anywhere in the country. Edit the boxes for a
+one-off search, or click **Save as default**.
+
+The dropdown options come from the **search catalog** (`search_terms` table): a built-in
+list of common titles, skills and Canadian provinces and cities, plus whatever a **market
+scan** finds. Run a scan from Settings → Search catalog → Refresh catalog, or with
+`python cli.py catalog-scan`. It costs about 50 Adzuna requests and adds every province,
+region and city with its job count, recurring job titles, employers, and how often each
+keyword appears. Locations a scan has mapped are then searched by their exact place
+(Canada › British Columbia › Capital › Victoria) instead of free text. Anything you type
+into a search, setting or watch is added to the catalog too.
+
+Each card has **Open job** (the posting) and **Analyze with AI**. Analyze saves the
+job, scores it with the free keyword scorer, and sends the job description plus your
+imported resume to the configured AI provider for a fit assessment: a 0-100 score, a
+verdict, what you match, the gaps, and a recommendation. This runs whenever you click,
+independent of `ai.enabled`, but each job is assessed once per resume version unless you
+click **Re-run analysis**. Calls show on the AI Costs page (about $0.0005 each with
+gpt-4o-mini). Tailoring a resume stays a separate step on the job's page.
+
+Adzuna's free tier allows about 250 requests a day. Dashboard searches are cached for
+10 minutes. Scheduled scans use at most 60% of `search.adzuna_daily_limit` and rotate
+through the title × location combinations when there are more than fit in one scan; the
+Settings page shows how often each combination is checked.
+
 ## Notifications (Milestone 10)
 
 When a job qualifies during an automated `run`/`serve` pass (not a manual `analyze`, which
 already prints its result to the terminal) and its score meets
 `notifications.minimum_score` (a stricter bar than `matching.minimum_score` is allowed —
-being trackable isn't the same as being worth an interruption), a Windows toast notification
-is shown via `win10toast`. A failed notification (no OS notification service available,
+being trackable isn't the same as being worth an interruption), a desktop notification is
+shown — a Windows toast via `win10toast` on Windows, `notify-send` everywhere else
+(`app/scheduler/run.py` picks by platform). A failed notification (no OS notification service available,
 etc.) is logged and never breaks the run that triggered it.
+
+### Telegram watchlist alerts
+
+The **Watchlist** page holds saved searches that message you on Telegram the moment a
+`serve` (or `run`) scan finds a new matching job. A watch can be as lean as a couple of
+locations or keywords, picked from the same dropdowns as the job search:
+
+- **Locations / Job titles / Keywords** -- within a box any entry matches; every box you
+  fill in must match. Locations match by city ("Victoria, BC" matches Adzuna's "Victoria,
+  Capital") or province ("Ontario").
+- **Alert when match score is at least** -- e.g. 80: only jobs your resume scores 80+ on.
+  Leave it empty to hear about every match.
+- **Search for these jobs on every scan** (on by default) -- the watch runs its own Adzuna
+  search, so it finds jobs your main job search doesn't cover. Its searches share the
+  daily Adzuna budget with the job search (the Settings page shows how often each runs).
+- **More filters** -- only/never these companies, skip jobs mentioning words, salary
+  range (jobs without a listed salary still match), job type (full-time, part-time,
+  permanent, contract) and how recently it was posted.
+
+Jobs already seen in earlier scans are never re-alerted. To set up Telegram:
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and put its token in `.env` as
+   `TELEGRAM_BOT_TOKEN` (the only Telegram value kept in `.env`).
+2. Open your bot in Telegram and press **Start** (or send it any message).
+3. On the Watchlist page, click **Detect chat ID**, then **Send test message**.
+4. Tick **Enabled**, save, and add your watches.
+
+A watch with only companies has nothing to search Adzuna by; it checks the jobs your other
+searches find (add the company's Greenhouse/Lever board under Settings → Search profiles to
+cover it directly). If one scan finds more than *Max alerts per run* matches, the rest
+arrive as a single summary message.
+
+## Settings (dashboard)
+
+All settings (candidate, search profiles and job sources, matching, AI, resume, notifications,
+watchlist, scan interval) live in the database and are edited on the dashboard's
+**Settings** and **Watchlist** pages. Changes apply immediately, including the scan
+interval, with no restart. The Settings page also shows whether each `.env` secret is set,
+when the next scan is due, and has a **Scan now** button.
+
+`config/config.yaml` is only an import source: the first time the app loads settings and
+the database has none, it copies the file in. Later edits to the file are ignored unless you
+re-import it with `python cli.py import-config --force` (add `--keep-watches` to leave your
+watches alone). `.env` holds only secrets: `OPENAI_API_KEY`, `ADZUNA_APP_ID`/`ADZUNA_APP_KEY`,
+`TELEGRAM_BOT_TOKEN` and `DATABASE_URL`.
+
+The database is SQLite (`data/job_assistant.db`) by default, with nothing to install. To use
+PostgreSQL instead, run `pip install -e ".[postgres]"`, set
+`DATABASE_URL=postgresql+psycopg://user:pass@host:5432/jobs` and run `alembic upgrade head`.
 
 ## Automated discovery + the scheduler (Milestones 11-12)
 
 Beyond manual `discover`, `run`/`serve` can poll public, documented job-board APIs
-directly — Greenhouse (`boards-api.greenhouse.io`), Lever (`api.lever.co`), and Adzuna
-(`api.adzuna.com`, a job-aggregator API covering many employers per query instead of one
-ATS board at a time) — configured per search profile:
+directly:
 
-```yaml
-search_profiles:
-  - name: "BC Backend"
-    ...
-    greenhouse_boards: ["some-company"]   # from boards.greenhouse.io/<token>
-    lever_companies: ["some-company"]     # from jobs.lever.co/<company>
-    adzuna_enabled: true                  # searches using this profile's titles/locations
-    adzuna_country: "ca"                  # see app/config/schema.py for supported codes
-```
-
-Adzuna additionally needs a free `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` pair in `.env` (sign up
-at https://developer.adzuna.com/ — see `.env.example`); a profile with `adzuna_enabled:
-true` but no credentials set is skipped with a warning rather than failing the run.
+- **Adzuna** (`api.adzuna.com`, a job aggregator covering many employers per query). It uses
+  the global job search (Settings → Job search: titles × locations, country) whenever
+  `search.scan_in_background` is on. It needs a free `ADZUNA_APP_ID`/`ADZUNA_APP_KEY` in
+  `.env` (https://developer.adzuna.com/). Without them, Adzuna is skipped with a warning.
+- **Greenhouse** (`boards-api.greenhouse.io`) and **Lever** (`api.lever.co`): specific
+  companies' own job boards, listed per search profile (Settings → Search profiles) as
+  `greenhouse_boards` (from boards.greenhouse.io/<token>) and `lever_companies` (from
+  jobs.lever.co/<company>).
 
 ```powershell
 python cli.py run      # one discover -> analyze -> notify -> generate-resume pass, then exit
@@ -269,33 +404,99 @@ with backoff on a transient connection error/rate limit before giving up.
 ## Running tests
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
+.\.venv\Scripts\Activate.ps1      # Ubuntu: source .venv/bin/activate
 pytest
 ```
 
-## CLI
+## Command reference
 
-```powershell
-python cli.py init              # create data dirs + starter config.yaml
-python cli.py validate-config   # load and validate config.yaml
-python cli.py import-resume PATH [--force]  # parse base resume into CandidateProfile
-python cli.py discover --description-file job.txt [--url ...] [--company ...] [--title ...] [--location ...]
-python cli.py analyze JOB_ID    # or --all; hard filters + (optional AI extraction) + scoring
-python cli.py generate-resume JOB_ID   # tailor + validate + DOCX/PDF + artifact bundle -> READY_FOR_REVIEW
-python cli.py approve JOB_ID
-python cli.py open-application JOB_ID  # opens source_url in your browser, marks APPLICATION_OPENED
+Every command, with all its options. Run them from the project root with the virtual
+environment active (`source .venv/bin/activate`; Windows: `.\.venv\Scripts\Activate.ps1`).
+Using Docker? Put `docker compose exec app` in front of any `python cli.py ...` command to
+run it inside the container (e.g. `docker compose exec app python cli.py rebuild-resumes`).
+Once installed with `pip install -e .`, `jobassistant <command>` works too.
+
+`--config PATH` (on the commands that take it) is only used the very first time, to import
+a `config.yaml` when the database has no settings yet -- settings live in the database and
+are edited on the dashboard's Settings page.
+
+### Docker
+
+```bash
+docker compose up --build -d          # build + start (dashboard on http://127.0.0.1:8001)
+docker compose up -d                  # start without rebuilding
+docker compose logs -f app            # follow the logs
+docker compose ps                     # status / health
+docker compose restart app            # restart
+docker compose down                   # stop and remove the container (data/ and config/ stay)
+docker compose exec app python cli.py <command>   # run any command below inside the container
+```
+
+### Setup and settings
+
+```bash
+python cli.py init                                  # create data folders + a starter config/config.yaml
+python cli.py validate-config [--config PATH]       # check the settings stored in the database
+python cli.py import-config [PATH]                  # import a config.yaml into the database (first run only)
+python cli.py import-config [PATH] --force          # overwrite the database settings from the file
+python cli.py import-config [PATH] --force --keep-watches   # ...but leave watchlist entries alone
+alembic upgrade head                                # apply database migrations (Docker does this on start)
+```
+
+### Your resume
+
+```bash
+python cli.py import-resume data/resumes/base_resume.docx           # parse your base resume (.docx or .pdf)
+python cli.py import-resume data/resumes/base_resume.docx --force   # re-import even if unchanged
+python cli.py rebuild-resumes                       # re-create every tailored resume in your resume's current design (no AI calls)
+python cli.py rebuild-resumes --job JOB_ID          # just one job
+python cli.py rebuild-resumes --no-pdf              # DOCX only, skip the PDF (no LibreOffice needed)
+```
+
+### Jobs: import, score, tailor
+
+```bash
+python cli.py discover --description-file job.txt   # import one job from a text file
+python cli.py discover --description "..." --url URL --company NAME --title TITLE --location PLACE
+python cli.py analyze JOB_ID [--config PATH]        # hard filters + (optional AI extraction) + scoring
+python cli.py analyze --all                         # every job still in DISCOVERED
+python cli.py generate-resume JOB_ID [--config PATH]   # tailor + validate + DOCX/PDF + bundle -> READY_FOR_REVIEW
+```
+
+### Application status
+
+```bash
+python cli.py approve JOB_ID            # approve a reviewed tailored resume
+python cli.py open-application JOB_ID   # open the posting in your browser, mark APPLICATION_OPENED (run natively, not in Docker)
 python cli.py mark-applied JOB_ID
 python cli.py mark-interview JOB_ID
 python cli.py mark-offer JOB_ID
 python cli.py mark-rejected JOB_ID
-python cli.py archive JOB_ID
-python cli.py skip JOB_ID       # available from any non-terminal status
-python cli.py run               # one discover -> analyze -> notify -> generate-resume pass
-python cli.py serve             # dashboard (http://127.0.0.1:8000) + scheduler.interval_minutes timer
+python cli.py archive JOB_ID            # done, no further action
+python cli.py skip JOB_ID               # stop pursuing (from any non-final status)
 ```
 
-Once installed via `pip install -e .`, the same commands are also available as
-`jobassistant <command>` (e.g. `jobassistant validate-config`).
+### Dashboard, scans and alerts
+
+```bash
+python cli.py serve                     # dashboard on http://127.0.0.1:8000 + the background scheduler
+python cli.py serve --host 0.0.0.0 --port 8000      # listen on another address/port
+python cli.py run [--config PATH]       # one discover -> analyze -> notify -> tailor pass, right now
+python cli.py telegram-setup            # detect + save your Telegram chat id (message your bot first)
+python cli.py telegram-test             # send a test Telegram message
+python cli.py catalog-scan              # refresh the search dropdowns from the job market (~50 Adzuna requests)
+python cli.py catalog-scan --country ca # ...for another Adzuna country (default: Settings -> Job search)
+```
+
+### Development
+
+```bash
+python -m venv .venv && source .venv/bin/activate && pip install -e ".[dev]"   # first-time install
+pytest                                  # run the tests
+pytest tests/unit/test_docx_edit.py -q  # one test file
+alembic revision --autogenerate -m "describe the change"   # new migration after a model change
+python cli.py <command> --help          # full help for any command
+```
 
 ## What data leaves your machine
 
@@ -312,6 +513,8 @@ at all with `ai.provider: mock`), and only for these operations:
 - **Automated discovery** (Milestone 12, opt-in via `greenhouse_boards`/`lever_companies`):
   requests only go to the public job-board APIs you've explicitly configured a
   token/company slug for.
+- **Telegram watchlist alerts** (opt-in via `watchlist.enabled`): the title, company,
+  location, score and posting link of each matching job, sent to your own bot's chat.
 
 Nothing else (API keys, other candidates' data, application history) is transmitted.
 API keys live only in your local `.env` file, which is git-ignored and never logged.
@@ -355,7 +558,8 @@ All 13 milestones are done:
 - **Milestone 9**: the FastAPI + Jinja2 + HTMX dashboard (`app/ui/`, `app/services/jobs.py`,
   a minimal JSON API at `app/api/routes.py` backed by the same service layer). Wired to
   `serve`.
-- **Milestone 10**: Windows toast notifications (`app/notifications/windows_toast.py`)
+- **Milestone 10**: desktop notifications — Windows toast (`app/notifications/windows_toast.py`)
+  or `notify-send` on Linux (`app/notifications/linux_notify.py`) —
   gated by `notifications.minimum_score`, wired into the automated `run`/`serve` pipeline.
 - **Milestone 11**: the scheduler (`app/scheduler/run.py`, `app/scheduler/background.py`,
   APScheduler-driven), a file-based run-lock (`app/scheduler/lock.py`), and

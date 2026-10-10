@@ -1,70 +1,274 @@
 {% extends "base.html" %}
-{% block title %}{{ detail.job.title }} - Job Application Assistant{% endblock %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}{{ detail.job.title }} - Job Assistant{% endblock %}
+{% block crumb %}{{ detail.job.title }}{% endblock %}
 {% block content %}
-<p><a href="/">&larr; Back to jobs</a></p>
-<h1>{{ detail.job.title }} @ {{ detail.job.company }}</h1>
-<p>
-  <span class="status-badge status-{{ detail.job.status.value }}">{{ detail.job.status.value }}</span>
-  {% if detail.job.location %}&middot; {{ detail.job.location }}{% endif %}
-  {% if detail.job.remote_type %}&middot; {{ detail.job.remote_type }}{% endif %}
-  &middot; <a href="{{ detail.job.source_url }}" target="_blank" rel="noopener">source posting</a>
-</p>
+{% set job = detail.job %}
+<a class="back-link" href="/">{{ icon("back") }} Back to jobs</a>
 
-<section class="actions">
-  {% for action in actions %}
-  <form method="post" action="/jobs/{{ detail.job.id }}/{{ action.path }}" style="display:inline">
-    <button type="submit">{{ action.label }}</button>
-  </form>
-  {% endfor %}
-</section>
+<header class="page-header">
+  <div class="job-header">
+    {{ avatar(job.company, "lg") }}
+    <div>
+      <h1>{{ job.title }}</h1>
+      <p class="company-line">{{ job.company }}</p>
+      <p class="job-card-meta">
+        <span class="status-badge status-{{ job.status.value }}">{{ job.status.value }}</span>
+        {% if job.location %}<span class="chip">{{ icon("pin") }}{{ job.location }}</span>{% endif %}
+        {% if job.remote_type %}<span class="chip">{{ icon("globe") }}{{ job.remote_type }}</span>{% endif %}
+        {% if job.date_posted %}<span class="chip">{{ icon("clock") }}Posted {{ job.date_posted|ago }}</span>{% endif %}
+      </p>
+    </div>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="{{ job.source_url }}" target="_blank" rel="noopener">View source posting {{ icon("external") }}</a>
+  </div>
+</header>
 
-{% if detail.match_analysis %}
-<section>
-  <h2>Match: {{ detail.match_analysis.overall_score }}/100</h2>
-  <ul class="score-grid">
-    <li>Technical: {{ detail.match_analysis.technical_score }}</li>
-    <li>Experience: {{ detail.match_analysis.experience_score }}</li>
-    <li>Title: {{ detail.match_analysis.title_score }}</li>
-    <li>Seniority: {{ detail.match_analysis.seniority_score }}</li>
-    <li>Platform: {{ detail.match_analysis.platform_score }}</li>
-    <li>Location: {{ detail.match_analysis.location_score }}</li>
-    <li>Domain: {{ detail.match_analysis.domain_score }}</li>
-    <li>Education: {{ detail.match_analysis.education_score }}</li>
-  </ul>
-  <p>{{ detail.match_analysis.explanation }}</p>
-  {% if detail.match_analysis.critical_missing_requirements %}
-    <p><strong>Missing required:</strong> {{ detail.match_analysis.critical_missing_requirements | join(", ") }}</p>
-  {% endif %}
-</section>
-{% else %}
-<p><em>Not analyzed yet.</em></p>
-{% endif %}
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
 
-{% if detail.tailored_resume %}
-<section>
-  <h2>Tailored resume ({{ detail.tailored_resume.validation_status }})</h2>
-  {% if detail.tailored_resume.docx_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.docx" hx-boost="false" download>Download DOCX</a></p>{% endif %}
-  {% if detail.tailored_resume.pdf_path %}<p><a href="/jobs/{{ detail.job.id }}/resume.pdf" hx-boost="false" download>Download PDF</a></p>{% endif %}
-
-  <h3>Summary</h3>
-  <p>{{ detail.tailored_resume.summary_text }}</p>
-
-  <h3>Skills</h3>
-  <p>{{ detail.tailored_resume.skills_order | join(", ") }}</p>
-
-  <h3>Bullet changes vs. base resume</h3>
-  <ul class="bullet-diffs">
-    {% for diff in detail.bullet_diffs %}
-    <li class="{{ 'rejected' if not diff.validation_passed }}">
-      {{ diff.source_text | worddiff(diff.generated_text) | safe }}
-      {% if not diff.validation_passed %}
-        <div class="rejection-note">Kept original wording &mdash; {{ diff.rejection_reason }}</div>
+<div class="detail-grid">
+  <div>
+    <section id="fit" class="panel fit-panel">
+      <div class="panel-head">
+        <div>
+          <h2>AI fit analysis</h2>
+          <p>How well your resume matches this job's requirements.</p>
+        </div>
+      </div>
+      {% if description_preview %}
+        <div class="warning-box">{{ icon("alert") }}<div class="alert-body">This job only has Adzuna's 500-character preview, so the analysis can't see the full requirements.
+          <a href="#description">Paste the full description</a> for an accurate result.</div></div>
       {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-</section>
-{% else %}
-<p><em>No tailored resume generated yet. Run: <code>python cli.py generate-resume {{ detail.job.id }}</code></em></p>
-{% endif %}
+      {% if fit %}
+        <div class="fit-summary">
+          <div class="score-ring fit-{{ fit.verdict }}" style="--score: {{ fit.fit_score }}">
+            <div><span><strong>{{ fit.fit_score }}</strong><small>of 100</small></span></div>
+          </div>
+          <div class="fit-summary-text">
+            <span class="fit-badge fit-{{ fit.verdict }} large">{{ fit.fit_score }}/100 · {{ fit.verdict }} fit</span>
+            <p>{{ fit.summary }}</p>
+          </div>
+        </div>
+        <div class="fit-columns">
+          <div class="fit-list match">
+            <h3>{{ icon("check") }} You match</h3>
+            <ul>{% for item in fit.matched %}<li>{{ item }}</li>{% else %}<li class="muted">Nothing specific</li>{% endfor %}</ul>
+          </div>
+          <div class="fit-list gaps">
+            <h3>{{ icon("alert") }} Gaps</h3>
+            <ul>{% for item in fit.gaps %}<li>{{ item }}</li>{% else %}<li class="muted">None found</li>{% endfor %}</ul>
+          </div>
+        </div>
+        {% if fit.recommendation %}<div class="recommendation"><strong>Recommendation:</strong> {{ fit.recommendation }}</div>{% endif %}
+      {% else %}
+        <div class="empty-state" style="padding: 2rem 1rem">
+          {{ icon("sparkles") }}
+          <p><strong>Not analyzed yet</strong></p>
+          <p class="muted">Compare this job's requirements against your resume.</p>
+        </div>
+      {% endif %}
+      <div class="panel-foot">
+        <span class="muted">{% if fit %}{{ fit.provider }}{% if fit.model %} ({{ fit.model }}){% endif %} · {{ fit.created_at.strftime("%Y-%m-%d %H:%M") }}{% else %}Uses your imported resume{% endif %}</span>
+        {% if has_resume %}
+          <form method="post" action="/jobs/{{ job.id }}/assess" hx-boost="false">
+            <button type="submit" class="{{ '' if fit else 'primary' }}">{{ icon("refresh" if fit else "sparkles") }} {{ "Re-run analysis" if fit else "Analyze with AI" }}</button>
+          </form>
+        {% else %}
+          <form method="post" action="/resume/upload" enctype="multipart/form-data" hx-boost="false" class="inline-form" style="margin: 0">
+            <input type="hidden" name="next" value="/jobs/{{ job.id }}#fit">
+            <label>Upload your resume first (.docx or .pdf) <input type="file" name="resume" accept=".docx,.pdf" required></label>
+            <button type="submit" class="primary">{{ icon("upload") }} Upload resume</button>
+          </form>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="panel">
+      {% if detail.match_analysis %}
+        {% set m = detail.match_analysis %}
+        <div class="panel-head">
+          <div>
+            <h2>Keyword match: {{ m.overall_score }}/100</h2>
+            <p>Rule-based score from your resume's skills and experience.</p>
+          </div>
+        </div>
+        <ul class="score-bars">
+          {% for label, value in [("Technical", m.technical_score), ("Experience", m.experience_score), ("Title", m.title_score),
+                                  ("Seniority", m.seniority_score), ("Platform", m.platform_score), ("Location", m.location_score),
+                                  ("Domain", m.domain_score), ("Education", m.education_score)] %}
+          <li>
+            <div class="bar-label"><span>{{ label }}</span><b>{{ value }}</b></div>
+            <div class="bar"><span style="width: {{ [[value or 0, 0]|max, 100]|min }}%"></span></div>
+          </li>
+          {% endfor %}
+        </ul>
+        <p class="muted">{{ m.explanation }}</p>
+        {% if m.critical_missing_requirements %}
+          <div class="warning-box" style="margin: 0.75rem 0 0">{{ icon("alert") }}<div class="alert-body"><strong>Missing required:</strong> {{ m.critical_missing_requirements | join(", ") }}</div></div>
+        {% endif %}
+      {% else %}
+        <div class="panel-head"><div><h2>Keyword match</h2><p><em>Not analyzed yet.</em></p></div></div>
+      {% endif %}
+    </section>
+
+    {% if detail.tailored_resume %}
+    {% set tr = detail.tailored_resume %}
+    <section class="panel" id="resume">
+      <div class="panel-head">
+        <div>
+          <h2>Tailored resume ({{ tr.validation_status }})</h2>
+          <p>Your own resume, with the wording rewritten for this job. Every change is checked against your original.</p>
+        </div>
+        <div class="actions">
+          <form method="post" action="/jobs/{{ job.id }}/retailor" hx-boost="false"
+                onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').lastChild.textContent = ' Tailoring…'">
+            <button type="submit">{{ icon("sparkles") }} Re-tailor with AI</button>
+          </form>
+          {% if tr.docx_path %}<a class="button primary" href="/jobs/{{ job.id }}/resume.docx" hx-boost="false" download>{{ icon("download") }} Download DOCX</a>{% endif %}
+          {% if tr.pdf_path %}<a class="button" href="/jobs/{{ job.id }}/resume.pdf" hx-boost="false" download>{{ icon("download") }} Download PDF</a>{% endif %}
+        </div>
+      </div>
+
+      {% set changed = detail.bullet_diffs | selectattr("changed") | list %}
+      {% set kept = detail.bullet_diffs | rejectattr("changed") | list %}
+      {% set rejected = detail.bullet_diffs | rejectattr("validation_passed") | list %}
+      {% set summary_changed = detail.original_summary and (detail.original_summary.split() | join(" ")) != ((tr.summary_text or "").split() | join(" ")) %}
+
+      <h3 class="changes-title">What changed in your resume</h3>
+      <div class="changes-overview">
+        <span class="chip {{ 'chip-on' if changed }}">{{ changed | length }} of {{ detail.bullet_diffs | length }} bullets reworded</span>
+        <span class="chip {{ 'chip-on' if summary_changed }}">Summary {{ "rewritten" if summary_changed else "unchanged" }}</span>
+        {% if resume_address %}<span class="chip chip-on">{{ icon("pin") }}Location: {{ resume_address.city }}, {{ resume_address.province }}</span>{% endif %}
+        {% if rejected %}<span class="chip chip-warn">{{ rejected | length }} rewrite{{ "s" if rejected | length != 1 }} rejected, original kept</span>{% endif %}
+      </div>
+      <p class="muted changes-legend"><del>Struck out</del> = removed from your original &nbsp;·&nbsp; <ins>Highlighted</ins> = new wording. Everything else in the document (layout, fonts, skills section) is exactly your base resume.</p>
+
+      {% if resume_address %}
+      <div class="change-card">
+        <div class="change-label">Location line</div>
+        <div class="change-row"><span class="change-tag after">Now</span><div><ins>{{ resume_address.one_line() if resume_address.has_street else resume_address.city ~ ", " ~ resume_address.province ~ ", " ~ resume_address.country }}</ins> <span class="muted">— {{ "your full address" if resume_address.has_street else "city and province, shown in your resume’s own format" }}</span></div></div>
+      </div>
+      {% endif %}
+
+      {% if summary_changed %}
+      {% set before, after = sidediff(detail.original_summary, tr.summary_text) %}
+      <div class="change-card">
+        <div class="change-label">Summary</div>
+        <div class="change-row"><span class="change-tag before">Before</span><div>{{ before }}</div></div>
+        <div class="change-row"><span class="change-tag after">After</span><div>{{ after }}</div></div>
+      </div>
+      {% endif %}
+
+      {% for role, diffs in detail.bullet_groups %}
+        {% set role_changes = diffs | selectattr("changed") | list %}
+        {% set role_rejected = diffs | rejectattr("validation_passed") | list %}
+        {% if role_changes or role_rejected %}
+        <div class="change-group">
+          <div class="change-group-title">{{ role or "Other" }} <span class="muted">· {{ role_changes | length }} of {{ diffs | length }} reworded</span></div>
+          {% for diff in diffs if diff.changed or not diff.validation_passed %}
+            <div class="change-card {{ 'rejected' if not diff.validation_passed }}">
+              {% if diff.changed %}
+                {% set before, after = sidediff(diff.source_text, diff.generated_text) %}
+                <div class="change-row"><span class="change-tag before">Before</span><div>{{ before }}</div></div>
+                <div class="change-row"><span class="change-tag after">After</span><div>{{ after }}</div></div>
+              {% else %}
+                <div class="change-row"><span class="change-tag kept">Kept</span><div>{{ diff.source_text }}</div></div>
+              {% endif %}
+              {% if not diff.validation_passed %}
+                <div class="rejection-note">{{ icon("alert") }} The AI's rewrite was rejected, so your original wording is used: {{ diff.rejection_reason }}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      {% endfor %}
+
+      {% set kept_ok = kept | selectattr("validation_passed") | list %}
+      {% if kept_ok %}
+      <details class="kept-bullets">
+        <summary>{{ kept_ok | length }} bullet{{ "s" if kept_ok | length != 1 }} kept exactly as in your resume</summary>
+        <ul>{% for diff in kept_ok %}<li><span class="muted">{{ diff.role }}:</span> {{ diff.source_text }}</li>{% endfor %}</ul>
+      </details>
+      {% endif %}
+
+      {% if not changed and not summary_changed %}
+        <div class="notice" style="margin-top: 1rem">{{ icon("info") }}<div class="alert-body">Nothing was reworded -- this file is your base resume as written{% if resume_address %} with the location updated{% endif %}. Click <strong>Re-tailor with AI</strong> to rewrite it for this job.</div></div>
+      {% endif %}
+    </section>
+    {% else %}
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Tailored resume</h2>
+          <p><em>No tailored resume generated yet.</em></p>
+        </div>
+      </div>
+      <form method="post" action="/jobs/{{ job.id }}/analyze" enctype="multipart/form-data" hx-boost="false" class="analyze-form">
+        <label>
+          Resume (.docx or .pdf) &mdash; optional if you've already imported one
+          <input type="file" name="resume" accept=".docx,.pdf">
+        </label>
+        <button type="submit" class="primary">{{ icon("pen") }} Analyze &amp; tailor</button>
+      </form>
+    </section>
+    {% endif %}
+
+    <section class="panel" id="description">
+      <div class="panel-head">
+        <div>
+          <h2>Job description</h2>
+          {% if job.source == "adzuna" %}
+            <p>{% if description_preview %}<span class="chip chip-warn">Preview only</span> Adzuna shares just the first 500 characters of a posting.
+               {% else %}From Adzuna, which shares at most 500 characters -- this may or may not be the whole posting.{% endif %}
+               For an accurate AI analysis and tailored resume, paste the full text from the posting below.</p>
+          {% endif %}
+        </div>
+        <a class="button small" href="{{ job.source_url }}" target="_blank" rel="noopener">Open posting {{ icon("external") }}</a>
+      </div>
+      <div class="job-description">{{ job.description }}</div>
+      <details class="paste-description">
+        <summary>{{ icon("file") }} Paste the full description</summary>
+        <form method="post" action="/jobs/{{ job.id }}/description" hx-boost="false" class="quick-form">
+          <label>Copy the whole job description from the posting page and paste it here
+            <textarea name="description" rows="12" required placeholder="Paste the full job posting text..."></textarea>
+          </label>
+          <small class="muted">Replaces the text above. The keyword score is updated, and the AI analysis is re-run if this job has one.</small>
+          <button type="submit" class="primary">Save full description</button>
+        </form>
+      </details>
+    </section>
+  </div>
+
+  <aside>
+    {% if actions %}
+    <section class="panel">
+      <div class="panel-head" style="margin-bottom: 0.75rem"><div><h2>Next steps</h2></div></div>
+      <div class="side-actions">
+        {% for action in actions %}
+        <form method="post" action="/jobs/{{ job.id }}/{{ action.path }}">
+          <button type="submit" class="{{ 'primary' if loop.first else '' }}">{{ action.label }}</button>
+        </form>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    <section class="panel">
+      <div class="panel-head" style="margin-bottom: 0.25rem"><div><h2>Details</h2></div></div>
+      <ul class="facts">
+        <li><span>Status</span><span>{{ job.status.value }}</span></li>
+        <li><span>Company</span><span>{{ job.company }}</span></li>
+        {% if job.location %}<li><span>Location</span><span>{{ job.location }}</span></li>{% endif %}
+        {% if job.remote_type %}<li><span>Work type</span><span>{{ job.remote_type }}</span></li>{% endif %}
+        {% if job.salary_min or job.salary_max %}
+        <li><span>Salary</span><span>{{ "{:,}".format(job.salary_min) if job.salary_min else "?" }}{% if job.salary_max and job.salary_max != job.salary_min %} – {{ "{:,}".format(job.salary_max) }}{% endif %} {{ job.currency or "" }}</span></li>
+        {% endif %}
+        {% if job.date_posted %}<li><span>Posted</span><span>{{ job.date_posted.strftime("%b %d, %Y") }}</span></li>{% endif %}
+        {% if job.date_discovered %}<li><span>Found</span><span>{{ job.date_discovered.strftime("%b %d, %Y") }}</span></li>{% endif %}
+        <li><span>Source</span><span>{{ job.source }}</span></li>
+        {% if job.search_profile_name %}<li><span>Search profile</span><span>{{ job.search_profile_name }}</span></li>{% endif %}
+      </ul>
+    </section>
+  </aside>
+</div>
 {% endblock %}

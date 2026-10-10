@@ -7,6 +7,7 @@ recorded on its own `SourceRunResult` row rather than aborting the run.
 from __future__ import annotations
 
 import logging
+import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -15,16 +16,20 @@ from sqlalchemy.orm import Session
 from app.ai.base import AIProvider
 from app.ai.factory import AIProviderConfigError, build_ai_provider
 from app.ai.settings import AISettings
+from app.catalog.geo import province_of
+from app.catalog.store import location_paths
 from app.config.schema import AppConfig, SearchProfile
 from app.ingestion.pipeline import ingest_raw_job
 from app.matching.pipeline import NoActiveCandidateProfileError, analyze_job
 from app.models.scheduler import SchedulerRun, SourceRunResult
 from app.notifications.base import NotificationProvider
 from app.notifications.service import maybe_notify_qualified_job
+from app.notifications.watchlist import WatchlistAlerter, build_watchlist_alerter
 from app.resume.pipeline import generate_resume_bundle
 from app.scheduler.lock import RunAlreadyInProgressError, run_lock
 from app.sources.adzuna import AdzunaSource
-from app.sources.base import JobSource
+from app.services.search import QuerySpec, queries_per_scan, scan_slice, scan_specs, search_jobs
+from app.sources.base import JobSource, RawJob
 from app.sources.greenhouse import GreenhouseSource
 from app.sources.lever import LeverSource
 from app.sources.settings import AdzunaSettings
@@ -43,37 +48,85 @@ class RunSummary:
     skipped: bool = False
 
 
-def _configured_sources(search_profile: SearchProfile, adzuna_settings: AdzunaSettings) -> list[tuple[str, JobSource]]:
+def _configured_sources(search_profile: SearchProfile) -> list[tuple[str, JobSource]]:
     sources: list[tuple[str, JobSource]] = []
     for token in search_profile.greenhouse_boards:
         sources.append((f"greenhouse:{token}", GreenhouseSource(board_token=token)))
     for company in search_profile.lever_companies:
         sources.append((f"lever:{company}", LeverSource(company=company)))
-    if search_profile.adzuna_enabled:
-        if not (adzuna_settings.app_id and adzuna_settings.app_key):
-            logger.warning(
-                "search_profile %r has adzuna_enabled=true but ADZUNA_APP_ID/ADZUNA_APP_KEY "
-                "are not set in .env -- skipping Adzuna for this run",
-                search_profile.name,
-            )
-        else:
-            sources.append((
-                "adzuna",
-                AdzunaSource(
-                    app_id=adzuna_settings.app_id, app_key=adzuna_settings.app_key,
-                    country=search_profile.adzuna_country,
-                ),
-            ))
     return sources
+
+
+class ScheduledSearchSource:
+    """Adzuna, driven by the global job search *and* every watch that searches
+    (see `scan_specs`): one list of queries sharing the daily request budget.
+    When there are more than fit in one scan, each scan takes the next slice.
+    """
+
+    name = "adzuna"
+
+    def __init__(
+        self, adzuna: AdzunaSource, specs: list[QuerySpec], interval_minutes: int, daily_limit: int,
+        areas: dict[str, list[str]] | None = None,
+    ) -> None:
+        self._adzuna = adzuna
+        self._specs = specs
+        self._interval_minutes = interval_minutes
+        self._daily_limit = daily_limit
+        self._areas = areas or {}
+
+    def discover_jobs(self, search_profile: SearchProfile | None) -> list[RawJob]:
+        per_scan = queries_per_scan(len(self._specs), self._interval_minutes, self._daily_limit)
+        todo = scan_slice(self._specs, per_scan, self._interval_minutes)
+        groups: dict[tuple, list[tuple[str | None, str | None]]] = {}
+        for spec in todo:  # one search_jobs call per (keywords, filters) group
+            groups.setdefault((spec.keywords, spec.filters), []).append((spec.title, spec.location))
+
+        jobs: list[RawJob] = []
+        seen: set[str] = set()
+        failed = 0
+        for (keywords, filters), pairs in groups.items():
+            results = search_jobs(self._adzuna, [], [], pairs=pairs, per_page=50, use_cache=False,
+                                  keywords=list(keywords), areas=self._areas, filters=dict(filters))
+            failed += len(results.failed_queries)
+            for job in results.jobs:
+                key = job.external_id or job.source_url
+                if key not in seen:
+                    seen.add(key)
+                    jobs.append(job)
+        if todo and failed == len(todo):
+            raise RuntimeError(f"Every Adzuna query failed ({failed})")
+        return jobs
+
+
+# Backwards-compatible name.
+GlobalSearchSource = ScheduledSearchSource
+
+
+def _scheduled_search_source(
+    config: AppConfig, adzuna_settings: AdzunaSettings, areas: dict[str, list[str]] | None = None
+) -> JobSource | None:
+    specs = scan_specs(config)
+    if not specs:
+        return None
+    if not (adzuna_settings.app_id and adzuna_settings.app_key):
+        logger.warning("Scheduled Adzuna searches are set up but ADZUNA_APP_ID/ADZUNA_APP_KEY are not set in .env -- skipping")
+        return None
+    adzuna = AdzunaSource(app_id=adzuna_settings.app_id, app_key=adzuna_settings.app_key, country=config.search.country)
+    return ScheduledSearchSource(adzuna, specs, config.scheduler.interval_minutes, config.search.adzuna_daily_limit, areas)
 
 
 def _build_notification_provider() -> NotificationProvider | None:
     try:
-        from app.notifications.windows_toast import WindowsToastNotificationProvider
+        if sys.platform == "win32":
+            from app.notifications.windows_toast import WindowsToastNotificationProvider
 
-        return WindowsToastNotificationProvider()
+            return WindowsToastNotificationProvider()
+        from app.notifications.linux_notify import LinuxNotifySendProvider
+
+        return LinuxNotifySendProvider()
     except Exception:
-        logger.warning("Could not initialize the Windows toast notification provider", exc_info=True)
+        logger.warning("Could not initialize a desktop notification provider for %s", sys.platform, exc_info=True)
         return None
 
 
@@ -91,10 +144,11 @@ def _run_source(
     scheduler_run: SchedulerRun,
     source_name: str,
     source: JobSource,
-    search_profile: SearchProfile,
+    search_profile: SearchProfile | None,
     config: AppConfig,
     ai_provider: AIProvider | None,
     notification_provider: NotificationProvider | None,
+    watchlist_alerter: WatchlistAlerter | None,
     summary: RunSummary,
 ) -> None:
     result = SourceRunResult(
@@ -120,16 +174,25 @@ def _run_source(
             result.jobs_new += 1
             summary.jobs_new += 1
             job = ingest_result.job
-            job.search_profile_name = search_profile.name
-            session.commit()
+            if search_profile is not None:
+                job.search_profile_name = search_profile.name
+                session.commit()
 
+            analysis = None
             try:
                 analysis = analyze_job(session, job, config, ai_provider=ai_provider)
             except NoActiveCandidateProfileError:
                 logger.warning("No active candidate profile; skipping analysis for job_id=%s", job.id)
-                continue
+            except Exception:
+                # Still worth a watchlist alert even if scoring failed (e.g. AI outage).
+                session.rollback()
+                logger.warning("Analysis failed for job_id=%s", job.id, exc_info=True)
 
-            if not analysis.qualified:
+            if watchlist_alerter is not None:
+                score = analysis.breakdown.overall_score if analysis and analysis.breakdown else None
+                watchlist_alerter.consider(job, score)
+
+            if analysis is None or not analysis.qualified:
                 continue
 
             result.jobs_qualified += 1
@@ -166,16 +229,33 @@ def _run(session: Session, config: AppConfig) -> RunSummary:
             logger.warning("AI provider misconfigured; continuing this run without AI extraction", exc_info=True)
 
     notification_provider = _build_notification_provider()
+    # Province of each job's listed location, via the location catalog
+    # ("Mississauga, Peel region" -> ON), for watches that name a province.
+    watchlist_alerter = build_watchlist_alerter(
+        config, province_resolver=lambda job: province_of(session, job.location), session=session,
+    )
+    if watchlist_alerter is not None:
+        watchlist_alerter.retry_failed()  # alerts Telegram couldn't deliver last time
     adzuna_settings = AdzunaSettings()
 
     for search_profile in config.search_profiles:
         if not search_profile.enabled:
             continue
-        for source_name, source in _configured_sources(search_profile, adzuna_settings):
+        for source_name, source in _configured_sources(search_profile):
             _run_source(
                 session, scheduler_run, source_name, source, search_profile, config,
-                ai_provider, notification_provider, summary,
+                ai_provider, notification_provider, watchlist_alerter, summary,
             )
+
+    global_source = _scheduled_search_source(config, adzuna_settings, location_paths(session))
+    if global_source is not None:
+        _run_source(
+            session, scheduler_run, "adzuna", global_source, None, config,
+            ai_provider, notification_provider, watchlist_alerter, summary,
+        )
+
+    if watchlist_alerter is not None:
+        watchlist_alerter.flush()
 
     scheduler_run.status = "COMPLETED" if summary.source_failures == 0 else "COMPLETED_WITH_ERRORS"
     scheduler_run.finished_at = datetime.now(timezone.utc)

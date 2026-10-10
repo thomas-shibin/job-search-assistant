@@ -81,3 +81,58 @@ def test_notify_sent_when_at_or_above_minimum_score():
 def test_notify_no_provider_is_a_noop():
     config = AppConfig(candidate=CandidateConfig(name="X", base_resume="x.docx"))
     maybe_notify_qualified_job(_job(), _breakdown(95), config, None)  # must not raise
+
+
+def test_linux_notify_send_provider_invokes_notify_send(monkeypatch):
+    from app.notifications.base import JobNotification
+    from app.notifications.linux_notify import LinuxNotifySendProvider
+
+    calls = []
+    monkeypatch.setattr("app.notifications.linux_notify.subprocess.run", lambda args, **kw: calls.append(args))
+    provider = LinuxNotifySendProvider(notify_send_path="notify-send")
+
+    provider.notify(JobNotification(job_id=1, title="Engineer", company="Acme", overall_score=90))
+
+    assert len(calls) == 1
+    assert calls[0][0] == "notify-send"
+    assert calls[0][-2] == "Qualified job: 90/100"
+    assert "Acme" in calls[0][-1]
+
+
+def test_linux_notify_send_provider_swallows_failures(monkeypatch):
+    import subprocess
+
+    from app.notifications.base import JobNotification
+    from app.notifications.linux_notify import LinuxNotifySendProvider
+
+    def boom(args, **kwargs):
+        raise subprocess.CalledProcessError(1, args)
+
+    monkeypatch.setattr("app.notifications.linux_notify.subprocess.run", boom)
+    provider = LinuxNotifySendProvider(notify_send_path="notify-send")
+
+    provider.notify(JobNotification(job_id=1, title="Engineer", company="Acme", overall_score=90))  # must not raise
+
+
+def test_linux_notify_send_provider_requires_notify_send(monkeypatch):
+    import pytest
+
+    from app.notifications.linux_notify import LinuxNotifySendProvider
+
+    monkeypatch.setattr("app.notifications.linux_notify.shutil.which", lambda name: None)
+    with pytest.raises(RuntimeError):
+        LinuxNotifySendProvider()
+
+
+def test_notification_provider_matches_platform(monkeypatch):
+    from app.notifications.linux_notify import LinuxNotifySendProvider
+    from app.scheduler import run
+
+    monkeypatch.setattr(run.sys, "platform", "linux")
+    monkeypatch.setattr("app.notifications.linux_notify.shutil.which", lambda name: "/usr/bin/notify-send")
+    assert isinstance(run._build_notification_provider(), LinuxNotifySendProvider)
+
+    # On Windows without win10toast installed (as here), it degrades to None rather than raising.
+    monkeypatch.setattr(run.sys, "platform", "win32")
+    provider = run._build_notification_provider()
+    assert provider is None or type(provider).__name__ == "WindowsToastNotificationProvider"

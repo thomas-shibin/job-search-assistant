@@ -101,3 +101,26 @@ def test_skill_matching_case_insensitively_uses_candidate_profile_casing():
     result = validate_tailored_resume(draft, _candidate())
 
     assert result.skills_accepted == ["Java"]
+
+
+def test_numbers_are_compared_by_value_not_spelling():
+    from app.resume.validator import _numbers_in
+
+    assert _numbers_in("over 12 years") <= _numbers_in("12+ years of experience")
+    assert _numbers_in("1000 users") == _numbers_in("1,000+ users")
+    assert _numbers_in("cut latency 40%") != _numbers_in("40 services")  # a percentage is its own claim
+    assert not (_numbers_in("15 years") <= _numbers_in("12+ years"))
+
+
+def test_rewrites_much_longer_than_the_original_fall_back_to_it():
+    from types import SimpleNamespace
+
+    from app.resume.validator import _validate_bullet
+
+    source = SimpleNamespace(id=1, text="Built Java services for payments.")
+    ok = _validate_bullet(SimpleNamespace(source_bullet_id=1, text="Built payment services in Java."), {1: source})
+    long = _validate_bullet(SimpleNamespace(
+        source_bullet_id=1, text="Built highly scalable, resilient, secure and well-tested Java services for payments processing."), {1: source})
+
+    assert ok.accepted
+    assert not long.accepted and long.text == source.text and "too long" in long.rejection_reason

@@ -67,3 +67,87 @@ def test_generate_resume_bundle_ends_with_ready_for_review_and_matching_snapshot
 
     job_json = json.loads(Path(result.artifact_set.job_json_path).read_text())
     assert job_json["status"] == "READY_FOR_REVIEW"  # snapshot reflects the final status, not RESUME_GENERATED
+
+
+def test_tailored_resume_is_the_candidates_own_docx_with_only_wording_changed(session, tmp_path, monkeypatch):
+    from docx import Document
+    from docx.shared import Pt, RGBColor
+
+    from app.ai.base import TailoredBulletDraft, TailoredResumeDraft
+    from app.resume.tailor import tailor_resume
+
+    base = tmp_path / "my_resume.docx"
+    doc = Document()
+    doc.add_paragraph().add_run("Jordan Casey").font.size = Pt(21)
+    doc.add_paragraph("Engineer.")
+    bullet = doc.add_paragraph(style="List Bullet")
+    run = bullet.add_run("Did the thing")
+    run.font.name, run.font.color.rgb = "Georgia", RGBColor(0x2F, 0x4F, 0x6F)
+    doc.save(str(base))
+
+    job = _seed(session)
+    profile = session.query(CandidateProfile).one()
+    profile.raw_resume_path = str(base)
+    session.commit()
+    bullet_id = profile.employments[0].bullets[0].id
+
+    class _Provider(MockAIProvider):
+        def tailor_resume(self, candidate, job, requirements, address):
+            return TailoredResumeDraft(
+                summary="Engineer.", skills_order=["Java"],
+                bullets=[TailoredBulletDraft(text="Did the thing at scale", source_bullet_id=bullet_id)],
+            )
+
+    monkeypatch.setattr("app.resume.tailor.validate_tailored_resume", _accept_all)
+    result = tailor_resume(session, job, AppConfig(candidate=CandidateConfig(name="Jordan", base_resume=str(base))),
+                           ai_provider=_Provider())
+
+    out = Document(str(result.docx_path))
+    texts = [p.text for p in out.paragraphs if p.text]
+    assert texts == ["Jordan Casey", "Engineer.", "Did the thing at scale"]  # same document, same order
+    styled = out.paragraphs[2]
+    assert styled.style.name == "List Bullet"
+    assert (styled.runs[0].font.name, styled.runs[0].font.color.rgb) == ("Georgia", RGBColor(0x2F, 0x4F, 0x6F))
+    assert out.paragraphs[0].runs[0].font.size == Pt(21)
+
+
+def _accept_all(draft, candidate):
+    from app.resume.validator import BulletValidationResult, ValidationResult
+
+    return ValidationResult(
+        summary_accepted=True, skills_accepted=list(draft.skills_order), skills_rejected=[],
+        bullets=[BulletValidationResult(text=b.text, source_bullet_id=b.source_bullet_id, accepted=True)
+                 for b in draft.bullets],
+    )
+
+
+def test_rebuild_rewrites_an_existing_tailored_resume_from_saved_wording(session, tmp_path):
+    from docx import Document
+
+    from app.models.resume import TailoredBulletProvenance, TailoredResume
+    from app.resume.tailor import rebuild_tailored_resume
+
+    base = tmp_path / "my_resume.docx"
+    doc = Document()
+    doc.add_paragraph("Engineer.")
+    doc.add_paragraph("Did the thing", style="List Bullet")
+    doc.save(str(base))
+
+    job = _seed(session)
+    profile = session.query(CandidateProfile).one()
+    profile.raw_resume_path = str(base)
+    tailored = TailoredResume(job_id=job.id, summary_text="Engineer who ships.", skills_order=["Java"],
+                              validation_status="PASSED", docx_path="/somewhere/else/tailored_resume.docx")
+    session.add(tailored)
+    session.flush()
+    session.add(TailoredBulletProvenance(tailored_resume_id=tailored.id, generated_text="Did the thing, twice as fast",
+                                         source_bullet_id=profile.employments[0].bullets[0].id, validation_passed=True))
+    session.commit()
+
+    path = rebuild_tailored_resume(session, tailored, AppConfig(candidate=CandidateConfig(name="J", base_resume="x")))
+
+    assert path is not None and path.parent.name.endswith(f"_{job.id}")  # the job's own folder, not the stale path
+    out = Document(str(path))
+    assert [p.text for p in out.paragraphs] == ["Engineer who ships.", "Did the thing, twice as fast"]
+    assert out.paragraphs[1].style.name == "List Bullet"
+    assert tailored.docx_path == str(path)

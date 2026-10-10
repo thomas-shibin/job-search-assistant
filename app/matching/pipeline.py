@@ -53,6 +53,21 @@ def _find_search_profile(config: AppConfig, job: Job) -> SearchProfile | None:
     return next((sp for sp in config.search_profiles if sp.name == job.search_profile_name), None)
 
 
+def _scoring_profile(config: AppConfig, search_profile: SearchProfile | None) -> SearchProfile | None:
+    """Jobs found by the global search (or tracked from the dashboard) have no
+    search profile; score their title/location against the global `search`
+    conditions instead. Hard filters still only use a real profile, so a job
+    you picked by hand is never filtered out for its location.
+    """
+    if search_profile is not None:
+        return search_profile
+    if not (config.search.titles or config.search.locations):
+        return None
+    return SearchProfile(
+        name="Global search", address_profile="", titles=config.search.titles, locations=config.search.locations
+    )
+
+
 def _transition(session: Session, job: Job, to_status: JobStatus, reason: str) -> None:
     from_status = job.status
     job.status = to_status
@@ -69,7 +84,10 @@ def _get_ai_provider(config: AppConfig, ai_provider: AIProvider | None) -> AIPro
     return None
 
 
-def analyze_job(session: Session, job: Job, config: AppConfig, ai_provider: AIProvider | None = None) -> AnalyzeResult:
+def analyze_job(
+    session: Session, job: Job, config: AppConfig, ai_provider: AIProvider | None = None, *,
+    update_status: bool = True,
+) -> AnalyzeResult:
     """Run hard filters then, if they pass, deterministic scoring for `job`.
 
     A job that fails a hard filter is left at its current status with no
@@ -81,6 +99,9 @@ def analyze_job(session: Session, job: Job, config: AppConfig, ai_provider: AIPr
     one `AIProvider` instance up front and reuse it; passing `None` builds
     one from `config.ai` on demand (and only if `config.ai.enabled` or
     `config.ai.generate_match_explanations` actually needs one).
+
+    `update_status=False` re-scores without moving the job's status -- e.g.
+    after its description was replaced on a job you've already applied to.
     """
     candidate = (
         session.query(CandidateProfile)
@@ -109,7 +130,7 @@ def analyze_job(session: Session, job: Job, config: AppConfig, ai_provider: AIPr
             logger, "JOB_REQUIREMENTS_READY", job_id=job.id, provider=config.ai.provider, cache_hit=cache_hit
         )
 
-    breakdown = score_job(candidate, job, search_profile, config.matching, requirements)
+    breakdown = score_job(candidate, job, _scoring_profile(config, search_profile), config.matching, requirements)
 
     if config.ai.generate_match_explanations:
         try:
@@ -153,11 +174,12 @@ def analyze_job(session: Session, job: Job, config: AppConfig, ai_provider: AIPr
         )
     )
 
-    _transition(session, job, JobStatus.ANALYZED, reason=f"Scored {breakdown.overall_score}/100")
+    if update_status:
+        _transition(session, job, JobStatus.ANALYZED, reason=f"Scored {breakdown.overall_score}/100")
     log_event(logger, "JOB_ANALYZED", job_id=job.id, overall_score=breakdown.overall_score)
 
     qualified = breakdown.overall_score >= config.matching.minimum_score
-    if qualified:
+    if qualified and update_status:
         _transition(
             session,
             job,

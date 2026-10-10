@@ -165,3 +165,26 @@ def test_reimport_force_creates_new_version_even_if_unchanged(session):
     assert second.created is True
     assert second.profile.version == 2
     assert second.profile.id != first.profile.id
+
+
+def test_docx_skills_laid_out_in_a_table_are_parsed(tmp_path):
+    from docx import Document
+
+    from app.resume.parser import parse_resume
+
+    doc = Document()
+    doc.add_paragraph("Jordan Casey")
+    doc.add_heading("Skills", level=1)
+    table = doc.add_table(rows=1, cols=2)
+    label = table.cell(0, 0).paragraphs[0].add_run("Backend")
+    label.bold = True  # a bold cell label must not be mistaken for a section heading
+    table.cell(0, 0).add_paragraph("Java")
+    table.cell(0, 1).paragraphs[0].add_run("Kafka | Docker")
+    doc.add_heading("Experience", level=1)
+    doc.add_paragraph("Senior Engineer, 01/2020 - Present")
+    path = tmp_path / "table_resume.docx"
+    doc.save(path)
+
+    parsed = parse_resume(path)
+
+    assert {"Java", "Kafka", "Docker"} <= set(parsed.skills)

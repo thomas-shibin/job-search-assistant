@@ -211,12 +211,44 @@ def test_adzuna_source_search_page_returns_empty_list_past_last_page():
     assert jobs == []
 
 
-def test_adzuna_source_raises_on_http_error():
+def test_adzuna_source_raises_on_http_error_without_leaking_the_key():
+    from app.sources.adzuna import AdzunaError
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={})
 
     search_profile = SimpleNamespace(titles=["Backend Engineer"], locations=[])
+    source = AdzunaSource(app_id="id", app_key="SECRET-KEY", country="ca", client=_adzuna_client(handler))
+
+    with pytest.raises(AdzunaError) as exc_info:
+        source.discover_jobs(search_profile)
+    assert "404" in str(exc_info.value)
+    assert "SECRET-KEY" not in str(exc_info.value)
+
+
+def test_adzuna_source_retries_when_rate_limited(monkeypatch):
+    import app.sources.adzuna as adzuna_module
+    from app.utils.retry import with_retry
+
+    monkeypatch.setattr(adzuna_module, "with_retry", lambda fn, **kw: with_retry(fn, **kw, sleep=lambda s: None))
+    calls = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(429) if len(calls) < 3 else httpx.Response(200, json={"results": []})
+
     source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(handler))
 
-    with pytest.raises(httpx.HTTPStatusError):
-        source.discover_jobs(search_profile)
+    assert source.search_page(what="Java", where=None) == []
+    assert len(calls) == 3
+
+
+def test_adzuna_keeps_salary_and_job_type():
+    from app.sources.adzuna import AdzunaSource
+
+    raw = AdzunaSource(app_id="i", app_key="k", country="ca").to_raw_job({
+        "id": 1, "title": "Java Dev", "company": {"display_name": "Acme"}, "location": {"display_name": "Toronto"},
+        "description": "d", "redirect_url": "https://x", "salary_min": 95000.0, "salary_max": 120000.4,
+        "contract_time": "full_time", "contract_type": "permanent",
+    })
+    assert (raw.salary_min, raw.salary_max, raw.currency, raw.employment_type) == (95000, 120000, "CAD", "full_time permanent")
