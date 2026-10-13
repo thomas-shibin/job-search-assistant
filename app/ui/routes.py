@@ -137,6 +137,25 @@ def _tracked_by_external_id(session: Session, external_ids: list[str]) -> dict[s
     return tracked
 
 
+def _match_score(scores: dict | None) -> int | None:
+    """The score a job is ranked by -- the one its badge shows: the AI fit
+    score if it has been analyzed with AI, else the keyword score."""
+    if not scores:
+        return None
+    if scores.get("fit") is not None:
+        return scores["fit"].fit_score
+    return scores.get("score")
+
+
+def _best_match_first(items: list, scores) -> list:
+    """Highest matching score first; unscored jobs after them, in their
+    original (newest-first) order -- the sort is stable."""
+    def key(item):
+        score = _match_score(scores(item))
+        return (score is None, -(score or 0))
+    return sorted(items, key=key)
+
+
 def _search_for_page(
     session: Session, *, titles: list[str], locations: list[str], keywords: list[str], country: str, page: int
 ) -> dict:
@@ -167,7 +186,8 @@ def _search_for_page(
         return result
 
     tracked = _tracked_by_external_id(session, [j.external_id for j in found.jobs if j.external_id])
-    result["cards"] = [{"raw": j, "tracked": tracked.get(j.external_id)} for j in found.jobs]
+    cards = [{"raw": j, "tracked": tracked.get(j.external_id)} for j in found.jobs]
+    result["cards"] = _best_match_first(cards, lambda card: card["tracked"])
     result["has_next"] = found.has_next
     result["failed"] = found.failed_queries
     return result
@@ -185,8 +205,9 @@ def _tracked_filters(status: str | None, min_score: str | None) -> tuple[str | N
 
 
 def _tracked_rows(session: Session, status: str | None, min_score: int | None) -> list[dict]:
-    return [{"job": j, "score": (a.overall_score if (a := latest_match_analysis(session, j.id)) else None),
+    rows = [{"job": j, "score": (a.overall_score if (a := latest_match_analysis(session, j.id)) else None),
              "fit": latest_assessment(session, j.id)} for j in list_jobs(session, status=status, min_score=min_score)]
+    return _best_match_first(rows, lambda row: row)
 
 
 def _picked(values: list[str], split) -> list[str]:

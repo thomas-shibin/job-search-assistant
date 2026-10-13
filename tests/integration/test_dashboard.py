@@ -103,6 +103,42 @@ def test_job_list_filters_by_status(client):
     assert "No jobs match" in non_matching.text
 
 
+def test_best_match_first_ranks_by_fit_then_keyword_score_and_keeps_unscored_order():
+    from types import SimpleNamespace
+
+    from app.ui.routes import _best_match_first
+
+    rows = [
+        {"name": "unscored-newest", "score": None, "fit": None},
+        {"name": "keyword-70", "score": 70, "fit": None},
+        {"name": "unscored-older", "score": None, "fit": None},
+        {"name": "fit-90", "score": 40, "fit": SimpleNamespace(fit_score=90)},  # AI fit wins over keyword
+        {"name": "keyword-85", "score": 85, "fit": None},
+    ]
+
+    ordered = [r["name"] for r in _best_match_first(rows, lambda r: r)]
+
+    assert ordered == ["fit-90", "keyword-85", "keyword-70", "unscored-newest", "unscored-older"]
+
+
+def test_tracked_jobs_table_lists_best_match_first(client):
+    test_client, SessionLocal = client
+    session = SessionLocal()
+    for n, score in enumerate([55, None, 92]):  # discovered in this order
+        job = Job(source="manual", source_url=f"https://e.com/{n}", company="Acme", title=f"Role {n}",
+                  description=f"d{n}", status=JobStatus.ANALYZED, fingerprint=f"f{n}", description_hash=f"h{n}")
+        session.add(job)
+        session.commit()
+        if score is not None:
+            session.add(MatchAnalysis(job_id=job.id, overall_score=score, explanation="x"))
+            session.commit()
+    session.close()
+
+    text = test_client.get("/tracked-jobs").text
+
+    assert text.index("Role 2") < text.index("Role 0") < text.index("Role 1")
+
+
 def test_health_endpoint_returns_the_report(client):
     test_client, _ = client
     response = test_client.get("/health")

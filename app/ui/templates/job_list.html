@@ -23,7 +23,7 @@
 
 <section class="search-hero">
   <h1>Find your next role</h1>
-  <p class="lead">Fresh openings matching your saved search, newest first. Analyze any of them against your resume in one click.</p>
+  <p class="lead">Fresh openings matching your saved search, best matches first. Analyze any of them against your resume in one click.</p>
   <form method="get" action="/" class="search-form" id="search-form">
     <div class="search-field">
       {{ icon("briefcase") }}
@@ -57,7 +57,7 @@
 
 {% if not search.error %}
 <div class="results-bar">
-  <p class="result-count"><strong>{{ search.cards|length }}</strong> jobs{% if search.page > 1 %} &middot; page {{ search.page }}{% endif %} &middot; newest first
+  <p class="result-count"><strong>{{ search.cards|length }}</strong> jobs{% if search.page > 1 %} &middot; page {{ search.page }}{% endif %} &middot; best match first, then newest
     {% if search.queries > 1 %}<span class="muted">&middot; {{ search.queries }} searches combined (every title × location)</span>{% endif %}</p>
 </div>
 
@@ -125,7 +125,7 @@
     </div>
     <form method="get" action="/" class="filters"
           hx-get="/tracked-jobs" hx-target="#tracked-jobs" hx-swap="outerHTML"
-          hx-trigger="input delay:400ms, submit" hx-sync="this:replace">
+          hx-trigger="submit" hx-sync="this:replace">
       <label>Status
         <select name="status">
           <option value="" {% if not status %}selected{% endif %}>All statuses</option>
