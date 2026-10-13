@@ -484,16 +484,20 @@ def serve(
 
     import uvicorn
 
+    from app.notifications.telegram_commands import start_telegram_command_listener
     from app.scheduler.background import start_background_scheduler
 
     # Always started: scans can be switched on/off and re-timed from the dashboard.
     background_scheduler = start_background_scheduler(config, config_path)
     state = "on" if config.scheduler.enabled else "paused (enable it on the Settings page)"
     typer.echo(f"Background scheduler {state}, every {config.scheduler.interval_minutes} minutes.")
+    # Answers /health in Telegram once a bot token and chat id are set (idles until then).
+    telegram_listener = start_telegram_command_listener(config_path)
 
     try:
         uvicorn.run("main:app", host=host, port=port)
     finally:
+        telegram_listener.stop()
         background_scheduler.shutdown(wait=False)
 
 

@@ -173,6 +173,22 @@ def _search_for_page(
     return result
 
 
+def _tracked_filters(status: str | None, min_score: str | None) -> tuple[str | None, int | None]:
+    """The tracked-jobs filters as submitted: a blank box (``min_score=``) or an
+    unknown status means "no filter" rather than a 422 the page can't show."""
+    status = status if status in {s.value for s in JobStatus} else None
+    try:
+        score = max(0, min(100, int(min_score))) if min_score and min_score.strip() else None
+    except ValueError:
+        score = None
+    return status, score
+
+
+def _tracked_rows(session: Session, status: str | None, min_score: int | None) -> list[dict]:
+    return [{"job": j, "score": (a.overall_score if (a := latest_match_analysis(session, j.id)) else None),
+             "fit": latest_assessment(session, j.id)} for j in list_jobs(session, status=status, min_score=min_score)]
+
+
 def _picked(values: list[str], split) -> list[str]:
     """Picker values (one per tag) -- or a comma list typed into a URL -- as a clean list."""
     return list(dict.fromkeys(term for value in values for term in split(value)))
@@ -182,7 +198,7 @@ def _picked(values: list[str], split) -> list[str]:
 def job_list_page(
     request: Request,
     status: str | None = None,
-    min_score: int | None = None,
+    min_score: str | None = None,
     titles: list[str] | None = Query(None),
     locations: list[str] | None = Query(None),
     keywords: list[str] | None = Query(None),
@@ -223,9 +239,8 @@ def job_list_page(
         == (search_config.titles, search_config.locations, search_config.keywords, search_config.country),
     })
 
-    jobs = list_jobs(session, status=status, min_score=min_score)
-    rows = [{"job": j, "score": (a.overall_score if (a := latest_match_analysis(session, j.id)) else None),
-             "fit": latest_assessment(session, j.id)} for j in jobs]
+    status, min_score = _tracked_filters(status, min_score)
+    rows = _tracked_rows(session, status, min_score)
     return templates.TemplateResponse(
         request,
         "job_list.html",
@@ -239,6 +254,21 @@ def job_list_page(
             "error": config_error,
             "message": msg,
         },
+    )
+
+
+@router.get("/tracked-jobs")
+def tracked_jobs_table(
+    request: Request,
+    status: str | None = None,
+    min_score: str | None = None,
+    session: Session = Depends(get_session),
+):
+    """Just the "Your tracked jobs" table, for the landing page's filters to swap
+    in place -- no page reload, no scroll jump, and no re-run of the Adzuna search."""
+    status, min_score = _tracked_filters(status, min_score)
+    return templates.TemplateResponse(
+        request, "_tracked_jobs.html", {"jobs": _tracked_rows(session, status, min_score)}
     )
 
 

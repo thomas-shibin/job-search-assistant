@@ -347,6 +347,12 @@ Jobs already seen in earlier scans are never re-alerted. To set up Telegram:
 3. On the Watchlist page, click **Detect chat ID**, then **Send test message**.
 4. Tick **Enabled**, save, and add your watches.
 
+Send the bot **/health** while `serve` is running and it replies with a status update:
+database, settings, scheduler (last scan result, next scan), resume, API keys, PDF export,
+and the last 24 hours' new jobs, alerts and AI spend. It only answers your saved chat id, and
+only starts listening once that's set. The same report is at `http://127.0.0.1:8000/health`
+as JSON (503 if the database is down). **/help** lists the commands.
+
 A watch with only companies has nothing to search Adzuna by; it checks the jobs your other
 searches find (add the company's Greenhouse/Lever board under Settings → Search profiles to
 cover it directly). If one scan finds more than *Max alerts per run* matches, the rest

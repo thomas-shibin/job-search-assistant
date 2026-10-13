@@ -103,6 +103,46 @@ def test_job_list_filters_by_status(client):
     assert "No jobs match" in non_matching.text
 
 
+def test_health_endpoint_returns_the_report(client):
+    test_client, _ = client
+    response = test_client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] in ("ok", "degraded")
+    assert body["checks"][0]["name"] == "Database" and body["checks"][0]["status"] == "ok"
+
+
+def test_job_list_blank_min_score_is_no_filter(client):
+    """The filter form always submits min_score, blank when unset -- that must
+    not be a 422."""
+    test_client, SessionLocal = client
+    _seed_job_with_resume(SessionLocal, status=JobStatus.APPLIED)
+
+    response = test_client.get("/?status=APPLIED&min_score=")
+
+    assert response.status_code == 200
+    assert "Senior Engineer" in response.text
+
+
+def test_tracked_jobs_partial_filters_without_the_page(client):
+    test_client, SessionLocal = client
+    _seed_job_with_resume(SessionLocal, status=JobStatus.APPLIED)  # scored 88
+
+    for query, shown in [
+        ("status=APPLIED&min_score=", True),
+        ("status=&min_score=80", True),
+        ("status=&min_score=90", False),
+        ("status=SKIPPED&min_score=", False),
+        ("status=bogus&min_score=abc", True),
+    ]:
+        response = test_client.get(f"/tracked-jobs?{query}")
+        assert response.status_code == 200, query
+        assert 'id="tracked-jobs"' in response.text
+        assert "Find your next role" not in response.text  # just the table, no search
+        assert ("Senior Engineer" in response.text) is shown, query
+
+
 def test_job_detail_page_shows_match_and_resume_diff(client):
     test_client, SessionLocal = client
     job_id = _seed_job_with_resume(SessionLocal)

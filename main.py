@@ -3,8 +3,13 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
+
+from app.database.session import get_session
+from app.services.health import check_health
 
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "ui" / "static"
 
@@ -13,8 +18,11 @@ def create_app() -> FastAPI:
     fastapi_app = FastAPI(title="Local AI Job Application Assistant")
 
     @fastapi_app.get("/health")
-    def health() -> dict:
-        return {"status": "ok"}
+    def health(session: Session = Depends(get_session)) -> JSONResponse:
+        # Same report as the Telegram /health command; 503 only when the app
+        # can't work at all (database down), so Docker's healthcheck restarts it.
+        report = check_health(session)
+        return JSONResponse(report.as_dict(), status_code=503 if report.status == "down" else 200)
 
     from app.api.routes import router as api_router
     from app.ui.routes import router as ui_router

@@ -36,9 +36,10 @@ class TelegramClient:
         self._bot_token = bot_token
         self._client = client or httpx.Client(timeout=_REQUEST_TIMEOUT_SECONDS)
 
-    def _call(self, method: str, payload: dict) -> object:
+    def _call(self, method: str, payload: dict, *, timeout: float | None = None) -> object:
         url = _API_URL.format(token=self._bot_token, method=method)
-        response = with_retry(lambda: self._client.post(url, json=payload), retry_on=_RETRYABLE_ERRORS)
+        extra = {"timeout": timeout} if timeout is not None else {}
+        response = with_retry(lambda: self._client.post(url, json=payload, **extra), retry_on=_RETRYABLE_ERRORS)
         body = response.json()
         if not body.get("ok"):
             # Never include `url` here: it embeds the bot token.
@@ -50,6 +51,15 @@ class TelegramClient:
             "sendMessage",
             {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
         )
+
+    def get_updates(self, offset: int | None, poll_seconds: int) -> list[dict]:
+        """Long-poll for new messages (the bot command listener): waits up to
+        `poll_seconds` for one to arrive. Passing `offset` confirms -- and so
+        drops from Telegram -- every update before it."""
+        payload: dict = {"timeout": poll_seconds, "allowed_updates": ["message"]}
+        if offset is not None:
+            payload["offset"] = offset
+        return self._call("getUpdates", payload, timeout=poll_seconds + _REQUEST_TIMEOUT_SECONDS)  # type: ignore[return-value]
 
     def recent_chats(self) -> list[dict]:
         """Chats that have recently messaged the bot -- how `telegram-setup` finds
