@@ -97,10 +97,10 @@ def _age_events(factory, minutes: int):
 @pytest.mark.real_limits
 def test_one_new_search_per_hour_paging_and_repeats_free(world, monkeypatch):
     http, factory, _ = world
-    import app.web.routes as ui_routes
+    import app.modules.jobs.service as jobs_service
 
     calls = []
-    monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: calls.append(k) or _search_result())
+    monkeypatch.setattr(jobs_service, "search_for_page", lambda *a, **k: calls.append(k) or _search_result())
 
     with system_session(factory) as s:  # the strict one-search hour, whatever the platform default
         s.get(User, MEMBER).search_limit_per_hour = 1
@@ -129,35 +129,35 @@ def test_one_new_search_per_hour_paging_and_repeats_free(world, monkeypatch):
 @pytest.mark.real_limits
 def test_a_failed_search_is_given_back(world, monkeypatch):
     http, factory, _ = world
-    import app.web.routes as ui_routes
+    import app.modules.jobs.service as jobs_service
 
     with system_session(factory) as s:
         s.get(User, MEMBER).search_limit_per_hour = 1
         s.commit()
 
-    monkeypatch.setattr(ui_routes, "_search_for_page",
+    monkeypatch.setattr(jobs_service, "search_for_page",
                         lambda *a, **k: _search_result(error="Job search is temporarily unavailable.", requests=0))
     http.get("/jobs?titles=Welder")
     assert _events(factory, MEMBER, ActivityKind.SEARCH) == []
-    monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: _search_result())
+    monkeypatch.setattr(jobs_service, "search_for_page", lambda *a, **k: _search_result())
     assert "used your 1 new search" not in http.get("/jobs?titles=Plumber").text
 
 
 @pytest.mark.real_limits
 def test_paging_stops_at_the_platform_page_cap(world, monkeypatch):
     http, _, _ = world
-    import app.web.routes as ui_routes
+    import app.modules.jobs.service as jobs_service
 
-    monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: _search_result())
+    monkeypatch.setattr(jobs_service, "search_for_page", lambda *a, **k: _search_result())
     assert "Results stop at page 10" in http.get("/jobs?titles=Cook&page=11").text
 
 
 @pytest.mark.real_limits
 def test_admins_are_unlimited_and_overrides_apply(world, monkeypatch):
     http, factory, signed_in = world
-    import app.web.routes as ui_routes
+    import app.modules.jobs.service as jobs_service
 
-    monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: _search_result())
+    monkeypatch.setattr(jobs_service, "search_for_page", lambda *a, **k: _search_result())
     signed_in["id"] = ADMIN
     for title in ("A", "B", "C"):
         text = http.get(f"/jobs?titles={title}").text
@@ -218,9 +218,9 @@ def test_dashboard_is_admin_only(world):
 
 def test_dashboard_shows_activity_but_never_resume_content(world, monkeypatch):
     http, factory, signed_in = world
-    import app.web.routes as ui_routes
+    import app.modules.jobs.service as jobs_service
 
-    monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: _search_result())
+    monkeypatch.setattr(jobs_service, "search_for_page", lambda *a, **k: _search_result())
     http.get("/jobs?titles=Data+Analyst&locations=Toronto")
     with tenant_session(factory, MEMBER) as s:
         s.add(AICallLog(provider="p", operation="assess_fit", cache_hit=False, estimated_cost=0.0123))

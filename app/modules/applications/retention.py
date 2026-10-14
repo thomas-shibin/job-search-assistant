@@ -29,7 +29,7 @@ from app.modules.applications.models import ApplicationArtifactSet
 from app.modules.jobs.models import Job, JobRequirements, JobStatus, JobStatusHistory, JobTombstone
 from app.modules.matching.models import JobFitAssessment, MatchAnalysis
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
-from app.core.config.models import WatchlistAlert
+from app.modules.alerts.models import WatchlistAlert
 from app.integrations.job_boards.base import RawJob
 from app.core.logging import log_event
 

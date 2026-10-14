@@ -40,7 +40,7 @@ def client(tmp_path, monkeypatch):
         finally:
             session.close()
 
-    import app.web.routes as ui_routes
+    import app.core.config.current as current_config
     import main
 
     main.app.dependency_overrides[get_session] = override_get_session
@@ -50,10 +50,7 @@ def client(tmp_path, monkeypatch):
         matching=MatchingConfig(minimum_score=999),  # deliberately unreachable -- quick-tailor must ignore it
         ai=AIConfig(provider="mock"),
     )
-    dummy_config_path = tmp_path / "config.yaml"
-    dummy_config_path.write_text("placeholder -- load_app_config is mocked below", encoding="utf-8")
-    monkeypatch.setattr(ui_routes, "DEFAULT_CONFIG_PATH", dummy_config_path)
-    monkeypatch.setattr(ui_routes, "load_app_config", lambda session, path: config)
+    monkeypatch.setattr(current_config, "load_app_config", lambda session, path: config)
 
     yield TestClient(main.app), TestSessionLocal
     main.app.dependency_overrides.clear()

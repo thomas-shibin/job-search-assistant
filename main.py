@@ -147,16 +147,20 @@ def create_app() -> FastAPI:
         ok = check_database(SessionLocal)
         return JSONResponse({"status": "ok" if ok else "down"}, status_code=200 if ok else 503)
 
-    from app.modules.access.routes import api as admin_api_router
-    from app.modules.access.routes import router as access_router
-    from app.modules.admin.routes import router as admin_router
-    from app.modules.auth.api import router as auth_api_router
-    from app.modules.profiles.routes import router as profile_router
-    from app.web.public_routes import router as public_router
-    from app.web.api_routes import router as api_router
-    from app.modules.auth.routes import router as auth_router
-    from app.web.routes import router as ui_router
-    from app.web.settings_routes import router as settings_router
+    from app.modules.access import routes as access
+    from app.modules.admin import routes as admin
+    from app.modules.alerts import routes as alerts
+    from app.modules.applications import api as applications_api
+    from app.modules.applications import routes as applications
+    from app.modules.auth import api as auth_api
+    from app.modules.auth import routes as auth
+    from app.modules.jobs import api as jobs_api
+    from app.modules.jobs import routes as jobs
+    from app.modules.matching import routes as matching
+    from app.modules.profiles import routes as profiles
+    from app.modules.profiles import settings_routes as settings
+    from app.modules.resumes import routes as resumes
+    from app.web import public_routes as public
 
     @fastapi_app.on_event("startup")
     def seed_search_catalog() -> None:
@@ -184,16 +188,14 @@ def create_app() -> FastAPI:
             logger.warning("Could not sync the access-control catalog", exc_info=True)
 
     fastapi_app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-    fastapi_app.include_router(auth_api_router)
-    fastapi_app.include_router(auth_router)
-    fastapi_app.include_router(public_router)
-    fastapi_app.include_router(profile_router)
-    fastapi_app.include_router(access_router)
-    fastapi_app.include_router(admin_router)
-    fastapi_app.include_router(admin_api_router)
-    fastapi_app.include_router(api_router)
-    fastapi_app.include_router(ui_router)
-    fastapi_app.include_router(settings_router)
+    # Each module contributes its own routers; which permission every route
+    # needs is listed in app/modules/access/rbac.py (ROUTE_PERMISSIONS).
+    for router in (
+        auth_api.router, auth.router, public.router, profiles.router, access.router, admin.router, access.api,
+        jobs_api.router, applications_api.router, jobs.router, applications.router, matching.router,
+        resumes.router, settings.router, alerts.router,
+    ):
+        fastapi_app.include_router(router)
 
     return fastapi_app
 

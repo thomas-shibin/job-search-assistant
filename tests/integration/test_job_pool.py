@@ -182,17 +182,17 @@ def test_search_shows_pool_jobs_even_without_the_job_board(http):
 
 
 def test_pool_and_board_results_merge_without_duplicates(http, factory, monkeypatch):
-    import app.web.routes as ui_routes
+    import app.modules.jobs.service as jobs_service
     from app.modules.jobs.search import SearchResults
 
     board = [RawJob(external_id="z1", source="adzuna", source_url="https://board/z1", company="Acme",
                     title="Data Analyst", location="Toronto", description=FULL[:500]),
              RawJob(external_id="z2", source="adzuna", source_url="https://board/z2", company="Beta",
                     title="Data Analyst", location="Toronto", description="Beta preview")]
-    monkeypatch.setattr(ui_routes, "AdzunaSettings", lambda: type("S", (), {"app_id": "i", "app_key": "k"})())
-    monkeypatch.setattr(ui_routes, "search_jobs", lambda *a, **k: SearchResults(jobs=list(board), requests=1))
+    monkeypatch.setattr(jobs_service, "AdzunaSettings", lambda: type("S", (), {"app_id": "i", "app_key": "k"})())
+    monkeypatch.setattr(jobs_service, "search_jobs", lambda *a, **k: SearchResults(jobs=list(board), requests=1))
     with tenant_session(factory, MEMBER) as s:
-        result = ui_routes._search_for_page(s, titles=["Data Analyst"], locations=[], keywords=[], country="ca",
+        result = jobs_service.search_for_page(s, titles=["Data Analyst"], locations=[], keywords=[], country="ca",
                                             page=1)
     urls = [c["raw"].source_url for c in result["cards"]]
     assert "https://board/z1" not in urls  # the pool has Acme's Data Analyst, with the full text

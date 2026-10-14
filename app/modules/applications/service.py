@@ -1,7 +1,7 @@
-"""Job listing/detail/action logic shared by `app/api/` (JSON) and `app/ui/`
-(the HTML/HTMX dashboard) -- per docs/ARCHITECTURE.md's frontend-choice note,
-both talk to the same services layer so a future non-HTML client needs no
-backend rework.
+"""The user's tracked jobs: listing and filtering them, one job's full detail
+(analysis, tailored resume and its diff), and replacing a job's description.
+Shared by the pages and the JSON API, so a non-HTML client needs no backend
+rework.
 """
 from __future__ import annotations
 
@@ -10,9 +10,33 @@ from dataclasses import dataclass, field
 from sqlalchemy.orm import Session
 
 from app.modules.resumes.models import AccomplishmentBullet
-from app.modules.jobs.models import Job, JobStatus
+from app.modules.jobs.models import Job, JobStatus, SavedJob
+from app.modules.jobs.ranking import best_match_first
+from app.modules.matching.fit import latest_assessment
 from app.modules.matching.models import MatchAnalysis
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
+
+
+def tracked_filters(status: str | None, min_score: str | None) -> tuple[str | None, int | None]:
+    """The tracked-jobs filters as submitted: a blank box (``min_score=``) or an
+    unknown status means "no filter" rather than a 422 the page can't show."""
+    status = status if status in {s.value for s in JobStatus} else None
+    try:
+        score = max(0, min(100, int(min_score))) if min_score and min_score.strip() else None
+    except ValueError:
+        score = None
+    return status, score
+
+
+def tracked_rows(session: Session, status: str | None, min_score: int | None) -> list[dict]:
+    """Jobs the user is working on, best match first. A job that's only been
+    saved (never analyzed) lives on the Saved jobs page instead."""
+    saved_ids = {job_id for (job_id,) in session.query(SavedJob.job_id)}
+    rows = [{"job": j, "score": (a.overall_score if (a := latest_match_analysis(session, j.id)) else None),
+             "fit": latest_assessment(session, j.id)} for j in list_jobs(session, status=status, min_score=min_score)]
+    rows = [r for r in rows if not (r["job"].id in saved_ids and r["job"].status == JobStatus.DISCOVERED
+                                    and r["score"] is None and r["fit"] is None)]
+    return best_match_first(rows, lambda row: row)
 
 
 def latest_match_analysis(session: Session, job_id: int) -> MatchAnalysis | None:

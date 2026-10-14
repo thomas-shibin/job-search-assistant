@@ -1,7 +1,10 @@
+"""Jobs a user has: every posting they saved, tracked or pasted in becomes a
+`Job` row (their own copy), with its status history, the requirements read
+from it, and tombstones for deleted ones; plus the Saved jobs list."""
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -106,3 +109,14 @@ class JobTombstone(TenantOwned, Base):
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     description_hash: Mapped[str] = mapped_column(String(64), index=True)
     deleted_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), index=True)
+
+
+class SavedJob(TenantOwned, Base):
+    """A job the user saved from search (the posting is stored as their `Job`)."""
+
+    __tablename__ = "saved_jobs"
+    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_saved_job_user_job"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))

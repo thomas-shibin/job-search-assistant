@@ -1,5 +1,5 @@
 """A job seeker's profile: who they are and what they're looking for, kept
-separate from their resume (app/models/candidate.py), which is the document
+separate from their resume (app/modules/resumes/models.py), which is the document
 used for tailoring. Filled in on the Profile page; optional."""
 from __future__ import annotations
 
@@ -60,15 +60,4 @@ class ProfileEducation(TenantOwned, Base):
     field_of_study: Mapped[str | None] = mapped_column(String(200), nullable=True)
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
-
-
-class SavedJob(TenantOwned, Base):
-    """A job the user saved from search (the posting is stored as their `Job`)."""
-
-    __tablename__ = "saved_jobs"
-    __table_args__ = (UniqueConstraint("user_id", "job_id", name="uq_saved_job_user_job"),)
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

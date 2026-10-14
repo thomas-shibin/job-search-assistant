@@ -106,7 +106,7 @@ def test_job_list_filters_by_status(client):
 def test_best_match_first_ranks_by_fit_then_keyword_score_and_keeps_unscored_order():
     from types import SimpleNamespace
 
-    from app.web.routes import _best_match_first
+    from app.modules.jobs.ranking import best_match_first as _best_match_first
 
     rows = [
         {"name": "unscored-newest", "score": None, "fit": None},

@@ -34,7 +34,7 @@ from app.modules.admin.health import check_health
 from app.integrations.job_boards.adzuna import AdzunaSource
 from app.integrations.job_boards.settings import AdzunaSettings
 from app.web.forms import parse_form, section_form
-from app.web.routes import DEFAULT_CONFIG_PATH
+from app.core.paths import DEFAULT_CONFIG_PATH
 from app.web.templating import templates
 
 router = APIRouter(prefix="/admin")

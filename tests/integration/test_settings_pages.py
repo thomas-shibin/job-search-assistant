@@ -39,9 +39,9 @@ def client(tmp_path, monkeypatch):
 
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(yaml.safe_dump(YAML), encoding="utf-8")
-    import app.web.settings_routes as settings_routes
+    import app.core.paths as paths
 
-    monkeypatch.setattr(settings_routes, "DEFAULT_CONFIG_PATH", yaml_path)
+    monkeypatch.setattr(paths, "DEFAULT_CONFIG_PATH", yaml_path)
     import app.modules.admin.routes as admin_routes
 
     monkeypatch.setattr(admin_routes, "DEFAULT_CONFIG_PATH", yaml_path)
@@ -282,7 +282,7 @@ def test_watch_form_saves_the_advanced_filters(client):
 
 def test_watchlist_page_shows_the_alert_log(client):
     from app.modules.jobs.models import Job, JobStatus
-    from app.core.config.models import WatchlistAlert
+    from app.modules.alerts.models import WatchlistAlert
 
     http, SessionLocal, _ = client
     with SessionLocal() as s:

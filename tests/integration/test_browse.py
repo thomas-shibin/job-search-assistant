@@ -71,7 +71,8 @@ def client(tmp_path, monkeypatch):
         finally:
             session.close()
 
-    import app.web.routes as ui_routes
+    import app.core.config.current as current_config
+    import app.modules.jobs.service as jobs_service
     import main
 
     main.app.dependency_overrides[get_session] = override_get_session
@@ -85,12 +86,9 @@ def client(tmp_path, monkeypatch):
     QUERIES.clear()
     DETAILS.clear()
     clear_cache()
-    dummy_config_path = tmp_path / "config.yaml"
-    dummy_config_path.write_text("placeholder -- load_app_config is mocked below", encoding="utf-8")
-    monkeypatch.setattr(ui_routes, "DEFAULT_CONFIG_PATH", dummy_config_path)
-    monkeypatch.setattr(ui_routes, "load_app_config", lambda session, path: config)
-    monkeypatch.setattr(ui_routes, "AdzunaSettings", lambda: SimpleNamespace(app_id="id", app_key="key"))
-    monkeypatch.setattr(ui_routes, "AdzunaSource", _FakeAdzunaSource)
+    monkeypatch.setattr(current_config, "load_app_config", lambda session, path: config)
+    monkeypatch.setattr(jobs_service, "AdzunaSettings", lambda: SimpleNamespace(app_id="id", app_key="key"))
+    monkeypatch.setattr(jobs_service, "AdzunaSource", _FakeAdzunaSource)
 
     from app.modules.resumes.models import CandidateProfile, Employment, Skill
 
@@ -209,10 +207,10 @@ def test_dashboard_search_with_no_results_shows_empty_state_and_no_next(client):
 
 
 def test_save_as_default_updates_global_search(client, monkeypatch):
-    import app.web.routes as ui_routes
+    import app.modules.jobs.routes as job_routes
 
     saved = {}
-    monkeypatch.setattr(ui_routes, "save_section", lambda session, key, value: saved.update({key: value}))
+    monkeypatch.setattr(job_routes, "save_section", lambda session, key, value: saved.update({key: value}))
     test_client, _ = client
 
     test_client.post("/search/defaults", data={"titles": "Go Developer", "locations": "Toronto, ON, Remote", "country": "ca"})
@@ -282,9 +280,9 @@ def test_analyze_card_without_resume_explains_what_to_do(client):
 
 
 def test_dashboard_search_missing_credentials_shows_neutral_message(client, monkeypatch):
-    import app.web.routes as ui_routes
+    import app.modules.jobs.service as jobs_service
 
-    monkeypatch.setattr(ui_routes, "AdzunaSettings", lambda: SimpleNamespace(app_id=None, app_key=None))
+    monkeypatch.setattr(jobs_service, "AdzunaSettings", lambda: SimpleNamespace(app_id=None, app_key=None))
     test_client, _ = client
 
     response = test_client.get("/jobs", params={"titles": ""})
@@ -378,11 +376,11 @@ def test_browse_track_below_minimum_score_explains_no_resume(client):
 def test_analyze_action_imports_uploaded_resume_then_analyzes(client, tmp_path, monkeypatch):
     from pathlib import Path
 
-    import app.web.routes as ui_routes
+    import app.modules.resumes.uploads as uploads
     from app.modules.resumes.models import CandidateProfile
     from app.modules.jobs.models import Job
 
-    monkeypatch.setattr(ui_routes, "UPLOAD_DIR", tmp_path / "uploads")
+    monkeypatch.setattr(uploads, "UPLOAD_DIR", tmp_path / "uploads")
     test_client, SessionLocal = client
     session = SessionLocal()
     session.query(CandidateProfile).update({"is_active": False})
@@ -421,7 +419,7 @@ def test_analyze_action_rejects_unsupported_resume_type(client):
 
 
 def test_retailor_rewrites_resume_without_changing_status(client, monkeypatch, tmp_path):
-    import app.web.routes as ui_routes
+    import app.modules.resumes.routes as resume_routes
     from app.modules.jobs.models import Job, JobStatus
 
     test_client, SessionLocal = client
@@ -439,8 +437,8 @@ def test_retailor_rewrites_resume_without_changing_status(client, monkeypatch, t
         path.write_bytes(b"docx")
         return SimpleNamespace(docx_path=path, tailored_resume=SimpleNamespace(pdf_path=None))
 
-    monkeypatch.setattr(ui_routes, "tailor_resume", fake_tailor)
-    monkeypatch.setattr(ui_routes, "convert_to_pdf", lambda path: path.with_suffix(".pdf"))
+    monkeypatch.setattr(resume_routes, "tailor_resume", fake_tailor)
+    monkeypatch.setattr(resume_routes, "convert_to_pdf", lambda path: path.with_suffix(".pdf"))
 
     response = test_client.post(f"/jobs/{job_id}/retailor", follow_redirects=False)
 
@@ -493,7 +491,7 @@ def test_preview_descriptions_are_flagged_and_too_short_pastes_rejected(client):
 
 
 def test_below_minimum_job_explains_why_and_can_be_tailored_anyway(client, monkeypatch, tmp_path):
-    import app.web.routes as ui_routes
+    import app.modules.matching.workflows as workflows
     from app.modules.jobs.models import Job, JobStatus
 
     test_client, SessionLocal = client
@@ -513,8 +511,8 @@ def test_below_minimum_job_explains_why_and_can_be_tailored_anyway(client, monke
         path.write_bytes(b"docx")
         return SimpleNamespace(docx_path=path, tailored_resume=SimpleNamespace(pdf_path=None))
 
-    monkeypatch.setattr(ui_routes, "tailor_resume", fake_tailor)
-    monkeypatch.setattr(ui_routes, "convert_to_pdf", lambda path: path.with_suffix(".pdf"))
+    monkeypatch.setattr(workflows, "tailor_resume", fake_tailor)
+    monkeypatch.setattr(workflows, "convert_to_pdf", lambda path: path.with_suffix(".pdf"))
 
     response = test_client.post(f"/jobs/{job_id}/analyze", data={"force": "true"}, follow_redirects=False)
 

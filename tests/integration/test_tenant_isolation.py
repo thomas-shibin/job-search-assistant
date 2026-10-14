@@ -146,9 +146,9 @@ def test_changing_another_users_records_is_not_found(world, path, data):
 
 def test_removals_on_your_own_job_ignore_another_users_paragraph_ids(world, monkeypatch):
     http, factory, ids = world
-    import app.web.routes as ui_routes
+    import app.modules.resumes.routes as resume_routes
 
-    monkeypatch.setattr(ui_routes, "rebuild_tailored_resume", lambda *a, **k: None)
+    monkeypatch.setattr(resume_routes, "rebuild_tailored_resume", lambda *a, **k: None)
     http.post(f"/jobs/{ids[ALICE]['job']}/removals", data={"remove": [str(ids[BOB]["provenance"])]})
     _bobs_data_untouched(factory, ids)
 

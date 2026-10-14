@@ -122,6 +122,11 @@ def allowance(session: Session, user: User, kind: str, platform: PlatformConfig 
     return result
 
 
+def ai_allowance_for(session: Session, user: User | None) -> Allowance | None:
+    """The signed-in user's resume-action allowance for display (None when signed out)."""
+    return allowance(session, user, AI) if user is not None else None
+
+
 def record(session: Session, user_id: int, kind: str, summary: str | None = None, *, ref: str | None = None,
            meta: dict | None = None, provider_calls: int = 0, ai_calls: int = 0) -> ActivityEvent | None:
     """Log one activity. Never lets a logging failure break what the user is doing."""

@@ -17,7 +17,7 @@ from app.modules.usage.ai_calls import AICallLog
 from app.modules.jobs.models import Job, JobStatus, JobStatusHistory, JobTombstone
 from app.modules.matching.models import MatchAnalysis
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
-from app.core.config.models import WatchlistAlert
+from app.modules.alerts.models import WatchlistAlert
 from app.modules.applications.retention import purge_old_jobs, was_deleted
 from app.integrations.job_boards.base import RawJob
 

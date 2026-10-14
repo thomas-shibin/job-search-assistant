@@ -265,7 +265,7 @@ def _tenant_models() -> list[type]:
 
 def delete_user_data(session: Session, user_id: int) -> None:
     """Every row any user-data table holds for `user_id` (no cascade needed)."""
-    from app.core.config.models import WatchlistAlert
+    from app.modules.alerts.models import WatchlistAlert
 
     models = _tenant_models()
     # Children before parents: rows with foreign keys into other tenant tables first.
@@ -290,7 +290,7 @@ def delete_user_data(session: Session, user_id: int) -> None:
 
 
 def delete_account(session_factory, user_id: int) -> None:
-    from app.core.storage import delete_user_files
+    from app.modules.auth.storage import delete_user_files
 
     from app.modules.access.models import AuditLog, UserRole
 

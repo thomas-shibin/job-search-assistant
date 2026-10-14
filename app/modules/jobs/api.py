@@ -1,66 +1,33 @@
-"""JSON API over the same services the web pages use (docs/ARCHITECTURE.md:
-"a future React/Electron/mobile client would talk to the same API with no
-backend rework"). Members only; every query runs in the member's own
-tenant-bound session.
+"""JSON API for job search, over the same services the pages use (a future
+mobile or single-page client needs no backend rework). Members only; every
+query runs in the member's own tenant-bound session.
 
 - ``GET /api/jobs/search`` -- the job search (same hourly limit as the page);
 - ``GET /api/jobs/{id}`` -- a tracked job (numeric id) or a search result (ref);
 - ``POST/DELETE /api/jobs/{ref}/save`` -- save / unsave a search result;
-- ``GET /api/jobs`` -- the member's tracked jobs.
+- ``GET /api/saved-jobs`` -- the member's saved jobs;
+- ``GET /api/terms/{kind}`` -- search-term suggestions for the pickers.
 """
 from __future__ import annotations
+
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.modules.jobs.catalog.store import suggestions
+from app.modules.applications.schemas import JobDetailResponse
+from app.modules.applications.service import get_job_detail
 from app.modules.auth.deps import member_session, require_member, require_permission
-from app.modules.jobs.models import Job
-from app.modules.profiles.models import SavedJob
 from app.modules.auth.models import User
 from app.modules.jobs import postings
+from app.modules.jobs import service as jobs
 from app.modules.jobs.catalog.models import TermKind
-from app.modules.applications.service import get_job_detail, latest_match_analysis, list_jobs
+from app.modules.jobs.catalog.store import suggestions
+from app.modules.jobs.models import Job, SavedJob
 
 router = APIRouter(prefix="/api")
-
-
-class JobSummary(BaseModel):
-    id: int
-    company: str
-    title: str
-    location: str | None
-    status: str
-    overall_score: int | None
-
-
-@router.get("/jobs", response_model=list[JobSummary])  # only the signed-in member's jobs
-def api_list_jobs(status: str | None = None, min_score: int | None = None,
-                  session: Session = Depends(member_session)):
-    jobs = list_jobs(session, status=status, min_score=min_score)
-    return [
-        JobSummary(
-            id=j.id,
-            company=j.company,
-            title=j.title,
-            location=j.location,
-            status=j.status.value,
-            overall_score=(a.overall_score if (a := latest_match_analysis(session, j.id)) else None),
-        )
-        for j in jobs
-    ]
-
-
-class JobDetailResponse(BaseModel):
-    id: int
-    company: str
-    title: str
-    status: str
-    overall_score: int | None
-    explanation: str | None
-    tailored_resume_validation_status: str | None
 
 
 def _posting_json(p: postings.Posting, saved_job_id: int | None = None, *, full: bool = False) -> dict:
@@ -84,13 +51,9 @@ def api_search_jobs(
 ):
     """Search jobs. A new q / l / country counts toward the hourly search limit;
     pages and filters of the same search don't."""
-    from urllib.parse import urlencode
-
-    from app.web.routes import _limited_search, _saved_job_keys, _search_terms
-
-    titles, locations, keywords, country, _ = _search_terms(session, q, l, None, None, None, country)
+    titles, locations, keywords, country, _ = jobs.search_terms(session, q, l, None, None, None, country)
     query_string = urlencode({"q": ", ".join(titles), "l": ", ".join(locations), "country": country})
-    search = _limited_search(session, user, titles, locations, keywords, country, page, query_string)
+    search = jobs.limited_search(session, user, titles, locations, keywords, country, page, query_string)
     if search.get("limited"):
         return JSONResponse({"error": {"code": "search_limit", "message": search["error"]}}, status_code=429)
     if search.get("error"):
@@ -98,7 +61,7 @@ def api_search_jobs(
     found = [postings.from_raw(card["raw"]) for card in search["cards"]]
     postings.remember(found)
     filters = postings.Filters.parse(workplace, job_type, level, salary, days)
-    saved = _saved_job_keys(session)
+    saved = jobs.saved_job_keys(session)
     return {"page": search["page"], "has_next": search["has_next"],
             "results": [_posting_json(p, saved.get((p.source, p.external_id))) for p in found if filters.matches(p)]}
 
@@ -107,12 +70,10 @@ def api_search_jobs(
 def api_get_job(job_id: str, session: Session = Depends(member_session), user: User = Depends(require_member)):
     """A tracked job by its numeric id, or a search result by its ref (e.g. p123)."""
     if not job_id.isdigit():
-        from app.web.routes import _saved_job_keys
-
         posting = postings.get(session, job_id)
         if posting is None:
             raise HTTPException(status_code=404, detail="No such job (search results expire after an hour)")
-        return _posting_json(posting, _saved_job_keys(session).get((posting.source, posting.external_id)), full=True)
+        return _posting_json(posting, jobs.saved_job_keys(session).get((posting.source, posting.external_id)), full=True)
     require_permission(user, "applications.view.own")  # a tracked job, not a search result
     detail = get_job_detail(session, int(job_id))
     if detail is None:
@@ -130,12 +91,10 @@ def api_get_job(job_id: str, session: Session = Depends(member_session), user: U
 
 @router.post("/jobs/{ref}/save", status_code=201)
 def api_save_job(ref: str, session: Session = Depends(member_session), user: User = Depends(require_member)):
-    from app.web.routes import save_posting
-
     posting = postings.get(session, ref)
     if posting is None:
         raise HTTPException(status_code=404, detail="No such job (search results expire after an hour)")
-    job = save_posting(session, user, posting)
+    job = jobs.save_posting(session, user, posting)
     return JSONResponse({"saved": True, "job_id": job.id}, status_code=201)
 
 

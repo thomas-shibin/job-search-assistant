@@ -19,7 +19,8 @@ from app.modules.auth import emails as account_emails
 from app.integrations import email as mailer
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.modules.profiles.models import ProfileExperience, SavedJob
+from app.modules.jobs.models import SavedJob
+from app.modules.profiles.models import ProfileExperience
 from app.modules.auth.models import AuthSession, EmailCode, User
 from app.modules.jobs.pool import service as pool
 from app.integrations.job_boards.base import RawJob

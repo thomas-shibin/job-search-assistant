@@ -169,7 +169,7 @@ def _pdf() -> Check:
 def _activity(session: Session) -> Check:
     from app.modules.usage.ai_calls import AICallLog
     from app.modules.jobs.models import Job
-    from app.core.config.models import WatchlistAlert
+    from app.modules.alerts.models import WatchlistAlert
 
     since = _utcnow() - timedelta(hours=24)
     new_jobs = session.query(func.count(Job.id)).filter(Job.date_discovered >= since).scalar()

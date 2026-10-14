@@ -15,6 +15,7 @@ from app.modules.resumes.models import CandidateProfile
 from app.modules.profiles.models import ProfileEducation, ProfileExperience
 from app.modules.auth.models import User
 from app.modules.profiles import service as profiles
+from app.modules.resumes.uploads import import_upload
 from app.modules.jobs.postings import EMPLOYMENT_TYPES, WORKPLACES
 from app.web.templating import templates
 
@@ -298,9 +299,7 @@ def api_add_education(body: dict, user: User = Depends(require_member), session:
 @router.post("/api/profile/resume", status_code=201)
 async def api_upload_resume(resume: UploadFile = File(...), session: Session = Depends(member_session)):
     """PDF or DOCX, up to 10 MB; becomes the active resume (private to the user)."""
-    from app.web.routes import _import_uploaded_resume
-
-    result, error = await _import_uploaded_resume(session, resume)
+    result, error = await import_upload(session, resume)
     if error:
         return _error(400, "invalid_resume", error)
     return JSONResponse({"version": result.profile.version, "created": result.created}, status_code=201)

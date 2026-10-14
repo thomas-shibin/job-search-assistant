@@ -1,11 +1,15 @@
-"""The one Jinja2 environment every page renders with."""
+"""The one Jinja2 environment every page renders with, and the filters and
+globals its templates use (dates, money, sources, resume diffs, permissions)."""
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 
 from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from sqlalchemy.orm import object_session
+
+from app.modules.resumes.diff import inline_word_diff_html, side_by_side_diff
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -18,6 +22,36 @@ def _money(value) -> str:
 
 
 templates.env.filters["money"] = _money
+
+
+def _ago(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    now = datetime.now(value.tzinfo) if value.tzinfo else datetime.now()
+    days = (now - value).days
+    if days <= 0:
+        return "today"
+    if days == 1:
+        return "yesterday"
+    if days < 30:
+        return f"{days} days ago"
+    return value.strftime("%b %d, %Y")
+
+
+def _source_label(source: str | None) -> str:
+    """Where a job came from, in the user's terms (never a provider's name)."""
+    source = source or ""
+    if source == "manual":
+        return "Added by you"
+    if source.startswith(("greenhouse", "lever", "ashby")):
+        return "Company careers page"
+    return "Job board"
+
+
+templates.env.filters["ago"] = _ago
+templates.env.filters["source_label"] = _source_label
+templates.env.filters["worddiff"] = inline_word_diff_html
+templates.env.globals["sidediff"] = side_by_side_diff
 
 
 # ---- permissions in templates (the server-side half of hasPermission & co.) ----------------
