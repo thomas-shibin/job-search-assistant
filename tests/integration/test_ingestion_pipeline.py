@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.database.base import Base
+from app.core.database.base import Base
 from app.ingestion.pipeline import ingest_raw_job
 from app.models.job import JobStatus, JobStatusHistory
 from app.sources.manual import import_manual_job

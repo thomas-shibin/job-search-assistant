@@ -9,7 +9,13 @@ from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse,
 from fastapi.staticfiles import StaticFiles
 
 from app.auth.deps import (
-    AccessDenied, AdminOnly, FeatureDisabled, LoginRequired, MembersOnly, PermissionDenied, VerifyEmailRequired,
+    AccessDenied,
+    AdminOnly,
+    FeatureDisabled,
+    LoginRequired,
+    MembersOnly,
+    PermissionDenied,
+    VerifyEmailRequired,
 )
 
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "ui" / "static"
@@ -135,7 +141,7 @@ def create_app() -> FastAPI:
     def health() -> JSONResponse:
         # Public liveness only (Docker's healthcheck); the detailed report is
         # admin-only at /admin/health.
-        from app.database.session import SessionLocal
+        from app.core.database.session import SessionLocal
         from app.services.health import check_database
 
         ok = check_database(SessionLocal)
@@ -156,7 +162,7 @@ def create_app() -> FastAPI:
     def seed_search_catalog() -> None:
         # Built-in titles/keywords/locations for the search pickers (idempotent).
         from app.catalog.store import seed_catalog
-        from app.database.session import SessionLocal
+        from app.core.database.session import SessionLocal
 
         try:
             with SessionLocal() as session:
@@ -169,7 +175,7 @@ def create_app() -> FastAPI:
         # Permissions, roles and feature switches added in code since the last
         # migration (idempotent; never undoes an admin's changes).
         from app.auth.rbac import sync_catalog
-        from app.database.session import engine
+        from app.core.database.session import engine
 
         try:
             with engine.begin() as connection:

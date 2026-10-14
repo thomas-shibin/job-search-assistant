@@ -14,14 +14,14 @@ from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.auth.tokens import issue_token
-from app.config.store import load_app_config
-from app.database.base import Base
+from app.core.config.store import load_app_config
+from app.core.database.base import Base
 from app.models.job import Job, JobStatus
 from app.models.user import TokenPurpose, User
 from app.notifications.telegram import TelegramClient
 from app.notifications.telegram_commands import BotActions, poll_once, reply_for
 from app.services.health import FAIL, check_health, format_health_message
-from app.tenancy import system_session, tenant_session
+from app.core.tenancy import system_session, tenant_session
 
 
 @pytest.fixture()

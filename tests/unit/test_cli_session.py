@@ -9,12 +9,12 @@ def test_cli_session_opens_and_binds_to_user(monkeypatch, tmp_path):
     from sqlalchemy import create_engine
     from sqlalchemy.orm import sessionmaker
 
-    import app.database.session as db
+    import app.core.database.session as db
     import app.models  # noqa: F401
     import cli
-    from app.database.base import Base
+    from app.core.database.base import Base
     from app.models.user import User
-    from app.tenancy import tenant_of
+    from app.core.tenancy import tenant_of
 
     engine = create_engine(f"sqlite:///{tmp_path / 't.db'}")
     Base.metadata.create_all(engine)

@@ -29,7 +29,7 @@ from sqlalchemy.orm import Session
 from app.ingestion.normalize import NormalizedJob
 from app.models.job import Job
 from app.sources.base import RawJob
-from app.utils.hashing import content_hash, normalize_text
+from app.shared.hashing import content_hash, normalize_text
 
 # Empirically chosen: minor formatting/whitespace edits between reposts of the
 # same job typically score well above 0.95; genuinely different postings at

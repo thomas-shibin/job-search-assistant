@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from app.config.schema import MatchingConfig, SearchProfile
+from app.core.config.schema import MatchingConfig, SearchProfile
 from app.ingestion.filters import location_matches
 from app.models.candidate import CandidateProfile
 from app.models.job import Job

@@ -57,9 +57,9 @@ class BotActions:
     def link_chat(self, code: str, chat_id: str) -> str | None:
         """Bind `chat_id` to the account that issued `code`; returns their first name."""
         from app.auth.tokens import consume_token
-        from app.config.store import load_app_config, save_section
+        from app.core.config.store import load_app_config, save_section
         from app.models.user import TokenPurpose, User
-        from app.tenancy import system_session, tenant_session
+        from app.core.tenancy import system_session, tenant_session
 
         with system_session(self._factory) as session:
             token = consume_token(session, TokenPurpose.TELEGRAM_LINK, code)
@@ -76,15 +76,15 @@ class BotActions:
 
     def _users_for_chat(self, chat_id: str) -> list[int]:
         from app.models.settings import UserSetting
-        from app.tenancy import system_session
+        from app.core.tenancy import system_session
 
         with system_session(self._factory) as session:
             rows = session.query(UserSetting.user_id, UserSetting.value).filter(UserSetting.key == "watchlist").all()
         return [uid for uid, value in rows if str((value or {}).get("telegram_chat_id") or "") == str(chat_id)]
 
     def unlink_chat(self, chat_id: str) -> int:
-        from app.config.store import load_app_config, save_section
-        from app.tenancy import tenant_session
+        from app.core.config.store import load_app_config, save_section
+        from app.core.tenancy import tenant_session
 
         users = self._users_for_chat(chat_id)
         for user_id in users:
@@ -95,7 +95,7 @@ class BotActions:
 
     def is_admin_chat(self, chat_id: str) -> bool:
         from app.models.user import User
-        from app.tenancy import system_session
+        from app.core.tenancy import system_session
 
         users = self._users_for_chat(chat_id)
         if not users:
@@ -105,7 +105,7 @@ class BotActions:
 
     def health_text(self) -> str:
         from app.services.health import check_health, format_health_message
-        from app.tenancy import system_session
+        from app.core.tenancy import system_session
 
         with system_session(self._factory) as session:
             return format_health_message(check_health(session, self._config_path))
@@ -169,7 +169,7 @@ def bot_username(settings: TelegramSettings | None = None) -> str | None:
 
 class TelegramCommandListener:
     def __init__(self, config_path: Path, session_factory=None) -> None:
-        from app.database.session import SessionLocal
+        from app.core.database.session import SessionLocal
 
         self._actions = BotActions(session_factory or SessionLocal, config_path)
         self._stop = threading.Event()

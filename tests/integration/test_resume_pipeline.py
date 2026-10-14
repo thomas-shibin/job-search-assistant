@@ -14,8 +14,8 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.ai.mock import MockAIProvider
-from app.config.schema import AppConfig, CandidateConfig
-from app.database.base import Base
+from app.core.config.schema import AppConfig, CandidateConfig
+from app.core.database.base import Base
 from app.documents.libreoffice import PdfConversionError
 from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
 from app.models.job import Job, JobStatus

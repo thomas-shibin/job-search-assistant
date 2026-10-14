@@ -5,8 +5,8 @@ from pathlib import Path
 
 import typer
 
-from app.config.loader import ConfigError, validate_config
-from app.utils.logging import configure_logging
+from app.core.config.loader import ConfigError, validate_config
+from app.core.logging import configure_logging
 
 app = typer.Typer(help="Local AI Job Application Assistant CLI")
 
@@ -38,9 +38,9 @@ def _global_options(
 def _session():
     """A database session -- bound to `--user`'s account when given, so a
     command only ever sees and changes that user's data."""
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.models.user import Role, User
-    from app.tenancy import bind_tenant
+    from app.core.tenancy import bind_tenant
 
     session = SessionLocal()
     if _acting_user_email:
@@ -56,7 +56,7 @@ def _session():
 
 def _load_settings(config_path: Path):
     """Effective settings from the database (importing `config_path` on first use)."""
-    from app.config.store import load_app_config
+    from app.core.config.store import load_app_config
 
     session = _session()
     try:
@@ -120,8 +120,8 @@ def import_config_cmd(
     """
     configure_logging()
 
-    from app.config.store import has_settings, import_yaml_config
-    from app.database.session import SessionLocal
+    from app.core.config.store import has_settings, import_yaml_config
+    from app.core.database.session import SessionLocal
 
     session = _session()
     try:
@@ -153,7 +153,7 @@ def import_resume_cmd(
         typer.echo(f"Resume file not found: {resume_path}", err=True)
         raise typer.Exit(code=1)
 
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.resume.parser import import_resume as run_import_resume
 
     session = _session()
@@ -216,7 +216,7 @@ def discover(
         typer.echo("Provide --description or --description-file with the job posting text.", err=True)
         raise typer.Exit(code=1)
 
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.ingestion.pipeline import ingest_raw_job
     from app.sources.manual import import_manual_job
 
@@ -296,7 +296,7 @@ def analyze(
 
     from app.ai.factory import AIProviderConfigError, build_ai_provider
     from app.ai.settings import AISettings
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.matching.pipeline import NoActiveCandidateProfileError, analyze_job
     from app.models.job import Job, JobStatus
 
@@ -358,7 +358,7 @@ def generate_resume(
     config = _load_settings(config_path)
 
     from app.ai.factory import AIProviderConfigError
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.models.job import Job
     from app.resume.pipeline import generate_resume_bundle
     from app.resume.tailor import NoActiveCandidateProfileError
@@ -401,7 +401,7 @@ def _job_action_command(action_name: str, help_text: str):
         configure_logging()
 
         from app.applications import state_machine
-        from app.database.session import SessionLocal
+        from app.core.database.session import SessionLocal
         from app.models.job import Job
 
         transition_fn = getattr(state_machine, action_name)
@@ -450,7 +450,7 @@ def open_application(job_id: int) -> None:
     import webbrowser
 
     from app.applications import state_machine
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.models.job import Job
 
     session = _session()
@@ -480,7 +480,7 @@ def run(
     member, or with --user for just that account."""
     configure_logging()
 
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.scheduler.run import RunSummary, run_once, scan_members
 
     if not _acting_user_email:
@@ -552,7 +552,7 @@ def rebuild_resumes(
     """
     from sqlalchemy import func
 
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.documents.libreoffice import PdfConversionError, convert_to_pdf
     from app.models.resume import TailoredResume
     from app.resume.tailor import rebuild_tailored_resume
@@ -591,7 +591,7 @@ def cleanup_jobs(
     """Delete stored jobs older than the retention period (default 7 days), with
     their scores, analyses and tailored resumes. Jobs you've acted on are kept.
     Runs automatically after every scheduled scan."""
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.services.retention import purge_old_jobs
 
     config = _load_settings(config_path)
@@ -620,7 +620,7 @@ def catalog_scan(
     """
     from app.catalog.scan import plural, scan_market
     from app.catalog.store import counts, seed_catalog
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.sources.adzuna import AdzunaSource
     from app.sources.settings import AdzunaSettings
 
@@ -651,9 +651,9 @@ def claim_legacy_data(email: str = typer.Option(..., "--email", help="The accoun
     configure_logging()
     from app.auth.service import _tenant_models, normalize_email
     from app.auth.tokens import utcnow
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.models.user import Role, User
-    from app.tenancy import system_session
+    from app.core.tenancy import system_session
 
     address = normalize_email(email)
     placeholder_email = "owner@legacy.invalid"
@@ -687,9 +687,9 @@ def set_password(email: str = typer.Option(..., "--email")) -> None:
     from app.auth.passwords import hash_password, password_problems, PASSWORD_RULES
     from app.auth.service import normalize_email
     from app.auth.tokens import utcnow
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.models.user import AuthSession, Role, User
-    from app.tenancy import system_session
+    from app.core.tenancy import system_session
 
     with system_session(SessionLocal) as session:
         user = session.query(User).filter(User.email == normalize_email(email), User.role != Role.GUEST.value).one_or_none()
@@ -719,10 +719,10 @@ def grant_role_cmd(email: str = typer.Option(..., "--email"),
     from app.admin.access import audit
     from app.auth import rbac
     from app.auth.service import normalize_email
-    from app.database.session import SessionLocal
+    from app.core.database.session import SessionLocal
     from app.models.rbac import UserRole
     from app.models.user import Role, User
-    from app.tenancy import system_session
+    from app.core.tenancy import system_session
 
     with system_session(SessionLocal) as session:
         rbac.sync_catalog(session.connection())
@@ -748,7 +748,7 @@ def grant_role_cmd(email: str = typer.Option(..., "--email"),
 
 
 def main() -> None:
-    from app.tenancy import TenantContextError
+    from app.core.tenancy import TenantContextError
 
     try:
         app()

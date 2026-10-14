@@ -10,7 +10,7 @@ import app.models  # noqa: F401  register all models on Base.metadata
 from app.catalog import seed_data
 from app.catalog.scan import clean_company, clean_title, scan_market
 from app.catalog.store import Term, location_paths, seed_catalog, suggestions, upsert_terms
-from app.database.base import Base
+from app.core.database.base import Base
 from app.models.catalog import SearchTerm, TermKind, TermSource
 
 

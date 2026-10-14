@@ -6,8 +6,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.config.schema import Watch, WatchlistConfig
-from app.database.base import Base
+from app.core.config.schema import Watch, WatchlistConfig
+from app.core.database.base import Base
 from app.models.job import Job, JobStatus
 from app.models.settings import WatchlistAlert
 from app.notifications.watchlist import WatchlistAlerter, alert_key

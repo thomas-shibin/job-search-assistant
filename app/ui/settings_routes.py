@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.deps import member_session
 from app.catalog.store import remember_user_terms
-from app.config.loader import ConfigError
-from app.config.schema import AppConfig
-from app.config.store import USER_SECTIONS, WATCH_LIST_FIELDS, load_app_config, save_section, save_watch
+from app.core.config.loader import ConfigError
+from app.core.config.schema import AppConfig
+from app.core.config.store import USER_SECTIONS, WATCH_LIST_FIELDS, load_app_config, save_section, save_watch
 from app.models.job import Job
 from app.models.settings import WatchlistAlert, WatchlistEntry
 from app.notifications.telegram import TelegramSettings

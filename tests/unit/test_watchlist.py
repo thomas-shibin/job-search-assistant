@@ -7,7 +7,7 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from app.config.schema import AppConfig, CandidateConfig, Watch, WatchlistConfig
+from app.core.config.schema import AppConfig, CandidateConfig, Watch, WatchlistConfig
 from app.models.job import Job, JobStatus
 from app.notifications.telegram import TelegramClient, TelegramError, TelegramSettings
 from app.notifications.watchlist import WatchlistAlerter, build_watchlist_alerter, format_alert, watch_matches
@@ -146,7 +146,7 @@ def test_telegram_recent_chats_dedupes_by_chat_id():
 
 from datetime import datetime, timedelta, timezone
 
-from app.config.schema import Watch as _Watch
+from app.core.config.schema import Watch as _Watch
 from app.models.job import Job as _Job
 from app.notifications.watchlist import watch_matches as _matches
 

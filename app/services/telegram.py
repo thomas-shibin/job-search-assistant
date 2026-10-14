@@ -7,12 +7,12 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.auth.tokens import issue_token
-from app.config.schema import AppConfig
-from app.config.store import save_section
+from app.core.config.schema import AppConfig
+from app.core.config.store import save_section
 from app.models.user import TokenPurpose
 from app.notifications.telegram import TelegramClient, TelegramError, TelegramSettings
 from app.notifications.telegram_commands import LINK_TTL, bot_username
-from app.tenancy import require_tenant
+from app.core.tenancy import require_tenant
 
 
 def _client(settings: TelegramSettings) -> TelegramClient:

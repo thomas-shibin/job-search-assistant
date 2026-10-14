@@ -1,5 +1,5 @@
-from app.config.loader import ConfigError, load_config, validate_config
-from app.config.schema import (
+from app.core.config.loader import ConfigError, load_config, validate_config
+from app.core.config.schema import (
     AddressProfile,
     AIConfig,
     AppConfig,

@@ -11,8 +11,8 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.ai.mock import MockAIProvider
-from app.config.schema import AIConfig, AppConfig, CandidateConfig
-from app.database.base import Base
+from app.core.config.schema import AIConfig, AppConfig, CandidateConfig
+from app.core.database.base import Base
 from app.documents.docx_edit import is_prose, rewritable_passages
 from app.ingestion.pipeline import ingest_raw_job
 from app.models.candidate import CandidateProfile

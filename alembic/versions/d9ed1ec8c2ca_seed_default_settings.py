@@ -51,7 +51,7 @@ DEFAULTS = {
 
 
 def upgrade() -> None:
-    from app.config.seeding import seed_setting_defaults
+    from app.core.config.seeding import seed_setting_defaults
 
     seed_setting_defaults(op.get_bind(), DEFAULTS)
 

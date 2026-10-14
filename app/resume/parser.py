@@ -40,7 +40,7 @@ from app.models.candidate import (
     Project,
     Skill,
 )
-from app.utils.hashing import content_hash
+from app.shared.hashing import content_hash
 
 SECTION_ALIASES: dict[str, tuple[str, ...]] = {
     "summary": ("summary", "professional summary", "profile", "objective", "career summary"),
@@ -620,7 +620,7 @@ def parse_resume(path: Path) -> ParsedResume:
 
 def _resume_file_exists(raw_path: str) -> bool:
     path = Path(raw_path)
-    from app.database.session import PROJECT_ROOT
+    from app.core.database.session import PROJECT_ROOT
 
     return path.is_file() or (PROJECT_ROOT / path).is_file()
 

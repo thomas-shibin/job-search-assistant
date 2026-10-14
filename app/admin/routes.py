@@ -19,10 +19,10 @@ from app.auth import rbac
 from app.auth.deps import admin_session, require_admin
 from app.catalog.scan import scan_status, start_background_scan
 from app.catalog.store import counts as catalog_counts
-from app.config.loader import ConfigError
-from app.config.schema import AppConfig
-from app.config.store import PLATFORM_SECTIONS, load_app_config, save_section
-from app.database.session import SessionLocal
+from app.core.config.loader import ConfigError
+from app.core.config.schema import AppConfig
+from app.core.config.store import PLATFORM_SECTIONS, load_app_config, save_section
+from app.core.database.session import SessionLocal
 from app.models.ai_usage import AICallLog
 from app.models.activity import ActivityKind
 from app.models.pool import PoolCompany, PoolJob

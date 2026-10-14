@@ -5,8 +5,8 @@ from datetime import date, datetime
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database.base import Base
-from app.tenancy import TenantOwned
+from app.core.database.base import Base
+from app.core.tenancy import TenantOwned
 
 
 class CandidateProfile(TenantOwned, Base):

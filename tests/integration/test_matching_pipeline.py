@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.ai.mock import MockAIProvider
-from app.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
-from app.database.base import Base
+from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
+from app.core.database.base import Base
 from app.matching.pipeline import analyze_job
 from app.models.ai_usage import AICallLog
 from app.models.candidate import CandidateProfile, Employment, Skill

@@ -23,14 +23,14 @@ from app.ai.base import AIProvider
 from app.ai.factory import build_ai_provider
 from app.ai.service import get_or_extract_requirements
 from app.ai.settings import AISettings
-from app.config.schema import AppConfig, SearchProfile
+from app.core.config.schema import AppConfig, SearchProfile
 from app.ingestion.filters import FilterResult, check_hard_filters
 from app.matching.scorer import MatchScoreBreakdown, score_job
 from app.models.ai_usage import AICallLog
 from app.models.candidate import CandidateProfile
 from app.models.job import Job, JobStatus, JobStatusHistory
 from app.models.matching import MatchAnalysis
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

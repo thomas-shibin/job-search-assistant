@@ -18,7 +18,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.shared import Pt
 
 if TYPE_CHECKING:
-    from app.config.schema import AddressProfile
+    from app.core.config.schema import AddressProfile
     from app.models.candidate import Certification, Education, Employment
 
 

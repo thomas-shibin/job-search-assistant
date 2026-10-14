@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.ai.base import AIProvider
 from app.applications.bundle import build_artifact_set
 from app.applications.state_machine import mark_ready_for_review
-from app.config.schema import AppConfig
+from app.core.config.schema import AppConfig
 from app.documents.libreoffice import PdfConversionError, convert_to_pdf
 from app.models.application import ApplicationArtifactSet
 from app.models.job import Job

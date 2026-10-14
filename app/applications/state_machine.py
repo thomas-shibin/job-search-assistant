@@ -13,7 +13,7 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.models.job import Job, JobStatus, JobStatusHistory
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

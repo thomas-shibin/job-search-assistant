@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from app.utils.hashing import content_hash, normalize_text
+from app.shared.hashing import content_hash, normalize_text
 
 
 def test_normalize_text_collapses_whitespace_and_lowercases() -> None:

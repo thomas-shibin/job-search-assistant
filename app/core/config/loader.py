@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 from pydantic import ValidationError
 
-from app.config.schema import AppConfig
+from app.core.config.schema import AppConfig
 
 
 class ConfigError(Exception):

@@ -17,7 +17,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth.deps import current_user, member_session, require_member
-from app.database.session import get_session
+from app.core.database.session import get_session
 from app.models.pool import PoolCompany, PoolJob
 from app.models.user import User
 from app.profile import service as profiles

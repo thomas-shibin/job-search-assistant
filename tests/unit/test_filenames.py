@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.utils.filenames import sanitize_filename
+from app.shared.filenames import sanitize_filename
 
 
 def test_removes_invalid_characters() -> None:

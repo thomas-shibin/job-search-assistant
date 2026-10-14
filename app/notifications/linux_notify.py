@@ -11,7 +11,7 @@ import subprocess
 
 from app.notifications.base import JobNotification
 from app.notifications.windows_toast import format_notification
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

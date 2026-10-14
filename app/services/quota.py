@@ -34,7 +34,7 @@ from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.config.schema import PlatformConfig
+from app.core.config.schema import PlatformConfig
 from app.models.activity import ActivityEvent, ActivityKind
 from app.models.ai_usage import AICallLog
 from app.models.settings import AppSetting

@@ -10,8 +10,8 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.applications.folder import get_application_folder
-from app.config.schema import AppConfig, CandidateConfig
-from app.database.base import Base
+from app.core.config.schema import AppConfig, CandidateConfig
+from app.core.database.base import Base
 from app.ingestion.pipeline import ingest_raw_job
 from app.models.ai_usage import AICallLog
 from app.models.job import Job, JobStatus, JobStatusHistory, JobTombstone

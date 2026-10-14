@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from app.config.loader import ConfigError, load_config, validate_config
+from app.core.config.loader import ConfigError, load_config, validate_config
 
 VALID_YAML = """
 candidate:

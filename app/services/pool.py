@@ -33,7 +33,7 @@ from app.sources.ashby import AshbySource
 from app.sources.base import RawJob
 from app.sources.greenhouse import GreenhouseSource
 from app.sources.lever import LeverSource
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

@@ -8,8 +8,8 @@ from datetime import date, datetime, timezone
 from sqlalchemy import JSON, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database.base import Base
-from app.tenancy import TenantOwned
+from app.core.database.base import Base
+from app.core.tenancy import TenantOwned
 
 
 def _utcnow() -> datetime:

@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.applications.folder import application_folder_path
-from app.config.schema import AppConfig
+from app.core.config.schema import AppConfig
 from app.ingestion.fingerprint import compute_description_hash, compute_fingerprint
 from app.ingestion.normalize import normalize_raw_job
 from app.models.ai_usage import AICallLog
@@ -31,7 +31,7 @@ from app.models.matching import JobFitAssessment, MatchAnalysis
 from app.models.resume import TailoredBulletProvenance, TailoredResume
 from app.models.settings import WatchlistAlert
 from app.sources.base import RawJob
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

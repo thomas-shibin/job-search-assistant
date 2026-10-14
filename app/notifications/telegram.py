@@ -11,7 +11,7 @@ import httpx
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from app.utils.retry import with_retry
+from app.shared.retry import with_retry
 
 logger = logging.getLogger(__name__)
 

@@ -10,8 +10,8 @@ from sqlalchemy import engine_from_config, pool
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import app.models  # noqa: F401  registers every model on Base.metadata
-from app.database.base import Base
-from app.database.session import DATABASE_URL
+from app.core.database.base import Base
+from app.core.database.session import DATABASE_URL
 
 config = context.config
 config.set_main_option("sqlalchemy.url", DATABASE_URL)

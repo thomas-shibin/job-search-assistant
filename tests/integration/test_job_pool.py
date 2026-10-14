@@ -10,14 +10,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.database.base import Base
-from app.database.session import get_session
+from app.core.database.base import Base
+from app.core.database.session import get_session
 from app.models.job import Job
 from app.models.pool import PoolCompany, PoolJob
 from app.models.user import User
 from app.services import pool
 from app.sources.base import RawJob
-from app.tenancy import system_session, tenant_session
+from app.core.tenancy import system_session, tenant_session
 
 MEMBER, ADMIN = 1, 2
 FULL = "About the role. " + "You will build data pipelines in Python and SQL. " * 30

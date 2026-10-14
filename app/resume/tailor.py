@@ -23,18 +23,16 @@ from app.ai.factory import build_ai_provider
 from app.ai.settings import AISettings
 from app.applications.folder import get_application_folder
 from app.catalog.geo import job_place, province_code
-from app.config.schema import AddressProfile, AppConfig
-from app.database.session import PROJECT_ROOT
+from app.core.config.schema import AddressProfile, AppConfig
+from app.core.database.session import PROJECT_ROOT
 from app.documents.docx import render_tailored_resume
 from app.documents.docx_edit import rewritable_passages, tailor_docx
 from app.models.ai_usage import AICallLog
 from app.models.candidate import AccomplishmentBullet, CandidateProfile
 from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory
 from app.models.resume import TailoredBulletProvenance, TailoredResume
-from app.resume.validator import (
-    BulletValidationResult, ValidationResult, validate_passage, validate_tailored_resume,
-)
-from app.utils.logging import log_event
+from app.resume.validator import BulletValidationResult, ValidationResult, validate_passage, validate_tailored_resume
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

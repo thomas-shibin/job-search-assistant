@@ -10,7 +10,7 @@ import logging
 from typing import Any
 
 from app.notifications.base import JobNotification
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

@@ -14,7 +14,7 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database.base import Base
+from app.core.database.base import Base
 
 
 class Role(str, enum.Enum):

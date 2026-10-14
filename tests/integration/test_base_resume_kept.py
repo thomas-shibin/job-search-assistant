@@ -12,8 +12,8 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
 import app.resume.tailor as tailor_module
-from app.config.schema import AIConfig, AppConfig, CandidateConfig
-from app.database.base import Base
+from app.core.config.schema import AIConfig, AppConfig, CandidateConfig
+from app.core.database.base import Base
 from app.ingestion.pipeline import ingest_raw_job
 from app.resume.parser import import_resume
 from app.resume.tailor import BaseResumeMissingError, tailor_resume

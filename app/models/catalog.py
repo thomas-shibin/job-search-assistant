@@ -6,8 +6,8 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database.base import Base
-from app.tenancy import TenantOwned
+from app.core.database.base import Base
+from app.core.tenancy import TenantOwned
 
 
 class TermKind(str, enum.Enum):
@@ -56,7 +56,7 @@ class SearchTerm(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     kind: Mapped[str] = mapped_column(String(16))  # TermKind value
     label: Mapped[str] = mapped_column(String(255))  # shown in pickers and stored in settings, e.g. "Victoria, BC"
-    norm: Mapped[str] = mapped_column(String(255))  # app.utils.terms.normalize_term(label)
+    norm: Mapped[str] = mapped_column(String(255))  # app.shared.terms.normalize_term(label)
     source: Mapped[str] = mapped_column(String(16))  # TermSource value
     # Postings that carried this term in the latest catalog scan: orders suggestions.
     job_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")

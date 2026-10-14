@@ -35,11 +35,11 @@ from app.auth.ratelimit import RateLimiter, email_limiter, login_limiter
 from app.auth.service import AuthError, normalize_email
 from app.auth.sessions import client_ip, end_session, start_session
 from app.auth.settings import AuthSettings
-from app.database.session import get_session
+from app.core.database.session import get_session
 from app.models.user import User
 from app.profile import service as profiles
 from app.ui.templating import safe_next
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,7 @@ def me(request: Request, user: User | None = Depends(current_user), session: Ses
     if user.is_member:
         from sqlalchemy.orm import sessionmaker
 
-        from app.tenancy import tenant_session
+        from app.core.tenancy import tenant_session
 
         with tenant_session(sessionmaker(bind=session.get_bind()), user.id) as own:
             percent = profiles.completion(own, user).percent

@@ -14,7 +14,7 @@ from app.ingestion.fingerprint import compute_description_hash, compute_fingerpr
 from app.ingestion.normalize import normalize_raw_job
 from app.models.job import Job, JobStatus, JobStatusHistory
 from app.sources.base import RawJob
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

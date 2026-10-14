@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.catalog.seed_data import CANADIAN_PROVINCES
 from app.models.catalog import SearchTerm, TermKind
-from app.utils.terms import normalize_term
+from app.shared.terms import normalize_term
 
 _CODE_BY_NAME = {normalize_term(name): code for name, code in CANADIAN_PROVINCES}
 _CODES = {code for _, code in CANADIAN_PROVINCES}

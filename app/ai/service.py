@@ -22,7 +22,7 @@ from app.ai.base import AIProvider, ExtractedJobRequirements
 from app.ai.usage import AIUsage
 from app.models.ai_usage import AICallLog
 from app.models.job import Job, JobRequirements
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

@@ -10,15 +10,15 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.database.base import Base
-from app.database.session import get_session
+from app.core.database.base import Base
+from app.core.database.session import get_session
 from app.models.activity import ActivityEvent, ActivityKind
 from app.models.ai_usage import AICallLog
 from app.models.candidate import CandidateProfile
 from app.models.job import Job, JobStatus
 from app.models.user import AuthSession, User
 from app.services import quota
-from app.tenancy import system_session, tenant_session
+from app.core.tenancy import system_session, tenant_session
 
 MEMBER, ADMIN, OTHER = 1, 2, 3
 _signed_in: dict = {}

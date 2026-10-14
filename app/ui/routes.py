@@ -22,10 +22,10 @@ from sqlalchemy.orm import Session
 from app.ai.factory import AIProviderConfigError
 from app.applications import state_machine
 from app.catalog.store import location_paths, remember_user_terms
-from app.config.loader import ConfigError
+from app.core.config.loader import ConfigError
 from app.ai.fit import active_candidate, assess_job_fit, latest_assessment
-from app.config.schema import GlobalSearchConfig
-from app.config.store import load_app_config, save_section
+from app.core.config.schema import GlobalSearchConfig
+from app.core.config.store import load_app_config, save_section
 from app.models.candidate import CandidateProfile
 from app.models.resume import TailoredBulletProvenance
 from app.auth.deps import member_session, require_member, require_viewer, viewer_session
@@ -40,11 +40,20 @@ from app.resume.parser import ImportResult, import_resume
 from app.resume.pipeline import generate_resume_bundle
 from app.resume.tailor import NoActiveCandidateProfileError as TailorNoProfileError
 from app.resume.tailor import (
-    BaseResumeMissingError, _base_docx, rebuild_tailored_resume, resolve_address, resume_download_name, tailor_resume,
+    BaseResumeMissingError,
+    _base_docx,
+    rebuild_tailored_resume,
+    resolve_address,
+    resume_download_name,
+    tailor_resume,
 )
 from app.documents.libreoffice import PdfConversionError, convert_to_pdf
 from app.services.jobs import (
-    get_job_detail, is_description_preview, latest_match_analysis, list_jobs, replace_job_description,
+    get_job_detail,
+    is_description_preview,
+    latest_match_analysis,
+    list_jobs,
+    replace_job_description,
 )
 from app.services import pool
 from app.services.search import query_pairs, search_jobs
@@ -56,10 +65,10 @@ from app.sources.base import RawJob
 from app.sources.manual import import_manual_job
 from app.sources.settings import AdzunaSettings
 from app.ui.diff import inline_word_diff_html, side_by_side_diff
-from app.ui.templating import TEMPLATES_DIR, safe_next, templates  # noqa: F401  (re-exported)
-from app.utils.filenames import sanitize_filename
-from app.tenancy import require_tenant
-from app.utils.terms import split_places, split_terms
+from app.ui.templating import TEMPLATES_DIR, safe_next, templates# noqa: F401  (re-exported)
+from app.shared.filenames import sanitize_filename
+from app.core.tenancy import require_tenant
+from app.shared.terms import split_places, split_terms
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

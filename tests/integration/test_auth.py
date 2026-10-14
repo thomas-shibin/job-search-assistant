@@ -15,10 +15,10 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.auth import email as mailer
 from app.auth.service import ProviderProfile
-from app.database.base import Base
-from app.database.session import get_session
+from app.core.database.base import Base
+from app.core.database.session import get_session
 from app.models.user import AuthSession, OAuthIdentity, User
-from app.tenancy import system_session
+from app.core.tenancy import system_session
 
 pytestmark = pytest.mark.real_auth
 

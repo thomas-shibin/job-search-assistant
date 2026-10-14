@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.ai.base import AIProvider
 from app.ai.mock import MockAIProvider
 from app.ai.settings import AISettings
-from app.config.schema import AIConfig
+from app.core.config.schema import AIConfig
 
 
 class AIProviderConfigError(Exception):

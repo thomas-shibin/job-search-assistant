@@ -16,8 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.catalog import seed_data
 from app.models.catalog import LocationType, SearchTerm, TermKind, TermSource, UserSearchTerm
-from app.tenancy import sees_user_data
-from app.utils.terms import normalize_term
+from app.core.tenancy import sees_user_data
+from app.shared.terms import normalize_term
 
 _TRUST = {TermSource.SCAN.value: 0, TermSource.SEED.value: 1, TermSource.USER.value: 2}
 _IN_CHUNK = 500  # stay under SQLite's bound-parameter limit

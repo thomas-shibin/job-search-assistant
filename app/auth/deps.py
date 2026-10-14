@@ -23,9 +23,9 @@ from sqlalchemy.orm import Session
 
 from app.auth import rbac
 from app.auth.sessions import user_for_request
-from app.database.session import get_session
+from app.core.database.session import get_session
 from app.models.user import User
-from app.tenancy import bind_tenant, is_system, make_strict
+from app.core.tenancy import bind_tenant, is_system, make_strict
 
 logger = logging.getLogger(__name__)
 

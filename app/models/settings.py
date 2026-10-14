@@ -5,13 +5,13 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database.base import Base
-from app.tenancy import TenantOwned
+from app.core.database.base import Base
+from app.core.tenancy import TenantOwned
 
 
 class AppSetting(Base):
     """Platform settings, shared by every user and edited only by admins: one
-    row per platform section (`app.config.store.PLATFORM_SECTIONS`, e.g. "ai",
+    row per platform section (`app.core.config.store.PLATFORM_SECTIONS`, e.g. "ai",
     "scheduler") holding that section's JSON. Each user's own sections live in
     `UserSetting`. Secrets never land here; they stay in .env.
     """
@@ -24,7 +24,7 @@ class AppSetting(Base):
 
 
 class UserSetting(TenantOwned, Base):
-    """One user's value for one of their settings sections (`app.config.store.
+    """One user's value for one of their settings sections (`app.core.config.store.
     USER_SECTIONS`, e.g. "search", "matching"), as JSON."""
 
     __tablename__ = "user_settings"
@@ -37,7 +37,7 @@ class UserSetting(TenantOwned, Base):
 
 
 class WatchlistEntry(TenantOwned, Base):
-    """A watchlist watch (`app.config.schema.Watch`) as its own row, so watches
+    """A watchlist watch (`app.core.config.schema.Watch`) as its own row, so watches
     can be added/edited/paused individually from the dashboard.
     """
 

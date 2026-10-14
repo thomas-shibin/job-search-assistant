@@ -18,7 +18,7 @@ from app.ai.factory import AIProviderConfigError, build_ai_provider
 from app.ai.settings import AISettings
 from app.catalog.geo import province_of
 from app.catalog.store import location_paths
-from app.config.schema import AppConfig, SearchProfile
+from app.core.config.schema import AppConfig, SearchProfile
 from app.ingestion.pipeline import ingest_raw_job
 from app.matching.pipeline import NoActiveCandidateProfileError, analyze_job
 from app.models.scheduler import SchedulerRun, SourceRunResult
@@ -34,7 +34,7 @@ from app.sources.base import JobSource, RawJob
 from app.sources.greenhouse import GreenhouseSource
 from app.sources.lever import LeverSource
 from app.sources.settings import AdzunaSettings
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -148,9 +148,9 @@ def scan_members(session_factory, config_path) -> dict[int, RunSummary]:
     the platform's daily listing-request budget equally."""
     from app.auth import rbac
     from app.auth.service import purge_expired
-    from app.config.store import load_app_config
+    from app.core.config.store import load_app_config
     from app.models.user import Role, User
-    from app.tenancy import system_session, tenant_session
+    from app.core.tenancy import system_session, tenant_session
 
     results: dict[int, RunSummary] = {}
     try:

@@ -7,7 +7,7 @@ from datetime import date
 
 from docx import Document
 
-from app.config.schema import AddressProfile
+from app.core.config.schema import AddressProfile
 from app.documents.docx import render_tailored_resume
 from app.models.candidate import Certification, Education, Employment
 

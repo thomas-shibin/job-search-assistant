@@ -16,8 +16,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.database.base import Base
-from app.database.session import get_session
+from app.core.database.base import Base
+from app.core.database.session import get_session
 from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment
 from app.models.catalog import UserSearchTerm
 from app.models.job import Job, JobStatus
@@ -25,7 +25,7 @@ from app.models.matching import MatchAnalysis
 from app.models.resume import TailoredBulletProvenance, TailoredResume
 from app.models.settings import UserSetting, WatchlistEntry
 from app.models.user import User
-from app.tenancy import TenantContextError, system_session, tenant_session
+from app.core.tenancy import TenantContextError, system_session, tenant_session
 from tests.conftest import make_member
 
 ALICE, BOB = 1, 2

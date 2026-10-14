@@ -13,8 +13,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
-from app.database.base import Base
+from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
+from app.core.database.base import Base
 from app.models.candidate import CandidateProfile, Employment, Skill
 from app.models.job import Job, JobStatus
 from app.models.scheduler import SchedulerRun, SourceRunResult
@@ -170,7 +170,7 @@ def test_run_once_skips_disabled_search_profiles(session, monkeypatch):
 
 def test_run_once_searches_every_global_title_and_location(session, monkeypatch):
     import app.scheduler.run as run_module
-    from app.config.schema import GlobalSearchConfig
+    from app.core.config.schema import GlobalSearchConfig
 
     _seed_candidate(session)
     raw_job = RawJob(
@@ -214,7 +214,7 @@ def test_run_once_skips_adzuna_when_credentials_missing(session, monkeypatch):
 
 def test_run_once_sends_watchlist_alerts_for_new_matching_jobs(session, monkeypatch):
     import app.scheduler.run as run_module
-    from app.config.schema import Watch, WatchlistConfig
+    from app.core.config.schema import Watch, WatchlistConfig
     from app.notifications.watchlist import WatchlistAlerter
 
     _seed_candidate(session)
@@ -245,7 +245,7 @@ def test_run_once_sends_watchlist_alerts_for_new_matching_jobs(session, monkeypa
 
 def test_watches_run_their_own_searches_alongside_the_job_search(session, monkeypatch):
     import app.scheduler.run as run_module
-    from app.config.schema import GlobalSearchConfig, Watch
+    from app.core.config.schema import GlobalSearchConfig, Watch
 
     _seed_candidate(session)
     raw_job = RawJob(source="adzuna", source_url="https://example.com/w", company="Acme",

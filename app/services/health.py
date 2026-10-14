@@ -196,7 +196,7 @@ def check_database(session_factory) -> bool:
 
 def check_health(session: Session, config_path: Path = _DEFAULT_CONFIG_PATH) -> HealthReport:
     """The admin report. `session` must be a system session (platform-wide counts)."""
-    from app.config.store import load_app_config
+    from app.core.config.store import load_app_config
 
     report = HealthReport(uptime_seconds=int(time.monotonic() - _STARTED))
     database = _check("Database", lambda: _database(session))

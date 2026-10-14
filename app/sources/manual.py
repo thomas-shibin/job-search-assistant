@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 
 from app.sources.base import RawJob
-from app.utils.hashing import content_hash
+from app.shared.hashing import content_hash
 
 SOURCE_NAME = "manual"
 

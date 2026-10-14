@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, String, event, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.database.base import Base
+from app.core.database.base import Base
 
 
 class RbacRole(Base):

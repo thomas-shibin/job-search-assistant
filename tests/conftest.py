@@ -27,7 +27,7 @@ def _isolated_resume_uploads(tmp_path, monkeypatch):
 def _single_test_tenant(monkeypatch):
     """Fixtures written for one user: rows they create without an owner belong
     to user 1, the member every web request is signed in as (see below)."""
-    import app.tenancy as tenancy
+    import app.core.tenancy as tenancy
 
     monkeypatch.setattr(tenancy, "unscoped_owner_id", TEST_USER_ID)
 

@@ -26,9 +26,15 @@ from sqlalchemy.orm import Session
 from app.documents.docx import render_tailored_resume
 from app.documents.docx_edit import tailor_docx
 from app.models.candidate import (
-    AccomplishmentBullet, CandidateProfile, Certification, Education, Employment, Project, Skill,
+    AccomplishmentBullet,
+    CandidateProfile,
+    Certification,
+    Education,
+    Employment,
+    Project,
+    Skill,
 )
-from app.tenancy import require_tenant
+from app.core.tenancy import require_tenant
 
 MAX_TEXT = 3000
 MAX_BULLET = 1000

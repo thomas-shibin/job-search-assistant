@@ -4,7 +4,7 @@ minimum-score gate that decides whether a qualified job is worth notifying.
 """
 from __future__ import annotations
 
-from app.config.schema import AppConfig, CandidateConfig, NotificationsConfig
+from app.core.config.schema import AppConfig, CandidateConfig, NotificationsConfig
 from app.matching.scorer import MatchScoreBreakdown
 from app.models.job import Job, JobStatus
 from app.notifications.service import maybe_notify_qualified_job

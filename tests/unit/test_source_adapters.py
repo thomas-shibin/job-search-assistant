@@ -228,7 +228,7 @@ def test_adzuna_source_raises_on_http_error_without_leaking_the_key():
 
 def test_adzuna_source_retries_when_rate_limited(monkeypatch):
     import app.sources.adzuna as adzuna_module
-    from app.utils.retry import with_retry
+    from app.shared.retry import with_retry
 
     monkeypatch.setattr(adzuna_module, "with_retry", lambda fn, **kw: with_retry(fn, **kw, sleep=lambda s: None))
     calls = []

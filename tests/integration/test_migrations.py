@@ -11,7 +11,7 @@ from pathlib import Path
 
 import sqlalchemy as sa
 
-from app.config.seeding import merge_defaults, seed_setting_defaults
+from app.core.config.seeding import merge_defaults, seed_setting_defaults
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -38,7 +38,7 @@ def test_fresh_database_is_created_with_default_settings(tmp_path):
 
     from sqlalchemy.orm import Session
 
-    from app.config.store import load_app_config
+    from app.core.config.store import load_app_config
 
     with Session(sa.create_engine(f"sqlite:///{db}")) as session:  # usable without any config.yaml
         assert load_app_config(session, tmp_path / "missing.yaml").scheduler.interval_minutes == 60

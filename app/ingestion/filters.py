@@ -11,9 +11,9 @@ import logging
 import re
 from dataclasses import dataclass, field
 
-from app.config.schema import MatchingConfig, SearchProfile
+from app.core.config.schema import MatchingConfig, SearchProfile
 from app.models.job import Job, JobStatus
-from app.utils.logging import log_event
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

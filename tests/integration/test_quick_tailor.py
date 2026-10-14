@@ -12,9 +12,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig
-from app.database.base import Base
-from app.database.session import get_session
+from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig
+from app.core.database.base import Base
+from app.core.database.session import get_session
 
 FIXTURE_RESUME = Path(__file__).resolve().parent.parent / "fixtures" / "sample_resume.docx"
 

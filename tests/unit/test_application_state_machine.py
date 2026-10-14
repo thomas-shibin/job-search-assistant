@@ -19,7 +19,7 @@ from app.applications.state_machine import (
     skip,
     transition_job,
 )
-from app.database.base import Base
+from app.core.database.base import Base
 from app.models.job import Job, JobStatus
 
 

@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 
 from app.models.job import Job
-from app.utils.filenames import sanitize_filename
+from app.shared.filenames import sanitize_filename
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

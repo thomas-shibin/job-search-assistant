@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.models.candidate import CandidateProfile
 from app.models.profile import JobSeekerProfile, ProfileEducation, ProfileExperience
 from app.models.user import User
-from app.tenancy import tenant_session
+from app.core.tenancy import tenant_session
 
 PROMPT_BELOW_PERCENT = 60
 

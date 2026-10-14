@@ -1,4 +1,4 @@
-from app.utils.terms import join_terms, split_places, split_terms
+from app.shared.terms import join_terms, split_places, split_terms
 
 
 def test_split_terms_on_commas_semicolons_and_newlines():
@@ -41,7 +41,7 @@ def test_known_locations_are_pinned_and_keywords_ride_along():
 
 
 def test_normalize_term_ignores_accents_case_and_punctuation():
-    from app.utils.terms import normalize_term
+    from app.shared.terms import normalize_term
 
     assert normalize_term("Québec") == normalize_term("QUEBEC") == "quebec"
     assert normalize_term("Victoria,  BC") == normalize_term("victoria bc")

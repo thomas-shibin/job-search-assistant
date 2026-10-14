@@ -24,8 +24,8 @@ from app.auth.passwords import hash_password, needs_rehash, password_problems, v
 from app.auth.settings import AuthSettings
 from app.auth.tokens import consume_token, hash_secret, issue_token, revoke_tokens, utcnow
 from app.models.user import AuthSession, AuthToken, OAuthIdentity, Role, TokenPurpose, User
-from app.tenancy import TenantOwned, system_session
-from app.utils.logging import log_event
+from app.core.tenancy import TenantOwned, system_session
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -258,7 +258,7 @@ def social_login(session: Session, profile: ProviderProfile) -> User:
 
 def _tenant_models() -> list[type]:
     import app.models  # noqa: F401  every model registered
-    from app.database.base import Base
+    from app.core.database.base import Base
 
     return [m.class_ for m in Base.registry.mappers if issubclass(m.class_, TenantOwned)]
 
@@ -290,7 +290,7 @@ def delete_user_data(session: Session, user_id: int) -> None:
 
 
 def delete_account(session_factory, user_id: int) -> None:
-    from app.storage import delete_user_files
+    from app.core.storage import delete_user_files
 
     from app.models.rbac import AuditLog, UserRole
 

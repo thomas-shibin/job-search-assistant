@@ -19,7 +19,7 @@ from app.auth.ratelimit import email_limiter, login_limiter
 from app.auth.service import AuthError
 from app.auth.sessions import client_ip, end_other_sessions, end_session, start_session
 from app.auth.settings import AuthSettings
-from app.database.session import get_session
+from app.core.database.session import get_session
 from app.models.user import AuthSession, User
 from app.ui.templating import safe_next, templates
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.utils.retry import with_retry
+from app.shared.retry import with_retry
 
 
 def test_succeeds_first_try_without_sleeping():

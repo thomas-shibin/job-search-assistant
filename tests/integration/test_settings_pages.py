@@ -11,9 +11,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.config.store import load_app_config
-from app.database.base import Base
-from app.database.session import get_session
+from app.core.config.store import load_app_config
+from app.core.database.base import Base
+from app.core.database.session import get_session
 from app.models.settings import WatchlistEntry
 
 YAML = {
@@ -45,7 +45,7 @@ def client(tmp_path, monkeypatch):
     import app.admin.routes as admin_routes
 
     monkeypatch.setattr(admin_routes, "DEFAULT_CONFIG_PATH", yaml_path)
-    from app.config.store import import_yaml_config
+    from app.core.config.store import import_yaml_config
 
     with TestSessionLocal() as session:  # the signed-in test member's own settings
         import_yaml_config(session, yaml_path)

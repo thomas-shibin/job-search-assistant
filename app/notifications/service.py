@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 
-from app.config.schema import AppConfig
+from app.core.config.schema import AppConfig
 from app.matching.scorer import MatchScoreBreakdown
 from app.models.job import Job
 from app.notifications.base import JobNotification, NotificationProvider

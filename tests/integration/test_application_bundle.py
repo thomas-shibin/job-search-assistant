@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.applications.bundle import build_artifact_set
-from app.database.base import Base
+from app.core.database.base import Base
 from app.models.application import ApplicationArtifactSet
 from app.models.job import Job, JobStatus
 from app.models.matching import MatchAnalysis

@@ -26,7 +26,7 @@ from datetime import timezone
 
 from app.sources.adzuna import AdzunaSource
 from app.sources.base import RawJob
-from app.utils.terms import normalize_term
+from app.shared.terms import normalize_term
 
 logger = logging.getLogger(__name__)
 

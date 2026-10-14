@@ -1,7 +1,7 @@
 """Schema-driven settings forms: `section_form` walks a pydantic model's fields
 and produces a tree of nodes that `_settings_form.html` renders, and
 `parse_form` turns the submitted fields back into the nested dict that
-`app.config.store.save_section` validates. Driving both from the schema means a
+`app.core.config.store.save_section` validates. Driving both from the schema means a
 new field in `app/config/schema.py` shows up on the Settings page by itself.
 
 Form field names are dotted paths ("search_profiles.0.titles") plus a type

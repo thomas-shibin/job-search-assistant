@@ -25,11 +25,11 @@ from sqlalchemy.orm import Session
 
 import os
 
-from app.config.loader import ConfigError, load_config_dict
-from app.config.schema import AppConfig, PlatformConfig, Watch
+from app.core.config.loader import ConfigError, load_config_dict
+from app.core.config.schema import AppConfig, PlatformConfig, Watch
 from app.models.settings import AppSetting, UserSetting, WatchlistEntry
-from app.tenancy import sees_user_data, tenant_of
-from app.utils.logging import log_event
+from app.core.tenancy import sees_user_data, tenant_of
+from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 
