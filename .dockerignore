@@ -1,0 +1,15 @@
+.git
+.venv
+venv
+**/__pycache__
+*.egg-info
+build
+dist
+.pytest_cache
+# Secrets come in via env_file at runtime, never baked into the image.
+.env
+# Bind-mounted at runtime.
+data
+config/config.yaml
+tests
+docs
