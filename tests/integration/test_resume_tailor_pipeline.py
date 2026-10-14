@@ -17,10 +17,10 @@ from app.integrations.ai.base import TailoredBulletDraft, TailoredResumeDraft
 from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AddressProfile, AppConfig, CandidateConfig, SearchProfile
 from app.core.database.base import Base
-from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
-from app.models.job import Job, JobStatus
-from app.models.resume import TailoredBulletProvenance
-from app.resume.tailor import NoActiveCandidateProfileError, tailor_resume
+from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.resumes.tailoring_models import TailoredBulletProvenance
+from app.modules.resumes.tailor import NoActiveCandidateProfileError, tailor_resume
 
 
 @pytest.fixture()
@@ -148,9 +148,9 @@ def test_address_follows_search_profile_then_the_jobs_province(session):
 
 
 def test_job_province_from_the_location_catalog(session):
-    from app.catalog.geo import province_of
-    from app.catalog.store import Term, upsert_terms
-    from app.models.catalog import TermKind, TermSource
+    from app.modules.jobs.catalog.geo import province_of
+    from app.modules.jobs.catalog.store import Term, upsert_terms
+    from app.modules.jobs.catalog.models import TermKind, TermSource
 
     upsert_terms(session, TermKind.LOCATION, [
         Term("Mississauga, ON", geo_path=["Canada", "Ontario", "Peel region", "Mississauga"]),
@@ -247,9 +247,9 @@ def _docx_text(path) -> str:
 
 
 def test_location_stated_in_the_description_beats_the_listing(session):
-    from app.catalog.geo import stated_province
-    from app.catalog.store import Term, upsert_terms
-    from app.models.catalog import TermKind, TermSource
+    from app.modules.jobs.catalog.geo import stated_province
+    from app.modules.jobs.catalog.store import Term, upsert_terms
+    from app.modules.jobs.catalog.models import TermKind, TermSource
 
     upsert_terms(session, TermKind.LOCATION, [
         Term("Vancouver, BC", geo_path=["Canada", "British Columbia", "Greater Vancouver", "Vancouver"]),
@@ -270,7 +270,7 @@ def test_location_stated_in_the_description_beats_the_listing(session):
 
 
 def test_address_rules_for_one_profile_and_no_profiles(session):
-    from app.resume.tailor import resolve_address
+    from app.modules.resumes.tailor import resolve_address
 
     home = AddressProfile(street="1234 Main St", unit="Unit 5", city="Victoria", province="BC",
                           postal_code="V8W 1A1", country="Canada")
@@ -299,7 +299,7 @@ def test_address_rules_for_one_profile_and_no_profiles(session):
 def test_full_street_address_replaces_the_resume_location_line(tmp_path):
     from docx import Document
 
-    from app.documents.docx_edit import tailor_docx
+    from app.modules.resumes.documents.docx_edit import tailor_docx
 
     for original in ("Victoria, Canada", "99 Old Rd, Victoria, BC V8W 2B2"):
         base, out = tmp_path / "base.docx", tmp_path / "out.docx"

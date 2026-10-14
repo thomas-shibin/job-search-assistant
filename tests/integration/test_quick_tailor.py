@@ -40,7 +40,7 @@ def client(tmp_path, monkeypatch):
         finally:
             session.close()
 
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
     import main
 
     main.app.dependency_overrides[get_session] = override_get_session
@@ -113,8 +113,8 @@ def test_quick_tailor_end_to_end_redirects_to_job_detail_with_tailored_resume(cl
     assert "Tailored resume" in detail_response.text
     assert "Download DOCX" in detail_response.text
 
-    from app.models.candidate import CandidateProfile
-    from app.models.job import Job, JobStatus
+    from app.modules.resumes.models import CandidateProfile
+    from app.modules.jobs.models import Job, JobStatus
 
     session = SessionLocal()
     assert session.query(CandidateProfile).filter_by(is_active=True).count() == 1
@@ -138,7 +138,7 @@ def test_quick_tailor_reuses_existing_job_on_duplicate_description(client):
         files={"resume": ("resume.docx", FIXTURE_RESUME.read_bytes(), "application/octet-stream")},
     )
 
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     session = SessionLocal()
     assert session.query(Job).count() == 1
@@ -175,7 +175,7 @@ def test_my_resume_page_rejects_unreadable_files(client):
     assert "Couldn%27t+read+that+resume" in bad.headers["location"] or "Couldn't" in bad.headers["location"]
     wrong_type = http.post("/resume", files={"resume": ("resume.txt", b"text", "text/plain")}, follow_redirects=False)
     assert ".docx+or+.pdf" in wrong_type.headers["location"]
-    from app.models.candidate import CandidateProfile
+    from app.modules.resumes.models import CandidateProfile
 
     with SessionLocal() as session:
         assert session.query(CandidateProfile).count() == 0

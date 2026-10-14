@@ -5,8 +5,8 @@ doesn't introduce a number that bullet's own text doesn't already contain.
 from __future__ import annotations
 
 from app.integrations.ai.base import TailoredBulletDraft, TailoredResumeDraft
-from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
-from app.resume.validator import validate_tailored_resume
+from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
+from app.modules.resumes.validator import validate_tailored_resume
 
 
 def _candidate() -> CandidateProfile:
@@ -104,7 +104,7 @@ def test_skill_matching_case_insensitively_uses_candidate_profile_casing():
 
 
 def test_numbers_are_compared_by_value_not_spelling():
-    from app.resume.validator import _numbers_in
+    from app.modules.resumes.validator import _numbers_in
 
     assert _numbers_in("over 12 years") <= _numbers_in("12+ years of experience")
     assert _numbers_in("1000 users") == _numbers_in("1,000+ users")
@@ -115,7 +115,7 @@ def test_numbers_are_compared_by_value_not_spelling():
 def test_rewrites_much_longer_than_the_original_fall_back_to_it():
     from types import SimpleNamespace
 
-    from app.resume.validator import _validate_bullet
+    from app.modules.resumes.validator import _validate_bullet
 
     source = SimpleNamespace(id=1, text="Built Java services for payments.")
     ok = _validate_bullet(SimpleNamespace(source_bullet_id=1, text="Built payment services in Java."), {1: source})

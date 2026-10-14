@@ -14,10 +14,10 @@ from sqlalchemy.orm import Session, sessionmaker
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment
-from app.models.job import Job, JobStatus
-from app.models.matching import MatchAnalysis
-from app.models.resume import TailoredBulletProvenance, TailoredResume
+from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.matching.models import MatchAnalysis
+from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
 
 
 @pytest.fixture()
@@ -106,7 +106,7 @@ def test_job_list_filters_by_status(client):
 def test_best_match_first_ranks_by_fit_then_keyword_score_and_keeps_unscored_order():
     from types import SimpleNamespace
 
-    from app.ui.routes import _best_match_first
+    from app.web.routes import _best_match_first
 
     rows = [
         {"name": "unscored-newest", "score": None, "fit": None},
@@ -149,7 +149,7 @@ def test_public_health_is_liveness_only(client):
 
 def test_detailed_health_is_admin_only(client):
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
     from tests.conftest import make_member
 
     test_client, _ = client
@@ -253,7 +253,7 @@ def test_invalid_action_for_current_status_returns_409(client):
 
 def test_usage_page_is_admin_only(client):
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
     from tests.conftest import make_member
 
     test_client, _ = client

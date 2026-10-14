@@ -18,7 +18,7 @@ def pytest_configure(config):
 def _isolated_resume_uploads(tmp_path, monkeypatch):
     """Resume uploads (Quick Tailor, "Upload resume") go to a temp folder, never
     into the real project's data/resumes/uploads."""
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     monkeypatch.setattr(ui_routes, "UPLOAD_DIR", tmp_path / "uploads")
 
@@ -42,11 +42,11 @@ def _no_real_job_board(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _rate_limits_reset():
-    from app.auth.ratelimit import reset_all
+    from app.modules.auth.ratelimit import reset_all
 
     reset_all()
-    from app.auth.api import code_limiter
-    from app.services import postings
+    from app.modules.auth.api import code_limiter
+    from app.modules.jobs import postings
 
     code_limiter.reset()
     postings.clear()
@@ -59,7 +59,7 @@ def _no_hourly_limits(request, monkeypatch):
     `real_limits`, which test the limits themselves."""
     if request.node.get_closest_marker("real_limits"):
         return
-    from app.services import quota
+    from app.modules.usage import quota
 
     monkeypatch.setattr(quota, "limit_for", lambda user, kind, platform: None)
 
@@ -76,7 +76,7 @@ def _grant_legacy_roles(mapper, connection, target) -> None:
         return
     from sqlalchemy import insert, select
 
-    from app.models.rbac import RbacRole, UserRole
+    from app.modules.access.models import RbacRole, UserRole
 
     for name in LEGACY_ROLES.get(target.role, []):
         role_id = connection.execute(select(RbacRole.id).where(RbacRole.name == name)).scalar_one_or_none()
@@ -88,7 +88,7 @@ def _grant_legacy_roles(mapper, connection, target) -> None:
 def _legacy_role_bridge():
     from sqlalchemy import event
 
-    from app.models.user import User
+    from app.modules.auth.models import User
 
     event.listen(User, "after_insert", _grant_legacy_roles)
     yield
@@ -103,8 +103,8 @@ def _rbac_strict(request):
 
 
 def make_member(user_id: int = TEST_USER_ID, *, role: str = "member", email: str | None = None):
-    from app.auth import rbac
-    from app.models.user import User
+    from app.modules.access import rbac
+    from app.modules.auth.models import User
 
     user = User(id=user_id, email=email or f"user{user_id}@example.com", first_name="Test", last_name=f"User{user_id}",
                 role=role, is_active=True, email_verified_at=datetime(2026, 1, 1), failed_logins=0)
@@ -119,7 +119,7 @@ def _signed_in_member(request):
         yield
         return
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
 
     member = make_member()
 

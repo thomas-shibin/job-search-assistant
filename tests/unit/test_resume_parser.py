@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database.base import Base
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.resume.parser import import_resume, parse_resume_docx
+from app.modules.resumes.parser import import_resume, parse_resume_docx
 from tests.fixtures.build_sample_resume import build as build_sample_resume
 
 FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "sample_resume.docx"
@@ -170,7 +170,7 @@ def test_reimport_force_creates_new_version_even_if_unchanged(session):
 def test_docx_skills_laid_out_in_a_table_are_parsed(tmp_path):
     from docx import Document
 
-    from app.resume.parser import parse_resume
+    from app.modules.resumes.parser import parse_resume
 
     doc = Document()
     doc.add_paragraph("Jordan Casey")

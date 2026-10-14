@@ -11,9 +11,9 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
-from app.ingestion.pipeline import ingest_raw_job
-from app.models.job import JobStatus, JobStatusHistory
-from app.sources.manual import import_manual_job
+from app.modules.jobs.ingestion.pipeline import ingest_raw_job
+from app.modules.jobs.models import JobStatus, JobStatusHistory
+from app.modules.jobs.ingestion.manual import import_manual_job
 
 
 @pytest.fixture()
@@ -39,7 +39,7 @@ def test_first_import_creates_job_with_history_and_log_event(session, caplog):
 
     import logging
 
-    caplog.set_level(logging.INFO, logger="app.ingestion.pipeline")
+    caplog.set_level(logging.INFO, logger="app.modules.jobs.ingestion.pipeline")
     result = ingest_raw_job(session, raw_job)
 
     assert result.created is True
@@ -69,7 +69,7 @@ def test_reimporting_same_job_returns_existing_row_without_duplicate(session):
     assert second.created is False
     assert second.job.id == first.job.id
 
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     assert session.query(Job).count() == 1
 

@@ -12,11 +12,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.auth import rbac
+from app.modules.access import rbac
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.rbac import AuditLog, FeatureFlag, Permission, RbacRole, RolePermission, UserRole
-from app.models.user import AuthSession, User
+from app.modules.access.models import AuditLog, FeatureFlag, Permission, RbacRole, RolePermission, UserRole
+from app.modules.auth.models import AuthSession, User
 from app.core.tenancy import system_session
 
 pytestmark = pytest.mark.rbac_strict
@@ -72,7 +72,7 @@ def world(tmp_path):
     _signed_in.clear()
     _signed_in.update(id=SEEKER, factory=factory)
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
 
     main.app.dependency_overrides[get_session] = override_get_session
     main.app.dependency_overrides[current_user] = _current
@@ -171,7 +171,7 @@ def test_public_registration_gives_job_seeker_and_never_admin(world, monkeypatch
     from tests.integration.test_auth import STRONG, _code
 
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
 
     main.app.dependency_overrides.pop(current_user)  # real sign-in for this one
     monkeypatch.setattr(mailer, "outbox", [])
@@ -283,7 +283,7 @@ def test_the_last_super_admin_is_protected(world):
         s.query(User).filter(User.id == ADMIN).update({User.is_active: False})
         s.commit()
     with system_session(factory) as s:
-        from app.admin import access
+        from app.modules.access import service as access
 
         actor, target = s.get(User, ADMIN), s.get(User, SUPER)
         rbac.preset(actor, ["SUPER_ADMIN"])  # acting as the (suspended) second Super Admin
@@ -292,7 +292,7 @@ def test_the_last_super_admin_is_protected(world):
         with pytest.raises(access.AccessError, match="last active Super Admin"):
             access.set_user_active(s, actor, target, False)
     # ...and can't delete their own account
-    from app.auth.service import AuthError, delete_account
+    from app.modules.auth.service import AuthError, delete_account
 
     with pytest.raises(AuthError, match="only Super Admin"):
         delete_account(factory, SUPER)

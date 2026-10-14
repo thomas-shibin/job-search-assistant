@@ -13,8 +13,8 @@ from app.core.config.loader import ConfigError
 from app.core.config.schema import AppConfig
 from app.core.config.store import has_settings, import_yaml_config, load_app_config, save_section, save_watch
 from app.core.database.base import Base
-from app.models.settings import WatchlistEntry
-from app.ui.forms import parse_form, section_form
+from app.core.config.models import WatchlistEntry
+from app.web.forms import parse_form, section_form
 
 YAML = {
     "candidate": {"name": "Test", "base_resume": "x.docx"},

@@ -39,7 +39,7 @@ def _session():
     """A database session -- bound to `--user`'s account when given, so a
     command only ever sees and changes that user's data."""
     from app.core.database.session import SessionLocal
-    from app.models.user import Role, User
+    from app.modules.auth.models import Role, User
     from app.core.tenancy import bind_tenant
 
     session = SessionLocal()
@@ -154,7 +154,7 @@ def import_resume_cmd(
         raise typer.Exit(code=1)
 
     from app.core.database.session import SessionLocal
-    from app.resume.parser import import_resume as run_import_resume
+    from app.modules.resumes.parser import import_resume as run_import_resume
 
     session = _session()
     try:
@@ -217,8 +217,8 @@ def discover(
         raise typer.Exit(code=1)
 
     from app.core.database.session import SessionLocal
-    from app.ingestion.pipeline import ingest_raw_job
-    from app.sources.manual import import_manual_job
+    from app.modules.jobs.ingestion.pipeline import ingest_raw_job
+    from app.modules.jobs.ingestion.manual import import_manual_job
 
     raw_job = import_manual_job(
         description=description, url=url, company=company, title=title, location=location
@@ -245,7 +245,7 @@ def discover(
 
 
 def _print_breakdown(result) -> None:
-    from app.matching.pipeline import AnalyzeResult
+    from app.modules.matching.pipeline import AnalyzeResult
 
     result: AnalyzeResult = result
     job = result.job
@@ -294,11 +294,11 @@ def analyze(
 
     config = _load_settings(config_path)
 
-    from app.ai.factory import AIProviderConfigError, build_ai_provider
-    from app.ai.settings import AISettings
+    from app.integrations.ai.factory import AIProviderConfigError, build_ai_provider
+    from app.integrations.ai.settings import AISettings
     from app.core.database.session import SessionLocal
-    from app.matching.pipeline import NoActiveCandidateProfileError, analyze_job
-    from app.models.job import Job, JobStatus
+    from app.modules.matching.pipeline import NoActiveCandidateProfileError, analyze_job
+    from app.modules.jobs.models import Job, JobStatus
 
     ai_provider = None
     if config.ai.enabled or config.ai.generate_match_explanations:
@@ -357,11 +357,11 @@ def generate_resume(
 
     config = _load_settings(config_path)
 
-    from app.ai.factory import AIProviderConfigError
+    from app.integrations.ai.factory import AIProviderConfigError
     from app.core.database.session import SessionLocal
-    from app.models.job import Job
-    from app.resume.pipeline import generate_resume_bundle
-    from app.resume.tailor import NoActiveCandidateProfileError
+    from app.modules.jobs.models import Job
+    from app.modules.resumes.pipeline import generate_resume_bundle
+    from app.modules.resumes.tailor import NoActiveCandidateProfileError
 
     session = _session()
     try:
@@ -393,16 +393,16 @@ def generate_resume(
 
 def _job_action_command(action_name: str, help_text: str):
     """Builds a `jobassistant <action> JOB_ID` CLI command around one
-    `app.applications.state_machine` transition function -- these all share
+    `app.modules.applications.state_machine` transition function -- these all share
     the same shape (load job, apply transition, report old/new status).
     """
 
     def command(job_id: int) -> None:
         configure_logging()
 
-        from app.applications import state_machine
+        from app.modules.applications import state_machine
         from app.core.database.session import SessionLocal
-        from app.models.job import Job
+        from app.modules.jobs.models import Job
 
         transition_fn = getattr(state_machine, action_name)
 
@@ -449,9 +449,9 @@ def open_application(job_id: int) -> None:
 
     import webbrowser
 
-    from app.applications import state_machine
+    from app.modules.applications import state_machine
     from app.core.database.session import SessionLocal
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     session = _session()
     try:
@@ -481,7 +481,7 @@ def run(
     configure_logging()
 
     from app.core.database.session import SessionLocal
-    from app.scheduler.run import RunSummary, run_once, scan_members
+    from app.workers.run import RunSummary, run_once, scan_members
 
     if not _acting_user_email:
         results = scan_members(SessionLocal, config_path)
@@ -522,8 +522,8 @@ def serve(
 
     import uvicorn
 
-    from app.notifications.telegram_commands import start_telegram_command_listener
-    from app.scheduler.background import start_background_scheduler
+    from app.modules.alerts.telegram_commands import start_telegram_command_listener
+    from app.workers.background import start_background_scheduler
 
     # Always started: scans can be switched on/off and re-timed from the dashboard.
     background_scheduler = start_background_scheduler(config, config_path)
@@ -553,9 +553,9 @@ def rebuild_resumes(
     from sqlalchemy import func
 
     from app.core.database.session import SessionLocal
-    from app.documents.libreoffice import PdfConversionError, convert_to_pdf
-    from app.models.resume import TailoredResume
-    from app.resume.tailor import rebuild_tailored_resume
+    from app.integrations.libreoffice import PdfConversionError, convert_to_pdf
+    from app.modules.resumes.tailoring_models import TailoredResume
+    from app.modules.resumes.tailor import rebuild_tailored_resume
 
     config = _load_settings(config_path)
     rebuilt = skipped = pdf_failed = 0
@@ -592,7 +592,7 @@ def cleanup_jobs(
     their scores, analyses and tailored resumes. Jobs you've acted on are kept.
     Runs automatically after every scheduled scan."""
     from app.core.database.session import SessionLocal
-    from app.services.retention import purge_old_jobs
+    from app.modules.applications.retention import purge_old_jobs
 
     config = _load_settings(config_path)
     if days is not None:
@@ -618,11 +618,11 @@ def catalog_scan(
     suggestions) from a quick scan of the whole job market -- about 50 Adzuna
     requests. Needs ADZUNA_APP_ID/ADZUNA_APP_KEY in .env.
     """
-    from app.catalog.scan import plural, scan_market
-    from app.catalog.store import counts, seed_catalog
+    from app.modules.jobs.catalog.scan import plural, scan_market
+    from app.modules.jobs.catalog.store import counts, seed_catalog
     from app.core.database.session import SessionLocal
-    from app.sources.adzuna import AdzunaSource
-    from app.sources.settings import AdzunaSettings
+    from app.integrations.job_boards.adzuna import AdzunaSource
+    from app.integrations.job_boards.settings import AdzunaSettings
 
     settings = AdzunaSettings()
     if not (settings.app_id and settings.app_key):
@@ -649,10 +649,10 @@ def claim_legacy_data(email: str = typer.Option(..., "--email", help="The accoun
     otherwise the placeholder becomes EMAIL (confirmed), so you can sign in with
     Google/Facebook on that address or use "Forgot password"."""
     configure_logging()
-    from app.auth.service import _tenant_models, normalize_email
-    from app.auth.tokens import utcnow
+    from app.modules.auth.service import _tenant_models, normalize_email
+    from app.modules.auth.tokens import utcnow
     from app.core.database.session import SessionLocal
-    from app.models.user import Role, User
+    from app.modules.auth.models import Role, User
     from app.core.tenancy import system_session
 
     address = normalize_email(email)
@@ -669,7 +669,7 @@ def claim_legacy_data(email: str = typer.Option(..., "--email", help="The accoun
             typer.echo(f"The existing data now belongs to {address} (an admin). Sign in with Google/Facebook on "
                        "that address, or use \"Forgot password\" on the sign-in page to set a password.")
             return
-        from app.models.settings import UserSetting
+        from app.core.config.models import UserSetting
 
         if session.query(UserSetting).filter(UserSetting.user_id == target.id).first():
             session.query(UserSetting).filter(UserSetting.user_id == legacy.id).delete()  # keep the target's own
@@ -684,11 +684,11 @@ def claim_legacy_data(email: str = typer.Option(..., "--email", help="The accoun
 def set_password(email: str = typer.Option(..., "--email")) -> None:
     """Set an account's password from the server (e.g. your own admin account
     before outgoing email is set up). Confirms the address too."""
-    from app.auth.passwords import hash_password, password_problems, PASSWORD_RULES
-    from app.auth.service import normalize_email
-    from app.auth.tokens import utcnow
+    from app.modules.auth.passwords import hash_password, password_problems, PASSWORD_RULES
+    from app.modules.auth.service import normalize_email
+    from app.modules.auth.tokens import utcnow
     from app.core.database.session import SessionLocal
-    from app.models.user import AuthSession, Role, User
+    from app.modules.auth.models import AuthSession, Role, User
     from app.core.tenancy import system_session
 
     with system_session(SessionLocal) as session:
@@ -716,12 +716,12 @@ def grant_role_cmd(email: str = typer.Option(..., "--email"),
                    revoke: bool = typer.Option(False, "--revoke", help="Take the role away instead")) -> None:
     """Give (or take) a role from the server -- the trusted way to create the
     first Super Admin or recover access. Recorded in the audit log."""
-    from app.admin.access import audit
-    from app.auth import rbac
-    from app.auth.service import normalize_email
+    from app.modules.access.service import audit
+    from app.modules.access import rbac
+    from app.modules.auth.service import normalize_email
     from app.core.database.session import SessionLocal
-    from app.models.rbac import UserRole
-    from app.models.user import Role, User
+    from app.modules.access.models import UserRole
+    from app.modules.auth.models import Role, User
     from app.core.tenancy import system_session
 
     with system_session(SessionLocal) as session:

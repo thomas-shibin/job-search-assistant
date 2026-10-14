@@ -17,9 +17,9 @@ from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AppConfig, CandidateConfig
 from app.core.database.base import Base
 from app.integrations.libreoffice import PdfConversionError
-from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
-from app.models.job import Job, JobStatus
-from app.resume.pipeline import generate_resume_bundle
+from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.resumes.pipeline import generate_resume_bundle
 
 
 @pytest.fixture()
@@ -54,7 +54,7 @@ def _seed(session: Session) -> Job:
 def test_generate_resume_bundle_ends_with_ready_for_review_and_matching_snapshot(session, monkeypatch):
     # No LibreOffice in the test environment -- PDF conversion degrades gracefully.
     monkeypatch.setattr(
-        "app.resume.pipeline.convert_to_pdf",
+        "app.modules.resumes.pipeline.convert_to_pdf",
         lambda path: (_ for _ in ()).throw(PdfConversionError("no soffice")),
     )
 
@@ -73,7 +73,7 @@ def test_tailored_resume_is_the_candidates_own_docx_with_only_wording_changed(se
     from docx import Document
     from docx.shared import Pt, RGBColor
 
-    from app.resume.tailor import tailor_resume
+    from app.modules.resumes.tailor import tailor_resume
 
     base = tmp_path / "my_resume.docx"
     doc = Document()
@@ -112,7 +112,7 @@ def test_tailored_resume_is_the_candidates_own_docx_with_only_wording_changed(se
 
 
 def _accept_all(draft, candidate):
-    from app.resume.validator import BulletValidationResult, ValidationResult
+    from app.modules.resumes.validator import BulletValidationResult, ValidationResult
 
     return ValidationResult(
         summary_accepted=True, skills_accepted=list(draft.skills_order), skills_rejected=[],
@@ -124,8 +124,8 @@ def _accept_all(draft, candidate):
 def test_rebuild_rewrites_an_existing_tailored_resume_from_saved_wording(session, tmp_path):
     from docx import Document
 
-    from app.models.resume import TailoredBulletProvenance, TailoredResume
-    from app.resume.tailor import rebuild_tailored_resume
+    from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
+    from app.modules.resumes.tailor import rebuild_tailored_resume
 
     base = tmp_path / "my_resume.docx"
     doc = Document()

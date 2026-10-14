@@ -27,7 +27,7 @@ import os
 
 from app.core.config.loader import ConfigError, load_config_dict
 from app.core.config.schema import AppConfig, PlatformConfig, Watch
-from app.models.settings import AppSetting, UserSetting, WatchlistEntry
+from app.core.config.models import AppSetting, UserSetting, WatchlistEntry
 from app.core.tenancy import sees_user_data, tenant_of
 from app.core.logging import log_event
 
@@ -92,7 +92,7 @@ def _put_user_section(session: Session, key: str, value: Any) -> None:
 
 def _user_defaults(session: Session) -> dict[str, Any]:
     """A new user's settings: the schema defaults, with their own name."""
-    from app.models.user import User
+    from app.modules.auth.models import User
 
     user_id = tenant_of(session)
     user = session.get(User, user_id) if user_id is not None else None

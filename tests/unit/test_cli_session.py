@@ -13,7 +13,7 @@ def test_cli_session_opens_and_binds_to_user(monkeypatch, tmp_path):
     import app.models  # noqa: F401
     import cli
     from app.core.database.base import Base
-    from app.models.user import User
+    from app.modules.auth.models import User
     from app.core.tenancy import tenant_of
 
     engine = create_engine(f"sqlite:///{tmp_path / 't.db'}")

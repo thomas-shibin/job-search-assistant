@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database.base import Base
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.resume.parser import import_resume, parse_resume, parse_resume_pdf
+from app.modules.resumes.parser import import_resume, parse_resume, parse_resume_pdf
 
 FIXTURE_PATH = Path(__file__).resolve().parent.parent / "fixtures" / "sample_resume.pdf"
 

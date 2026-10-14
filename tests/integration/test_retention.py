@@ -9,16 +9,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.applications.folder import get_application_folder
+from app.modules.applications.folder import get_application_folder
 from app.core.config.schema import AppConfig, CandidateConfig
 from app.core.database.base import Base
-from app.ingestion.pipeline import ingest_raw_job
-from app.models.ai_usage import AICallLog
-from app.models.job import Job, JobStatus, JobStatusHistory, JobTombstone
-from app.models.matching import MatchAnalysis
-from app.models.resume import TailoredBulletProvenance, TailoredResume
-from app.models.settings import WatchlistAlert
-from app.services.retention import purge_old_jobs, was_deleted
+from app.modules.jobs.ingestion.pipeline import ingest_raw_job
+from app.modules.usage.ai_calls import AICallLog
+from app.modules.jobs.models import Job, JobStatus, JobStatusHistory, JobTombstone
+from app.modules.matching.models import MatchAnalysis
+from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
+from app.core.config.models import WatchlistAlert
+from app.modules.applications.retention import purge_old_jobs, was_deleted
 from app.integrations.job_boards.base import RawJob
 
 NOW = datetime.now(timezone.utc).replace(tzinfo=None)
@@ -114,7 +114,7 @@ def test_a_deleted_posting_found_again_is_recognised(session):
 def test_scheduled_scan_skips_deleted_postings_and_runs_the_cleanup(session, monkeypatch):
     from types import SimpleNamespace
 
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
 
     _job(session, 1, age_days=10)
     purge_old_jobs(session, _config(days=7), now=NOW)

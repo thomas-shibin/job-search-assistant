@@ -15,7 +15,7 @@ from openai import APIConnectionError, OpenAI, RateLimitError
 
 from app.integrations.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredResumeDraft
 from app.integrations.ai.usage import AIUsage
-from app.matching.scorer import MatchScoreBreakdown
+from app.modules.matching.scorer import MatchScoreBreakdown
 from app.shared.retry import with_retry
 
 _RETRYABLE_ERRORS = (APIConnectionError, RateLimitError)

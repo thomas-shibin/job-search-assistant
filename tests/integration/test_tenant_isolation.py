@@ -18,13 +18,13 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment
-from app.models.catalog import UserSearchTerm
-from app.models.job import Job, JobStatus
-from app.models.matching import MatchAnalysis
-from app.models.resume import TailoredBulletProvenance, TailoredResume
-from app.models.settings import UserSetting, WatchlistEntry
-from app.models.user import User
+from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment
+from app.modules.jobs.catalog.models import UserSearchTerm
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.matching.models import MatchAnalysis
+from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
+from app.core.config.models import UserSetting, WatchlistEntry
+from app.modules.auth.models import User
 from app.core.tenancy import TenantContextError, system_session, tenant_session
 from tests.conftest import make_member
 
@@ -87,7 +87,7 @@ def world(tmp_path, monkeypatch):
             session.close()
 
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
 
     alice = make_member(ALICE, email="alice@example.com")
     main.app.dependency_overrides[get_session] = override_get_session
@@ -146,7 +146,7 @@ def test_changing_another_users_records_is_not_found(world, path, data):
 
 def test_removals_on_your_own_job_ignore_another_users_paragraph_ids(world, monkeypatch):
     http, factory, ids = world
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     monkeypatch.setattr(ui_routes, "rebuild_tailored_resume", lambda *a, **k: None)
     http.post(f"/jobs/{ids[ALICE]['job']}/removals", data={"remove": [str(ids[BOB]["provenance"])]})
@@ -202,7 +202,7 @@ def test_database_layer_refuses_cross_user_access(world):
 
 def test_deleting_an_account_removes_only_that_users_data(world, tmp_path):
     _, factory, ids = world
-    from app.auth.service import delete_account
+    from app.modules.auth.service import delete_account
 
     delete_account(factory, ALICE)
     with system_session(factory) as s:

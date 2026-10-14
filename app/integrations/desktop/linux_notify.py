@@ -9,7 +9,7 @@ import logging
 import shutil
 import subprocess
 
-from app.notifications.base import JobNotification
+from app.modules.alerts.base import JobNotification
 from app.integrations.desktop.windows_toast import format_notification
 from app.core.logging import log_event
 
@@ -20,7 +20,7 @@ _SEND_TIMEOUT_SECONDS = 10
 
 
 class LinuxNotifySendProvider:
-    """Structurally satisfies `app.notifications.base.NotificationProvider`."""
+    """Structurally satisfies `app.modules.alerts.base.NotificationProvider`."""
 
     def __init__(self, notify_send_path: str | None = None) -> None:
         path = notify_send_path or shutil.which("notify-send")

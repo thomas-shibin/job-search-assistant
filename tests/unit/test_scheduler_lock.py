@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.scheduler.lock import RunAlreadyInProgressError, run_lock
+from app.workers.lock import RunAlreadyInProgressError, run_lock
 
 
 def test_lock_acquired_and_released(tmp_path, monkeypatch):

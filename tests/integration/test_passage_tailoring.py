@@ -13,12 +13,12 @@ import app.models  # noqa: F401  register all models on Base.metadata
 from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig
 from app.core.database.base import Base
-from app.documents.docx_edit import is_prose, rewritable_passages
-from app.ingestion.pipeline import ingest_raw_job
-from app.models.candidate import CandidateProfile
-from app.resume.tailor import tailor_resume
-from app.resume.validator import validate_passage
-from app.services.jobs import get_job_detail
+from app.modules.resumes.documents.docx_edit import is_prose, rewritable_passages
+from app.modules.jobs.ingestion.pipeline import ingest_raw_job
+from app.modules.resumes.models import CandidateProfile
+from app.modules.resumes.tailor import tailor_resume
+from app.modules.resumes.validator import validate_passage
+from app.modules.applications.service import get_job_detail
 from app.integrations.job_boards.base import RawJob
 
 SUMMARY = "Full-stack developer with 5 years of experience delivering web apps in React and Node."
@@ -109,7 +109,7 @@ def test_downloads_are_named_after_the_candidate_company_and_time(monkeypatch):
     from datetime import datetime
     from types import SimpleNamespace
 
-    from app.resume.tailor import resume_download_name
+    from app.modules.resumes.tailor import resume_download_name
 
     monkeypatch.setenv("TZ", "America/Vancouver")
     time.tzset()
@@ -124,8 +124,8 @@ def test_downloads_are_named_after_the_candidate_company_and_time(monkeypatch):
 
 
 def test_suggested_removals_only_happen_once_the_user_approves(session, tmp_path):
-    from app.models.resume import TailoredBulletProvenance
-    from app.resume.tailor import rebuild_tailored_resume
+    from app.modules.resumes.tailoring_models import TailoredBulletProvenance
+    from app.modules.resumes.tailor import rebuild_tailored_resume
 
     base = tmp_path / "resume.docx"
     _project_resume(base, with_backend_duty=True)
@@ -166,7 +166,7 @@ def test_suggested_removals_only_happen_once_the_user_approves(session, tmp_path
 
 
 def test_removing_the_only_paragraph_of_a_table_cell_keeps_the_table_valid(tmp_path):
-    from app.documents.docx_edit import tailor_docx
+    from app.modules.resumes.documents.docx_edit import tailor_docx
 
     base, out = tmp_path / "base.docx", tmp_path / "out.docx"
     doc = Document()
@@ -180,8 +180,8 @@ def test_removing_the_only_paragraph_of_a_table_cell_keeps_the_table_valid(tmp_p
 
 
 def test_a_whole_section_is_never_suggested_for_removal():
-    from app.documents.docx_edit import Passage
-    from app.resume.tailor import _sensible_suggestions
+    from app.modules.resumes.documents.docx_edit import Passage
+    from app.modules.resumes.tailor import _sensible_suggestions
 
     a, b, c = Passage("x", "Project A"), Passage("y", "Project A"), Passage("z", "Project B")
     kept = _sensible_suggestions([(a, "x", None, "UI work"), (b, "y", None, "UI work"), (c, "z", None, "UI work")])

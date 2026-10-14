@@ -8,8 +8,8 @@ from datetime import date
 from docx import Document
 
 from app.core.config.schema import AddressProfile
-from app.documents.docx import render_tailored_resume
-from app.models.candidate import Certification, Education, Employment
+from app.modules.resumes.documents.docx import render_tailored_resume
+from app.modules.resumes.models import Certification, Education, Employment
 
 
 def _all_text(path) -> str:

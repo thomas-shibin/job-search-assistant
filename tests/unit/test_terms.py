@@ -20,7 +20,7 @@ def test_titles_are_never_merged():
 
 
 def test_remote_locations_become_a_keyword():
-    from app.services.search import AdzunaQuery, adzuna_query
+    from app.modules.jobs.search import AdzunaQuery, adzuna_query
 
     assert adzuna_query("Java Developer", "Remote Canada") == AdzunaQuery("Java Developer remote", None)
     assert adzuna_query("Java Developer", "Remote") == AdzunaQuery("Java Developer remote", None)
@@ -31,7 +31,7 @@ def test_remote_locations_become_a_keyword():
 
 
 def test_known_locations_are_pinned_and_keywords_ride_along():
-    from app.services.search import adzuna_query
+    from app.modules.jobs.search import adzuna_query
 
     areas = {"victoria bc": ["Canada", "British Columbia", "Capital", "Victoria"]}
     query = adzuna_query("Java Developer", "Victoria,  BC", areas=areas, keywords=["Kafka", "Spring Boot", "kafka"])
@@ -60,7 +60,7 @@ def test_join_round_trips():
 
 
 def test_scheduled_scans_rotate_within_the_daily_budget():
-    from app.services.search import queries_per_scan, query_pairs, scan_slice
+    from app.modules.jobs.search import queries_per_scan, query_pairs, scan_slice
 
     pairs = query_pairs(["A", "B", "C", "D"], ["X", "Y", "Z", "W", "V"])  # 20 combinations
     per_scan = queries_per_scan(len(pairs), interval_minutes=60, daily_limit=250)

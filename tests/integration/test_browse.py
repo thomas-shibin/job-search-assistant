@@ -18,7 +18,7 @@ import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, GlobalSearchConfig, MatchingConfig
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.services.search import clear_cache
+from app.modules.jobs.search import clear_cache
 from app.integrations.job_boards.base import RawJob
 
 RESULT_1 = RawJob(
@@ -71,7 +71,7 @@ def client(tmp_path, monkeypatch):
         finally:
             session.close()
 
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
     import main
 
     main.app.dependency_overrides[get_session] = override_get_session
@@ -92,7 +92,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(ui_routes, "AdzunaSettings", lambda: SimpleNamespace(app_id="id", app_key="key"))
     monkeypatch.setattr(ui_routes, "AdzunaSource", _FakeAdzunaSource)
 
-    from app.models.candidate import CandidateProfile, Employment, Skill
+    from app.modules.resumes.models import CandidateProfile, Employment, Skill
 
     session = TestSessionLocal()
     profile = CandidateProfile(raw_resume_path="x.docx", source_hash="h", is_active=True)
@@ -122,7 +122,7 @@ def test_landing_page_prefills_saved_search_and_runs_it(client):
     assert response.text.count('class="result-card') == 1
     assert "Analyze match" in response.text and "Apply" in response.text
 
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     session = SessionLocal()
     assert session.query(Job).count() == 0  # nothing saved just from searching
@@ -166,8 +166,8 @@ def test_keywords_narrow_every_query_without_extra_requests(client):
 
 def test_catalog_locations_are_searched_by_exact_path(client):
     test_client, SessionLocal = client
-    from app.catalog.store import Term, upsert_terms
-    from app.models.catalog import TermKind, TermSource
+    from app.modules.jobs.catalog.store import Term, upsert_terms
+    from app.modules.jobs.catalog.models import TermKind, TermSource
 
     with SessionLocal() as session:
         upsert_terms(session, TermKind.LOCATION, [
@@ -184,7 +184,7 @@ def test_catalog_locations_are_searched_by_exact_path(client):
 
 def test_searched_custom_terms_join_the_users_own_catalog(client):
     test_client, SessionLocal = client
-    from app.models.catalog import SearchTerm, UserSearchTerm
+    from app.modules.jobs.catalog.models import SearchTerm, UserSearchTerm
 
     test_client.get("/jobs", params=[("titles", "Rust Wizard"), ("locations", "Tofino, BC")])
 
@@ -209,7 +209,7 @@ def test_dashboard_search_with_no_results_shows_empty_state_and_no_next(client):
 
 
 def test_save_as_default_updates_global_search(client, monkeypatch):
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     saved = {}
     monkeypatch.setattr(ui_routes, "save_section", lambda session, key, value: saved.update({key: value}))
@@ -240,7 +240,7 @@ def test_analyze_card_saves_job_and_shows_ai_fit(client):
     assert "Match analysis" in detail.text
     assert "Re-run analysis" in detail.text
 
-    from app.models.matching import JobFitAssessment
+    from app.modules.matching.models import JobFitAssessment
 
     session = SessionLocal()
     assessment = session.query(JobFitAssessment).one()
@@ -259,7 +259,7 @@ def test_analyze_card_twice_reuses_the_cached_assessment(client):
     test_client.post("/browse/analyze", data=_TRACK_PAYLOAD)
     test_client.post("/browse/analyze", data=_TRACK_PAYLOAD)
 
-    from app.models.matching import JobFitAssessment
+    from app.modules.matching.models import JobFitAssessment
 
     session = SessionLocal()
     assert session.query(JobFitAssessment).count() == 1
@@ -268,7 +268,7 @@ def test_analyze_card_twice_reuses_the_cached_assessment(client):
 
 def test_analyze_card_without_resume_explains_what_to_do(client):
     test_client, SessionLocal = client
-    from app.models.candidate import CandidateProfile
+    from app.modules.resumes.models import CandidateProfile
 
     session = SessionLocal()
     session.query(CandidateProfile).update({"is_active": False})
@@ -282,7 +282,7 @@ def test_analyze_card_without_resume_explains_what_to_do(client):
 
 
 def test_dashboard_search_missing_credentials_shows_neutral_message(client, monkeypatch):
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     monkeypatch.setattr(ui_routes, "AdzunaSettings", lambda: SimpleNamespace(app_id=None, app_key=None))
     test_client, _ = client
@@ -317,7 +317,7 @@ def test_browse_track_saves_job_and_redirects_to_detail(client):
     detail_response = test_client.get(detail_url)
     assert detail_response.status_code == 200
 
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     session = SessionLocal()
     job = session.query(Job).one()
@@ -340,7 +340,7 @@ def test_browse_track_same_posting_twice_does_not_duplicate(client):
     test_client.post("/browse/track", data=payload)
     test_client.post("/browse/track", data=payload)
 
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     session = SessionLocal()
     assert session.query(Job).count() == 1
@@ -352,7 +352,7 @@ def test_browse_track_without_resume_shows_why_job_was_not_analyzed(client):
     stuck at DISCOVERED -- the detail page must say why and offer a way out.
     """
     test_client, SessionLocal = client
-    from app.models.candidate import CandidateProfile
+    from app.modules.resumes.models import CandidateProfile
 
     session = SessionLocal()
     session.query(CandidateProfile).update({"is_active": False})
@@ -378,9 +378,9 @@ def test_browse_track_below_minimum_score_explains_no_resume(client):
 def test_analyze_action_imports_uploaded_resume_then_analyzes(client, tmp_path, monkeypatch):
     from pathlib import Path
 
-    import app.ui.routes as ui_routes
-    from app.models.candidate import CandidateProfile
-    from app.models.job import Job
+    import app.web.routes as ui_routes
+    from app.modules.resumes.models import CandidateProfile
+    from app.modules.jobs.models import Job
 
     monkeypatch.setattr(ui_routes, "UPLOAD_DIR", tmp_path / "uploads")
     test_client, SessionLocal = client
@@ -408,7 +408,7 @@ def test_analyze_action_imports_uploaded_resume_then_analyzes(client, tmp_path, 
 def test_analyze_action_rejects_unsupported_resume_type(client):
     test_client, SessionLocal = client
     test_client.post("/browse/track", data=_TRACK_PAYLOAD)
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     session = SessionLocal()
     job_id = session.query(Job.id).scalar()
@@ -421,8 +421,8 @@ def test_analyze_action_rejects_unsupported_resume_type(client):
 
 
 def test_retailor_rewrites_resume_without_changing_status(client, monkeypatch, tmp_path):
-    import app.ui.routes as ui_routes
-    from app.models.job import Job, JobStatus
+    import app.web.routes as ui_routes
+    from app.modules.jobs.models import Job, JobStatus
 
     test_client, SessionLocal = client
     created = test_client.post("/browse/analyze", data=_TRACK_PAYLOAD, follow_redirects=False)
@@ -451,8 +451,8 @@ def test_retailor_rewrites_resume_without_changing_status(client, monkeypatch, t
 
 
 def test_pasting_the_full_description_replaces_the_preview_and_reruns_analysis(client):
-    from app.models.job import Job, JobRequirements, JobStatus
-    from app.models.matching import JobFitAssessment
+    from app.modules.jobs.models import Job, JobRequirements, JobStatus
+    from app.modules.matching.models import JobFitAssessment
 
     test_client, SessionLocal = client
     created = test_client.post("/browse/analyze", data=_TRACK_PAYLOAD, follow_redirects=False)
@@ -476,7 +476,7 @@ def test_pasting_the_full_description_replaces_the_preview_and_reruns_analysis(c
 
 
 def test_preview_descriptions_are_flagged_and_too_short_pastes_rejected(client):
-    from app.models.job import Job
+    from app.modules.jobs.models import Job
 
     test_client, SessionLocal = client
     payload = {**_TRACK_PAYLOAD, "description": "x" * 500}
@@ -493,8 +493,8 @@ def test_preview_descriptions_are_flagged_and_too_short_pastes_rejected(client):
 
 
 def test_below_minimum_job_explains_why_and_can_be_tailored_anyway(client, monkeypatch, tmp_path):
-    import app.ui.routes as ui_routes
-    from app.models.job import Job, JobStatus
+    import app.web.routes as ui_routes
+    from app.modules.jobs.models import Job, JobStatus
 
     test_client, SessionLocal = client
     test_client.post("/browse/track", data=_TRACK_PAYLOAD)

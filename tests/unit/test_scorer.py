@@ -10,9 +10,9 @@ import pytest
 
 from app.integrations.ai.base import ExtractedJobRequirements
 from app.core.config.schema import MatchingConfig, MatchingWeights, SearchProfile
-from app.matching.scorer import NO_REQUIREMENT_SCORE, UNKNOWN_FIT_SCORE, score_job
-from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
-from app.models.job import Job, JobStatus
+from app.modules.matching.scorer import NO_REQUIREMENT_SCORE, UNKNOWN_FIT_SCORE, score_job
+from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
+from app.modules.jobs.models import Job, JobStatus
 
 
 def _candidate(skills: list[str], employments: list[Employment] | None = None) -> CandidateProfile:
@@ -155,7 +155,7 @@ def test_stated_and_satisfied_requirements_are_not_flagged_ambiguous():
     stated for a posting that explicitly said "5+ years" and "Bachelor's
     degree required".
     """
-    from app.models.candidate import Education
+    from app.modules.resumes.models import Education
 
     candidate = _candidate(["Java", "Spring Boot", "Distributed Systems"])
     candidate.employments = [

@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.applications.state_machine import (
+from app.modules.applications.state_machine import (
     InvalidTransitionError,
     approve,
     archive,
@@ -20,7 +20,7 @@ from app.applications.state_machine import (
     transition_job,
 )
 from app.core.database.base import Base
-from app.models.job import Job, JobStatus
+from app.modules.jobs.models import Job, JobStatus
 
 
 @pytest.fixture()
@@ -51,7 +51,7 @@ def test_full_happy_path_progression(session):
     approve(session, job)
     assert job.status == JobStatus.APPROVED
 
-    from app.applications.state_machine import mark_application_opened
+    from app.modules.applications.state_machine import mark_application_opened
 
     mark_application_opened(session, job)
     assert job.status == JobStatus.APPLICATION_OPENED

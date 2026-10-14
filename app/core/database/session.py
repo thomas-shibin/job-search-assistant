@@ -7,7 +7,7 @@ from typing import Iterator
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from app.core.paths import PROJECT_ROOT
 
 
 def _default_sqlite_url() -> str:
@@ -38,7 +38,7 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, info
 
 def get_session() -> Iterator[Session]:
     """A strict session with no user bound: fine for accounts and shared
-    platform data; user data needs `app.auth.deps.member_session` instead."""
+    platform data; user data needs `app.modules.auth.deps.member_session` instead."""
     session = SessionLocal()
     try:
         yield session

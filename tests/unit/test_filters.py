@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from app.core.config.schema import MatchingConfig, SearchProfile
-from app.ingestion.filters import check_hard_filters
-from app.models.job import Job, JobStatus
+from app.modules.jobs.ingestion.filters import check_hard_filters
+from app.modules.jobs.models import Job, JobStatus
 
 
 def _job(**overrides) -> Job:

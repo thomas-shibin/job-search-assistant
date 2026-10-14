@@ -4,7 +4,7 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, Field
 
-from app.matching.scorer import MatchScoreBreakdown
+from app.modules.matching.scorer import MatchScoreBreakdown
 
 
 class ExtractedJobRequirements(BaseModel):

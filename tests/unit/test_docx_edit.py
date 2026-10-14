@@ -5,7 +5,7 @@ from __future__ import annotations
 from docx import Document
 from docx.shared import Pt, RGBColor
 
-from app.documents.docx_edit import set_paragraph_text, tailor_docx
+from app.modules.resumes.documents.docx_edit import set_paragraph_text, tailor_docx
 
 
 def _base_resume(path):

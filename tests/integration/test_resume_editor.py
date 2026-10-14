@@ -15,8 +15,8 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.candidate import CandidateProfile
-from app.resume.parser import import_resume
+from app.modules.resumes.models import CandidateProfile
+from app.modules.resumes.parser import import_resume
 
 SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "sample_resume.docx"
 

@@ -15,7 +15,7 @@ import re
 
 from app.integrations.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredBulletDraft, TailoredResumeDraft
 from app.integrations.ai.usage import AIUsage
-from app.matching.scorer import MatchScoreBreakdown
+from app.modules.matching.scorer import MatchScoreBreakdown
 
 _REQUIRED_HEADERS = ("requirements", "must have", "must-have", "qualifications", "what you'll need")
 _PREFERRED_HEADERS = ("preferred", "nice to have", "nice-to-have", "bonus", "plus")

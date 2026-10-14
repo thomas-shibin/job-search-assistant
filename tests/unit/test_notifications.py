@@ -5,9 +5,9 @@ minimum-score gate that decides whether a qualified job is worth notifying.
 from __future__ import annotations
 
 from app.core.config.schema import AppConfig, CandidateConfig, NotificationsConfig
-from app.matching.scorer import MatchScoreBreakdown
-from app.models.job import Job, JobStatus
-from app.notifications.service import maybe_notify_qualified_job
+from app.modules.matching.scorer import MatchScoreBreakdown
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.alerts.service import maybe_notify_qualified_job
 from app.integrations.desktop.windows_toast import WindowsToastNotificationProvider
 
 
@@ -43,7 +43,7 @@ def test_windows_toast_provider_calls_show_toast():
     toaster = _FakeToaster()
     provider = WindowsToastNotificationProvider(toaster=toaster)
 
-    from app.notifications.base import JobNotification
+    from app.modules.alerts.base import JobNotification
 
     provider.notify(JobNotification(job_id=1, title="Engineer", company="Acme", overall_score=90))
 
@@ -53,7 +53,7 @@ def test_windows_toast_provider_calls_show_toast():
 
 def test_windows_toast_provider_swallows_toast_failures():
     provider = WindowsToastNotificationProvider(toaster=_FailingToaster())
-    from app.notifications.base import JobNotification
+    from app.modules.alerts.base import JobNotification
 
     provider.notify(JobNotification(job_id=1, title="Engineer", company="Acme", overall_score=90))  # must not raise
 
@@ -84,7 +84,7 @@ def test_notify_no_provider_is_a_noop():
 
 
 def test_linux_notify_send_provider_invokes_notify_send(monkeypatch):
-    from app.notifications.base import JobNotification
+    from app.modules.alerts.base import JobNotification
     from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
 
     calls = []
@@ -102,7 +102,7 @@ def test_linux_notify_send_provider_invokes_notify_send(monkeypatch):
 def test_linux_notify_send_provider_swallows_failures(monkeypatch):
     import subprocess
 
-    from app.notifications.base import JobNotification
+    from app.modules.alerts.base import JobNotification
     from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
 
     def boom(args, **kwargs):
@@ -126,7 +126,7 @@ def test_linux_notify_send_provider_requires_notify_send(monkeypatch):
 
 def test_notification_provider_matches_platform(monkeypatch):
     from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
-    from app.scheduler import run
+    from app.workers import run
 
     monkeypatch.setattr(run.sys, "platform", "linux")
     monkeypatch.setattr("app.integrations.desktop.linux_notify.shutil.which", lambda name: "/usr/bin/notify-send")

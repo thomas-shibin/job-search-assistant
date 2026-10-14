@@ -1,8 +1,8 @@
-from app.models.activity import ActivityEvent, ActivityKind
-from app.models.ai_usage import AICallLog
-from app.models.application import ApplicationArtifactSet
-from app.models.catalog import LocationType, SearchTerm, TermKind, TermSource, UserSearchTerm
-from app.models.candidate import (
+from app.modules.usage.models import ActivityEvent, ActivityKind
+from app.modules.usage.ai_calls import AICallLog
+from app.modules.applications.models import ApplicationArtifactSet
+from app.modules.jobs.catalog.models import LocationType, SearchTerm, TermKind, TermSource, UserSearchTerm
+from app.modules.resumes.models import (
     AccomplishmentBullet,
     CandidateProfile,
     Certification,
@@ -11,15 +11,15 @@ from app.models.candidate import (
     Project,
     Skill,
 )
-from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory, JobTombstone
-from app.models.pool import PoolCompany, PoolJob
-from app.models.rbac import AuditLog, FeatureFlag, Permission, RbacRole, RolePermission, UserRole
-from app.models.profile import JobSeekerProfile, ProfileEducation, ProfileExperience, SavedJob
-from app.models.matching import JobFitAssessment, MatchAnalysis
-from app.models.resume import TailoredBulletProvenance, TailoredResume
-from app.models.scheduler import SchedulerRun, SourceRunResult
-from app.models.settings import AppSetting, UserSetting, WatchlistAlert, WatchlistEntry
-from app.models.user import AuthSession, AuthToken, EmailCode, OAuthIdentity, Role, TokenPurpose, User
+from app.modules.jobs.models import Job, JobRequirements, JobStatus, JobStatusHistory, JobTombstone
+from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.access.models import AuditLog, FeatureFlag, Permission, RbacRole, RolePermission, UserRole
+from app.modules.profiles.models import JobSeekerProfile, ProfileEducation, ProfileExperience, SavedJob
+from app.modules.matching.models import JobFitAssessment, MatchAnalysis
+from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
+from app.workers.models import SchedulerRun, SourceRunResult
+from app.core.config.models import AppSetting, UserSetting, WatchlistAlert, WatchlistEntry
+from app.modules.auth.models import AuthSession, AuthToken, EmailCode, OAuthIdentity, Role, TokenPurpose, User
 
 __all__ = [
     "ActivityEvent",

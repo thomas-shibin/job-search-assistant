@@ -12,12 +12,12 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.activity import ActivityEvent, ActivityKind
-from app.models.ai_usage import AICallLog
-from app.models.candidate import CandidateProfile
-from app.models.job import Job, JobStatus
-from app.models.user import AuthSession, User
-from app.services import quota
+from app.modules.usage.models import ActivityEvent, ActivityKind
+from app.modules.usage.ai_calls import AICallLog
+from app.modules.resumes.models import CandidateProfile
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.auth.models import AuthSession, User
+from app.modules.usage import quota
 from app.core.tenancy import system_session, tenant_session
 
 MEMBER, ADMIN, OTHER = 1, 2, 3
@@ -71,7 +71,7 @@ def world(tmp_path, monkeypatch):
     signed_in = _signed_in
 
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
 
     main.app.dependency_overrides[get_session] = override_get_session
     main.app.dependency_overrides[current_user] = _current
@@ -97,7 +97,7 @@ def _age_events(factory, minutes: int):
 @pytest.mark.real_limits
 def test_one_new_search_per_hour_paging_and_repeats_free(world, monkeypatch):
     http, factory, _ = world
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     calls = []
     monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: calls.append(k) or _search_result())
@@ -129,7 +129,7 @@ def test_one_new_search_per_hour_paging_and_repeats_free(world, monkeypatch):
 @pytest.mark.real_limits
 def test_a_failed_search_is_given_back(world, monkeypatch):
     http, factory, _ = world
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     with system_session(factory) as s:
         s.get(User, MEMBER).search_limit_per_hour = 1
@@ -146,7 +146,7 @@ def test_a_failed_search_is_given_back(world, monkeypatch):
 @pytest.mark.real_limits
 def test_paging_stops_at_the_platform_page_cap(world, monkeypatch):
     http, _, _ = world
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: _search_result())
     assert "Results stop at page 10" in http.get("/jobs?titles=Cook&page=11").text
@@ -155,7 +155,7 @@ def test_paging_stops_at_the_platform_page_cap(world, monkeypatch):
 @pytest.mark.real_limits
 def test_admins_are_unlimited_and_overrides_apply(world, monkeypatch):
     http, factory, signed_in = world
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: _search_result())
     signed_in["id"] = ADMIN
@@ -218,7 +218,7 @@ def test_dashboard_is_admin_only(world):
 
 def test_dashboard_shows_activity_but_never_resume_content(world, monkeypatch):
     http, factory, signed_in = world
-    import app.ui.routes as ui_routes
+    import app.web.routes as ui_routes
 
     monkeypatch.setattr(ui_routes, "_search_for_page", lambda *a, **k: _search_result())
     http.get("/jobs?titles=Data+Analyst&locations=Toronto")

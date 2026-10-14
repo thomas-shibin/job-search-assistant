@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.notifications.base import JobNotification
+from app.modules.alerts.base import JobNotification
 from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ def format_notification(notification: JobNotification) -> tuple[str, str]:
 
 
 class WindowsToastNotificationProvider:
-    """Structurally satisfies `app.notifications.base.NotificationProvider`."""
+    """Structurally satisfies `app.modules.alerts.base.NotificationProvider`."""
 
     def __init__(self, toaster: Any | None = None) -> None:
         if toaster is None:

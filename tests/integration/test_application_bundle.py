@@ -12,12 +12,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.applications.bundle import build_artifact_set
+from app.modules.applications.bundle import build_artifact_set
 from app.core.database.base import Base
-from app.models.application import ApplicationArtifactSet
-from app.models.job import Job, JobStatus
-from app.models.matching import MatchAnalysis
-from app.models.resume import TailoredResume
+from app.modules.applications.models import ApplicationArtifactSet
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.matching.models import MatchAnalysis
+from app.modules.resumes.tailoring_models import TailoredResume
 
 
 @pytest.fixture()

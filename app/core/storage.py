@@ -8,9 +8,9 @@ from pathlib import Path
 
 
 def user_file_dirs(user_id: int) -> list[Path]:
-    from app.applications.folder import user_applications_root
-    from app.resume.tailor import RESTORED_DIR
-    from app.ui import routes
+    from app.modules.applications.folder import user_applications_root
+    from app.modules.resumes.tailor import RESTORED_DIR
+    from app.web import routes
 
     return [routes.UPLOAD_DIR / f"user_{user_id}", user_applications_root(user_id), RESTORED_DIR / f"user_{user_id}"]
 

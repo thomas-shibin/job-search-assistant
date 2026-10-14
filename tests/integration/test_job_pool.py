@@ -12,10 +12,10 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.job import Job
-from app.models.pool import PoolCompany, PoolJob
-from app.models.user import User
-from app.services import pool
+from app.modules.jobs.models import Job
+from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.auth.models import User
+from app.modules.jobs.pool import service as pool
 from app.integrations.job_boards.base import RawJob
 from app.core.tenancy import system_session, tenant_session
 
@@ -163,7 +163,7 @@ def http(factory, monkeypatch):
             session.close()
 
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
 
     _who.clear()
     _who.update(id=MEMBER, factory=factory)
@@ -182,8 +182,8 @@ def test_search_shows_pool_jobs_even_without_the_job_board(http):
 
 
 def test_pool_and_board_results_merge_without_duplicates(http, factory, monkeypatch):
-    import app.ui.routes as ui_routes
-    from app.services.search import SearchResults
+    import app.web.routes as ui_routes
+    from app.modules.jobs.search import SearchResults
 
     board = [RawJob(external_id="z1", source="adzuna", source_url="https://board/z1", company="Acme",
                     title="Data Analyst", location="Toronto", description=FULL[:500]),

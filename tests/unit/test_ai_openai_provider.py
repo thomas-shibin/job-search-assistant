@@ -13,7 +13,7 @@ import pytest
 
 from app.integrations.ai.base import ExtractedJobRequirements
 from app.integrations.ai.openai_provider import OpenAIProvider
-from app.matching.scorer import MatchScoreBreakdown
+from app.modules.matching.scorer import MatchScoreBreakdown
 
 
 class _StubCompletions:
@@ -133,8 +133,8 @@ def test_extract_job_requirements_retries_on_transient_connection_error():
 
 
 def test_tailor_resume_parses_json_response_and_sends_candidate_bullets():
-    from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
-    from app.models.job import Job, JobStatus
+    from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
+    from app.modules.jobs.models import Job, JobStatus
 
     candidate = CandidateProfile(raw_resume_path="x.docx", source_hash="h", summary="Backend engineer.")
     candidate.employments = [

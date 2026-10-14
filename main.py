@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, PlainTextResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 
-from app.auth.deps import (
+from app.modules.auth.deps import (
     AccessDenied,
     AdminOnly,
     FeatureDisabled,
@@ -18,7 +18,7 @@ from app.auth.deps import (
     VerifyEmailRequired,
 )
 
-STATIC_DIR = Path(__file__).resolve().parent / "app" / "ui" / "static"
+STATIC_DIR = Path(__file__).resolve().parent / "app" / "web" / "static"
 logger = logging.getLogger(__name__)
 
 # What a guest sees when they open a members-only feature (by URL prefix).
@@ -76,7 +76,7 @@ async def _access_denied(request: Request, exc: AccessDenied) -> Response:
     if isinstance(exc, (PermissionDenied, FeatureDisabled)):
         if request.headers.get("hx-request"):  # htmx won't swap a 403 page in; send the browser to it
             return _go(request, "/access-denied?" + urlencode({"reason": exc.reason}))
-        from app.ui.templating import templates
+        from app.web.templating import templates
 
         return templates.TemplateResponse(request, "access_denied.html", {"reason": exc.reason},
                                           status_code=403)
@@ -85,7 +85,7 @@ async def _access_denied(request: Request, exc: AccessDenied) -> Response:
     if isinstance(exc, VerifyEmailRequired):
         return _go(request, "/verify-email/pending")
     if isinstance(exc, MembersOnly):
-        from app.ui.templating import templates
+        from app.web.templating import templates
 
         return templates.TemplateResponse(request, "members_only.html", {"feature": _feature(request.url.path)},
                                           status_code=403)
@@ -115,7 +115,7 @@ def _same_origin(request: Request) -> bool:
     source = request.headers.get("origin") or request.headers.get("referer")
     if not source:
         return True  # non-browser clients (no ambient cookies to abuse)
-    from app.auth.settings import AuthSettings
+    from app.modules.auth.settings import AuthSettings
 
     allowed = {request.headers.get("host", ""), urlparse(AuthSettings().public_url).netloc}
     return urlparse(source).netloc in allowed
@@ -142,26 +142,26 @@ def create_app() -> FastAPI:
         # Public liveness only (Docker's healthcheck); the detailed report is
         # admin-only at /admin/health.
         from app.core.database.session import SessionLocal
-        from app.services.health import check_database
+        from app.modules.admin.health import check_database
 
         ok = check_database(SessionLocal)
         return JSONResponse({"status": "ok" if ok else "down"}, status_code=200 if ok else 503)
 
-    from app.admin.access_routes import api as admin_api_router
-    from app.admin.access_routes import router as access_router
-    from app.admin.routes import router as admin_router
-    from app.auth.api import router as auth_api_router
-    from app.profile.routes import router as profile_router
-    from app.ui.public_routes import router as public_router
-    from app.api.routes import router as api_router
-    from app.auth.routes import router as auth_router
-    from app.ui.routes import router as ui_router
-    from app.ui.settings_routes import router as settings_router
+    from app.modules.access.routes import api as admin_api_router
+    from app.modules.access.routes import router as access_router
+    from app.modules.admin.routes import router as admin_router
+    from app.modules.auth.api import router as auth_api_router
+    from app.modules.profiles.routes import router as profile_router
+    from app.web.public_routes import router as public_router
+    from app.web.api_routes import router as api_router
+    from app.modules.auth.routes import router as auth_router
+    from app.web.routes import router as ui_router
+    from app.web.settings_routes import router as settings_router
 
     @fastapi_app.on_event("startup")
     def seed_search_catalog() -> None:
         # Built-in titles/keywords/locations for the search pickers (idempotent).
-        from app.catalog.store import seed_catalog
+        from app.modules.jobs.catalog.store import seed_catalog
         from app.core.database.session import SessionLocal
 
         try:
@@ -174,7 +174,7 @@ def create_app() -> FastAPI:
     def sync_access_rules() -> None:
         # Permissions, roles and feature switches added in code since the last
         # migration (idempotent; never undoes an admin's changes).
-        from app.auth.rbac import sync_catalog
+        from app.modules.access.rbac import sync_catalog
         from app.core.database.session import engine
 
         try:

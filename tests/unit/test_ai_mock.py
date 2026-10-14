@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from app.integrations.ai.base import ExtractedJobRequirements
 from app.integrations.ai.mock import MockAIProvider
-from app.matching.scorer import MatchScoreBreakdown
+from app.modules.matching.scorer import MatchScoreBreakdown
 
 STRUCTURED_POSTING = """
 Senior Backend Engineer
@@ -82,7 +82,7 @@ def test_generate_match_explanation_passes_through_deterministic_text():
 
 
 def _candidate_with_bullets():
-    from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
+    from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
 
     profile = CandidateProfile(raw_resume_path="x.docx", source_hash="h", summary="Backend engineer.")
     bullet = AccomplishmentBullet(id=1, text="Built a service handling 1M requests/day", order_index=0)
@@ -92,7 +92,7 @@ def _candidate_with_bullets():
 
 
 def _job(title="Senior Backend Engineer"):
-    from app.models.job import Job, JobStatus
+    from app.modules.jobs.models import Job, JobStatus
 
     return Job(
         id=1, source="manual", source_url="https://example.com", company="Acme",

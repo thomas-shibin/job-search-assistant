@@ -8,9 +8,9 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.config.schema import Watch, WatchlistConfig
 from app.core.database.base import Base
-from app.models.job import Job, JobStatus
-from app.models.settings import WatchlistAlert
-from app.notifications.watchlist import WatchlistAlerter, alert_key
+from app.modules.jobs.models import Job, JobStatus
+from app.core.config.models import WatchlistAlert
+from app.modules.alerts.watchlist import WatchlistAlerter, alert_key
 
 
 class _Telegram:

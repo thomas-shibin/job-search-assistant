@@ -15,9 +15,9 @@ from sqlalchemy.orm import Session
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
 from app.core.database.base import Base
-from app.models.candidate import CandidateProfile, Employment, Skill
-from app.models.job import Job, JobStatus
-from app.models.scheduler import SchedulerRun, SourceRunResult
+from app.modules.resumes.models import CandidateProfile, Employment, Skill
+from app.modules.jobs.models import Job, JobStatus
+from app.workers.models import SchedulerRun, SourceRunResult
 from app.integrations.job_boards.base import RawJob
 
 
@@ -29,7 +29,7 @@ def session(tmp_path, monkeypatch) -> Session:
     # duration and depend on an OS window session -- notification behavior itself
     # is covered by tests/unit/test_notifications.py, so keep it out of these
     # scheduler-orchestration tests.
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
 
     monkeypatch.setattr(run_module, "_build_notification_provider", lambda: None)
     # Never reach the real Adzuna API (or read real .env keys); Adzuna tests opt back in.
@@ -88,7 +88,7 @@ class _FailingSource:
 
 
 def test_run_once_discovers_analyzes_and_tailors_qualified_jobs(session, monkeypatch):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
 
     _seed_candidate(session)
     raw_job = RawJob(
@@ -119,7 +119,7 @@ def test_run_once_discovers_analyzes_and_tailors_qualified_jobs(session, monkeyp
 
 
 def test_run_once_isolates_one_failing_source_from_others(session, monkeypatch):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
 
     _seed_candidate(session)
     good_job = RawJob(
@@ -147,7 +147,7 @@ def test_run_once_isolates_one_failing_source_from_others(session, monkeypatch):
 
 
 def test_run_once_returns_skipped_when_lock_held(session, tmp_path):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
 
     (tmp_path / ".scheduler.lock").write_text("123")
 
@@ -158,7 +158,7 @@ def test_run_once_returns_skipped_when_lock_held(session, tmp_path):
 
 
 def test_run_once_skips_disabled_search_profiles(session, monkeypatch):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
 
     monkeypatch.setattr(run_module, "GreenhouseSource", lambda board_token: pytest.fail("should not be called"))
     config = _config([SearchProfile(name="SP", address_profile="x", enabled=False, greenhouse_boards=["acme"])])
@@ -169,7 +169,7 @@ def test_run_once_skips_disabled_search_profiles(session, monkeypatch):
 
 
 def test_run_once_searches_every_global_title_and_location(session, monkeypatch):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
     from app.core.config.schema import GlobalSearchConfig
 
     _seed_candidate(session)
@@ -197,7 +197,7 @@ def test_run_once_searches_every_global_title_and_location(session, monkeypatch)
 
 
 def test_run_once_skips_adzuna_when_credentials_missing(session, monkeypatch):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
 
     _seed_candidate(session)
     monkeypatch.setattr(
@@ -213,9 +213,9 @@ def test_run_once_skips_adzuna_when_credentials_missing(session, monkeypatch):
 
 
 def test_run_once_sends_watchlist_alerts_for_new_matching_jobs(session, monkeypatch):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
     from app.core.config.schema import Watch, WatchlistConfig
-    from app.notifications.watchlist import WatchlistAlerter
+    from app.modules.alerts.watchlist import WatchlistAlerter
 
     _seed_candidate(session)
     raw_jobs = [
@@ -244,7 +244,7 @@ def test_run_once_sends_watchlist_alerts_for_new_matching_jobs(session, monkeypa
 
 
 def test_watches_run_their_own_searches_alongside_the_job_search(session, monkeypatch):
-    import app.scheduler.run as run_module
+    import app.workers.run as run_module
     from app.core.config.schema import GlobalSearchConfig, Watch
 
     _seed_candidate(session)

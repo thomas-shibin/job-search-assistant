@@ -14,7 +14,7 @@ import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.config.store import load_app_config
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.settings import WatchlistEntry
+from app.core.config.models import WatchlistEntry
 
 YAML = {
     "candidate": {"name": "Test", "base_resume": "x.docx"},
@@ -39,10 +39,10 @@ def client(tmp_path, monkeypatch):
 
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text(yaml.safe_dump(YAML), encoding="utf-8")
-    import app.ui.settings_routes as settings_routes
+    import app.web.settings_routes as settings_routes
 
     monkeypatch.setattr(settings_routes, "DEFAULT_CONFIG_PATH", yaml_path)
-    import app.admin.routes as admin_routes
+    import app.modules.admin.routes as admin_routes
 
     monkeypatch.setattr(admin_routes, "DEFAULT_CONFIG_PATH", yaml_path)
     from app.core.config.store import import_yaml_config
@@ -64,7 +64,7 @@ def _config(SessionLocal, yaml_path):
 
 def _as_admin():
     import main
-    from app.auth.deps import current_user
+    from app.modules.auth.deps import current_user
     from tests.conftest import make_member
 
     admin = make_member(role="admin")
@@ -175,9 +175,9 @@ def test_watch_without_criteria_is_rejected(client):
 
 def test_connect_telegram_links_this_users_chat_and_saving_keeps_it(client, monkeypatch):
     http, SessionLocal, yaml_path = client
-    import app.services.telegram as telegram_service
-    from app.models.user import User
-    from app.notifications.telegram_commands import BotActions, reply_for
+    import app.modules.alerts.telegram_link as telegram_service
+    from app.modules.auth.models import User
+    from app.modules.alerts.telegram_commands import BotActions, reply_for
 
     with SessionLocal() as s:  # the bot only links verified members
         s.add(User(id=1, email="user1@example.com", first_name="Test", last_name="User1", role="member",
@@ -223,8 +223,8 @@ def test_job_search_section_uses_catalog_pickers(client):
     assert search.titles == ["Java Developer", "QA"]
     assert search.locations == ["Victoria, BC", "Vancouver, BC", "Remote Canada"]
     assert search.keywords == []
-    from app.catalog.store import suggestions
-    from app.models.catalog import TermKind
+    from app.modules.jobs.catalog.store import suggestions
+    from app.modules.jobs.catalog.models import TermKind
 
     with SessionLocal() as session:  # custom values are offered in every picker from now on
         assert {"Victoria, BC", "Remote Canada"} <= {t["label"] for t in suggestions(session, TermKind.LOCATION)}
@@ -281,8 +281,8 @@ def test_watch_form_saves_the_advanced_filters(client):
 
 
 def test_watchlist_page_shows_the_alert_log(client):
-    from app.models.job import Job, JobStatus
-    from app.models.settings import WatchlistAlert
+    from app.modules.jobs.models import Job, JobStatus
+    from app.core.config.models import WatchlistAlert
 
     http, SessionLocal, _ = client
     with SessionLocal() as s:

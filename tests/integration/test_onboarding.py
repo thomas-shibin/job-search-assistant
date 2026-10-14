@@ -15,13 +15,13 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.auth import emails as account_emails
+from app.modules.auth import emails as account_emails
 from app.integrations import email as mailer
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.profile import ProfileExperience, SavedJob
-from app.models.user import AuthSession, EmailCode, User
-from app.services import pool
+from app.modules.profiles.models import ProfileExperience, SavedJob
+from app.modules.auth.models import AuthSession, EmailCode, User
+from app.modules.jobs.pool import service as pool
 from app.integrations.job_boards.base import RawJob
 from app.core.tenancy import system_session, tenant_session
 
@@ -55,7 +55,7 @@ def env(tmp_path, monkeypatch):
     factory = sessionmaker(bind=engine, autoflush=False, autocommit=False, info={"tenant_strict": True})
     with factory() as s:
         pool.add_company(s, "ashby", "acme", fetcher=_feed)
-    import app.ui.public_routes as public_routes
+    import app.web.public_routes as public_routes
 
     public_routes._cache.clear()
 
@@ -249,7 +249,7 @@ def test_existing_address_gets_a_sign_in_code_and_the_same_answer(env):
 
 def test_too_many_code_requests_from_one_network(env):
     http, factory, _ = env
-    from app.auth.api import code_limiter
+    from app.modules.auth.api import code_limiter
 
     code_limiter.limit, original = 3, code_limiter.limit
     try:
@@ -293,7 +293,7 @@ def test_original_search_runs_after_sign_in_with_filters_saves_and_details(env):
     assert "No jobs found. Try adjusting your search filters." in none.text
 
     with system_session(factory) as s:
-        from app.models.pool import PoolJob
+        from app.modules.jobs.pool.models import PoolJob
 
         senior = s.query(PoolJob).filter(PoolJob.title == "Senior Data Analyst").one().id
     detail = http.get(f"/jobs?q=Data+Analyst&view=p{senior}")

@@ -14,10 +14,10 @@ from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.integrations import email as mailer
-from app.auth.service import ProviderProfile
+from app.modules.auth.service import ProviderProfile
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.models.user import AuthSession, OAuthIdentity, User
+from app.modules.auth.models import AuthSession, OAuthIdentity, User
 from app.core.tenancy import system_session
 
 pytestmark = pytest.mark.real_auth
@@ -73,7 +73,7 @@ def _signup(http, email="ann@example.com", password=STRONG, first_name="Ann", la
 
 def _unconfirmed(factory, email="ann@example.com", password=STRONG) -> None:
     """An account from before sign-up needed a code (or a stranger's): never confirmed."""
-    from app.auth.passwords import hash_password
+    from app.modules.auth.passwords import hash_password
 
     with system_session(factory) as s:
         s.add(User(email=email, first_name="Ann", last_name="Lee", role="member", password_hash=hash_password(password)))
@@ -207,7 +207,7 @@ def test_admin_emails_become_admins(env):
 
 
 def _social(monkeypatch, profile: ProviderProfile):
-    import app.auth.oauth as oauth
+    import app.modules.auth.oauth as oauth
 
     monkeypatch.setattr(oauth.AuthSettings, "provider_enabled", lambda self, p: True)
     monkeypatch.setattr(oauth, "_google_profile", lambda http, code, verifier: profile)

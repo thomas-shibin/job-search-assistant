@@ -8,9 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config.schema import AppConfig, CandidateConfig, Watch, WatchlistConfig
-from app.models.job import Job, JobStatus
+from app.modules.jobs.models import Job, JobStatus
 from app.integrations.telegram import TelegramClient, TelegramError, TelegramSettings
-from app.notifications.watchlist import WatchlistAlerter, build_watchlist_alerter, format_alert, watch_matches
+from app.modules.alerts.watchlist import WatchlistAlerter, build_watchlist_alerter, format_alert, watch_matches
 
 
 def _job(**overrides) -> Job:
@@ -147,8 +147,8 @@ def test_telegram_recent_chats_dedupes_by_chat_id():
 from datetime import datetime, timedelta, timezone
 
 from app.core.config.schema import Watch as _Watch
-from app.models.job import Job as _Job
-from app.notifications.watchlist import watch_matches as _matches
+from app.modules.jobs.models import Job as _Job
+from app.modules.alerts.watchlist import watch_matches as _matches
 
 
 def _lean_job(**overrides):
@@ -204,7 +204,7 @@ def test_watch_validation():
 def test_watches_become_scheduled_searches_with_adzuna_filters():
     from types import SimpleNamespace
 
-    from app.services.search import scan_specs, watch_filters
+    from app.modules.jobs.search import scan_specs, watch_filters
 
     watch = _Watch(name="BC contracts", locations=["Victoria, BC", "Vancouver, BC"], keywords=["Java"],
                    min_salary=100000, job_types=["contract"], posted_within_days=3, exclude_keywords=["PHP"])
