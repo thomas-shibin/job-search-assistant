@@ -19,7 +19,7 @@ from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, GlobalS
 from app.core.database.base import Base
 from app.core.database.session import get_session
 from app.services.search import clear_cache
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 RESULT_1 = RawJob(
     external_id="111",

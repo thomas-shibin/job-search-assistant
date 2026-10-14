@@ -8,7 +8,7 @@ from datetime import date
 
 import pytest
 
-from app.ai.base import ExtractedJobRequirements
+from app.integrations.ai.base import ExtractedJobRequirements
 from app.core.config.schema import MatchingConfig, MatchingWeights, SearchProfile
 from app.matching.scorer import NO_REQUIREMENT_SCORE, UNKNOWN_FIT_SCORE, score_job
 from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill

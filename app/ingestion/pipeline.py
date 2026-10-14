@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from app.ingestion.fingerprint import compute_description_hash, compute_fingerprint, find_duplicate
 from app.ingestion.normalize import normalize_raw_job
 from app.models.job import Job, JobStatus, JobStatusHistory
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)

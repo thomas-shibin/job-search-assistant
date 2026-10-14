@@ -17,7 +17,7 @@ from app.core.database.base import Base
 from app.ingestion.pipeline import ingest_raw_job
 from app.resume.parser import import_resume
 from app.resume.tailor import BaseResumeMissingError, tailor_resume
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "sample_resume.docx"
 

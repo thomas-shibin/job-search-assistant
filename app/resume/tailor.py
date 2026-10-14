@@ -18,9 +18,9 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider, ExtractedJobRequirements
-from app.ai.factory import build_ai_provider
-from app.ai.settings import AISettings
+from app.integrations.ai.base import AIProvider, ExtractedJobRequirements
+from app.integrations.ai.factory import build_ai_provider
+from app.integrations.ai.settings import AISettings
 from app.applications.folder import get_application_folder
 from app.catalog.geo import job_place, province_code
 from app.core.config.schema import AddressProfile, AppConfig

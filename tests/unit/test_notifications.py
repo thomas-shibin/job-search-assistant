@@ -8,7 +8,7 @@ from app.core.config.schema import AppConfig, CandidateConfig, NotificationsConf
 from app.matching.scorer import MatchScoreBreakdown
 from app.models.job import Job, JobStatus
 from app.notifications.service import maybe_notify_qualified_job
-from app.notifications.windows_toast import WindowsToastNotificationProvider
+from app.integrations.desktop.windows_toast import WindowsToastNotificationProvider
 
 
 class _FakeToaster:
@@ -85,10 +85,10 @@ def test_notify_no_provider_is_a_noop():
 
 def test_linux_notify_send_provider_invokes_notify_send(monkeypatch):
     from app.notifications.base import JobNotification
-    from app.notifications.linux_notify import LinuxNotifySendProvider
+    from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
 
     calls = []
-    monkeypatch.setattr("app.notifications.linux_notify.subprocess.run", lambda args, **kw: calls.append(args))
+    monkeypatch.setattr("app.integrations.desktop.linux_notify.subprocess.run", lambda args, **kw: calls.append(args))
     provider = LinuxNotifySendProvider(notify_send_path="notify-send")
 
     provider.notify(JobNotification(job_id=1, title="Engineer", company="Acme", overall_score=90))
@@ -103,12 +103,12 @@ def test_linux_notify_send_provider_swallows_failures(monkeypatch):
     import subprocess
 
     from app.notifications.base import JobNotification
-    from app.notifications.linux_notify import LinuxNotifySendProvider
+    from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
 
     def boom(args, **kwargs):
         raise subprocess.CalledProcessError(1, args)
 
-    monkeypatch.setattr("app.notifications.linux_notify.subprocess.run", boom)
+    monkeypatch.setattr("app.integrations.desktop.linux_notify.subprocess.run", boom)
     provider = LinuxNotifySendProvider(notify_send_path="notify-send")
 
     provider.notify(JobNotification(job_id=1, title="Engineer", company="Acme", overall_score=90))  # must not raise
@@ -117,19 +117,19 @@ def test_linux_notify_send_provider_swallows_failures(monkeypatch):
 def test_linux_notify_send_provider_requires_notify_send(monkeypatch):
     import pytest
 
-    from app.notifications.linux_notify import LinuxNotifySendProvider
+    from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
 
-    monkeypatch.setattr("app.notifications.linux_notify.shutil.which", lambda name: None)
+    monkeypatch.setattr("app.integrations.desktop.linux_notify.shutil.which", lambda name: None)
     with pytest.raises(RuntimeError):
         LinuxNotifySendProvider()
 
 
 def test_notification_provider_matches_platform(monkeypatch):
-    from app.notifications.linux_notify import LinuxNotifySendProvider
+    from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
     from app.scheduler import run
 
     monkeypatch.setattr(run.sys, "platform", "linux")
-    monkeypatch.setattr("app.notifications.linux_notify.shutil.which", lambda name: "/usr/bin/notify-send")
+    monkeypatch.setattr("app.integrations.desktop.linux_notify.shutil.which", lambda name: "/usr/bin/notify-send")
     assert isinstance(run._build_notification_provider(), LinuxNotifySendProvider)
 
     # On Windows without win10toast installed (as here), it degrades to None rather than raising.

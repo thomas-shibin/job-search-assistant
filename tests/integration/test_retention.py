@@ -19,7 +19,7 @@ from app.models.matching import MatchAnalysis
 from app.models.resume import TailoredBulletProvenance, TailoredResume
 from app.models.settings import WatchlistAlert
 from app.services.retention import purge_old_jobs, was_deleted
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 NOW = datetime.now(timezone.utc).replace(tzinfo=None)
 

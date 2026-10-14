@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.ingestion.normalize import NormalizedJob
 from app.models.job import Job
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.shared.hashing import content_hash, normalize_text
 
 # Empirically chosen: minor formatting/whitespace edits between reposts of the

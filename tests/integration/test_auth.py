@@ -13,7 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.auth import email as mailer
+from app.integrations import email as mailer
 from app.auth.service import ProviderProfile
 from app.core.database.base import Base
 from app.core.database.session import get_session

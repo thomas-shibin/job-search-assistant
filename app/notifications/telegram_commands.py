@@ -20,7 +20,7 @@ import time
 from datetime import timedelta
 from pathlib import Path
 
-from app.notifications.telegram import TelegramClient, TelegramSettings
+from app.integrations.telegram import TelegramClient, TelegramSettings
 
 logger = logging.getLogger(__name__)
 

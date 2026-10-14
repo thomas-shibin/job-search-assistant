@@ -9,7 +9,7 @@ import re
 from datetime import datetime
 from typing import TypedDict
 
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 _WHITESPACE_RE = re.compile(r"\s+")
 _HYBRID_RE = re.compile(r"\bhybrid\b", re.IGNORECASE)

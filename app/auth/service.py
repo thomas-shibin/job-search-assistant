@@ -18,7 +18,7 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
-from app.auth import email as mailer
+from app.auth import emails as mailer
 from app.auth import rbac
 from app.auth.passwords import hash_password, needs_rehash, password_problems, verify_password
 from app.auth.settings import AuthSettings

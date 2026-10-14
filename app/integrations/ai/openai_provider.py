@@ -13,8 +13,8 @@ from typing import Any
 
 from openai import APIConnectionError, OpenAI, RateLimitError
 
-from app.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredResumeDraft
-from app.ai.usage import AIUsage
+from app.integrations.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredResumeDraft
+from app.integrations.ai.usage import AIUsage
 from app.matching.scorer import MatchScoreBreakdown
 from app.shared.retry import with_retry
 
@@ -120,7 +120,7 @@ _PASSAGES_PER_CALL = 40  # long project resumes go in a few calls, keeping each 
 
 
 class OpenAIProvider:
-    """Structurally satisfies `app.ai.base.AIProvider`."""
+    """Structurally satisfies `app.integrations.ai.base.AIProvider`."""
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini", client: OpenAI | None = None) -> None:
         self._model = model

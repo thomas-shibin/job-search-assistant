@@ -15,13 +15,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.auth import email as mailer
+from app.auth import emails as account_emails
+from app.integrations import email as mailer
 from app.core.database.base import Base
 from app.core.database.session import get_session
 from app.models.profile import ProfileExperience, SavedJob
 from app.models.user import AuthSession, EmailCode, User
 from app.services import pool
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.core.tenancy import system_session, tenant_session
 
 pytestmark = pytest.mark.real_auth
@@ -220,7 +221,7 @@ def test_invalid_email_and_delivery_failure(env, monkeypatch):
 
     def fail(*a, **k):
         raise mailer.EmailDeliveryError("smtp down")
-    monkeypatch.setattr(mailer, "send_code_email", fail)
+    monkeypatch.setattr(account_emails, "send_code_email", fail)
     down = http.post("/api/auth/register/start", json={"email": "mia@example.com"})
     assert down.status_code == 503 and down.json()["error"]["code"] == "email_failed"
     with system_session(factory) as s:

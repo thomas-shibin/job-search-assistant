@@ -13,9 +13,9 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider
-from app.ai.factory import AIProviderConfigError, build_ai_provider
-from app.ai.settings import AISettings
+from app.integrations.ai.base import AIProvider
+from app.integrations.ai.factory import AIProviderConfigError, build_ai_provider
+from app.integrations.ai.settings import AISettings
 from app.catalog.geo import province_of
 from app.catalog.store import location_paths
 from app.core.config.schema import AppConfig, SearchProfile
@@ -27,13 +27,13 @@ from app.notifications.service import maybe_notify_qualified_job
 from app.notifications.watchlist import WatchlistAlerter, build_watchlist_alerter
 from app.resume.pipeline import generate_resume_bundle
 from app.scheduler.lock import RunAlreadyInProgressError, run_lock
-from app.sources.adzuna import AdzunaSource
+from app.integrations.job_boards.adzuna import AdzunaSource
 from app.services.retention import purge_old_jobs, was_deleted
 from app.services.search import QuerySpec, queries_per_scan, scan_slice, scan_specs, search_jobs
-from app.sources.base import JobSource, RawJob
-from app.sources.greenhouse import GreenhouseSource
-from app.sources.lever import LeverSource
-from app.sources.settings import AdzunaSettings
+from app.integrations.job_boards.base import JobSource, RawJob
+from app.integrations.job_boards.greenhouse import GreenhouseSource
+from app.integrations.job_boards.lever import LeverSource
+from app.integrations.job_boards.settings import AdzunaSettings
 from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
@@ -121,10 +121,10 @@ def _scheduled_search_source(
 def _build_notification_provider() -> NotificationProvider | None:
     try:
         if sys.platform == "win32":
-            from app.notifications.windows_toast import WindowsToastNotificationProvider
+            from app.integrations.desktop.windows_toast import WindowsToastNotificationProvider
 
             return WindowsToastNotificationProvider()
-        from app.notifications.linux_notify import LinuxNotifySendProvider
+        from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
 
         return LinuxNotifySendProvider()
     except Exception:

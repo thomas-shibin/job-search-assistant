@@ -19,10 +19,10 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider
-from app.ai.factory import build_ai_provider
+from app.integrations.ai.base import AIProvider
+from app.integrations.ai.factory import build_ai_provider
 from app.ai.service import get_or_extract_requirements
-from app.ai.settings import AISettings
+from app.integrations.ai.settings import AISettings
 from app.core.config.schema import AppConfig, SearchProfile
 from app.ingestion.filters import FilterResult, check_hard_filters
 from app.matching.scorer import MatchScoreBreakdown, score_job

@@ -4,8 +4,8 @@ contract.
 """
 from __future__ import annotations
 
-from app.ai.base import ExtractedJobRequirements
-from app.ai.mock import MockAIProvider
+from app.integrations.ai.base import ExtractedJobRequirements
+from app.integrations.ai.mock import MockAIProvider
 from app.matching.scorer import MatchScoreBreakdown
 
 STRUCTURED_POSTING = """

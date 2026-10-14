@@ -17,7 +17,7 @@ from app.catalog.geo import province_code, province_of
 from app.core.config.schema import AppConfig, Watch, WatchlistConfig
 from app.models.job import Job
 from app.models.settings import WatchlistAlert
-from app.notifications.telegram import TelegramClient, TelegramSettings
+from app.integrations.telegram import TelegramClient, TelegramSettings
 from app.core.logging import log_event
 from app.shared.terms import normalize_term
 

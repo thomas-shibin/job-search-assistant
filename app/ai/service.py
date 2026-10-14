@@ -18,8 +18,8 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.ai.base import AIProvider, ExtractedJobRequirements
-from app.ai.usage import AIUsage
+from app.integrations.ai.base import AIProvider, ExtractedJobRequirements
+from app.integrations.ai.usage import AIUsage
 from app.models.ai_usage import AICallLog
 from app.models.job import Job, JobRequirements
 from app.core.logging import log_event

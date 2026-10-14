@@ -18,7 +18,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from app.ai.base import TailoredResumeDraft
+from app.integrations.ai.base import TailoredResumeDraft
 
 _NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?(?:[kKmM]\b)?%?\+?")
 _SCALE = {"k": 1_000, "m": 1_000_000}

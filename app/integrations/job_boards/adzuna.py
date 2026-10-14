@@ -13,7 +13,7 @@ from typing import Any
 
 import httpx
 
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.shared.htmlstrip import strip_html_tags
 from app.core.logging import log_event
 from app.shared.retry import with_retry
@@ -63,7 +63,7 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 class AdzunaSource:
-    """Structurally satisfies `app.sources.base.JobSource`. Unlike Greenhouse/
+    """Structurally satisfies `app.integrations.job_boards.base.JobSource`. Unlike Greenhouse/
     Lever (one fixed board per instance), Adzuna is query-based -- it runs one
     search per `search_profile.titles` entry (falling back to a single
     unfiltered query if none are set) and de-duplicates postings that surface

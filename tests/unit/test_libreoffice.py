@@ -8,13 +8,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.documents.libreoffice import LibreOfficePdfConverter, PdfConversionError
+from app.integrations.libreoffice import LibreOfficePdfConverter, PdfConversionError
 
 
 def test_convert_raises_when_soffice_not_found(monkeypatch):
     # Force the "truly not installed anywhere" case regardless of whether
     # the machine running this test actually has LibreOffice installed.
-    monkeypatch.setattr("app.documents.libreoffice._find_soffice", lambda: None)
+    monkeypatch.setattr("app.integrations.libreoffice._find_soffice", lambda: None)
     converter = LibreOfficePdfConverter(soffice_path=None)
     with pytest.raises(PdfConversionError, match="not found on PATH"):
         converter.convert(__file__)  # path existence isn't even reached
@@ -35,7 +35,7 @@ def test_convert_returns_pdf_path_on_success(tmp_path, monkeypatch):
         pdf_path.write_bytes(b"fake pdf")
         return SimpleNamespace(returncode=0, stderr="")
 
-    monkeypatch.setattr("app.documents.libreoffice.subprocess.run", fake_run)
+    monkeypatch.setattr("app.integrations.libreoffice.subprocess.run", fake_run)
 
     converter = LibreOfficePdfConverter(soffice_path="soffice")
     result = converter.convert(docx_path)
@@ -50,7 +50,7 @@ def test_convert_raises_when_soffice_exits_nonzero(tmp_path, monkeypatch):
     def fake_run(cmd, **kwargs):
         return SimpleNamespace(returncode=1, stderr="boom")
 
-    monkeypatch.setattr("app.documents.libreoffice.subprocess.run", fake_run)
+    monkeypatch.setattr("app.integrations.libreoffice.subprocess.run", fake_run)
 
     converter = LibreOfficePdfConverter(soffice_path="soffice")
     with pytest.raises(PdfConversionError, match="boom"):

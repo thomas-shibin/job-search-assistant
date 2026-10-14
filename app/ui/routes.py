@@ -19,7 +19,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.ai.factory import AIProviderConfigError
+from app.integrations.ai.factory import AIProviderConfigError
 from app.applications import state_machine
 from app.catalog.store import location_paths, remember_user_terms
 from app.core.config.loader import ConfigError
@@ -47,7 +47,7 @@ from app.resume.tailor import (
     resume_download_name,
     tailor_resume,
 )
-from app.documents.libreoffice import PdfConversionError, convert_to_pdf
+from app.integrations.libreoffice import PdfConversionError, convert_to_pdf
 from app.services.jobs import (
     get_job_detail,
     is_description_preview,
@@ -60,10 +60,10 @@ from app.services.search import query_pairs, search_jobs
 from app.models.pool import PoolJob
 from app.models.profile import SavedJob
 from app.services import postings
-from app.sources.adzuna import AdzunaSource
-from app.sources.base import RawJob
+from app.integrations.job_boards.adzuna import AdzunaSource
+from app.integrations.job_boards.base import RawJob
 from app.sources.manual import import_manual_job
-from app.sources.settings import AdzunaSettings
+from app.integrations.job_boards.settings import AdzunaSettings
 from app.ui.diff import inline_word_diff_html, side_by_side_diff
 from app.ui.templating import TEMPLATES_DIR, safe_next, templates# noqa: F401  (re-exported)
 from app.shared.filenames import sanitize_filename

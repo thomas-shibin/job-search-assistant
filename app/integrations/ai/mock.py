@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import re
 
-from app.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredBulletDraft, TailoredResumeDraft
-from app.ai.usage import AIUsage
+from app.integrations.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredBulletDraft, TailoredResumeDraft
+from app.integrations.ai.usage import AIUsage
 from app.matching.scorer import MatchScoreBreakdown
 
 _REQUIRED_HEADERS = ("requirements", "must have", "must-have", "qualifications", "what you'll need")
@@ -128,7 +128,7 @@ def _detect_remote_type(text_lower: str) -> str | None:
 
 
 class MockAIProvider:
-    """Structurally satisfies `app.ai.base.AIProvider` without any network
+    """Structurally satisfies `app.integrations.ai.base.AIProvider` without any network
     call. Also usable as `ai.provider: mock` in config.yaml for a zero-cost
     (if lower-quality) alternative to a real API key.
     """

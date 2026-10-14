@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.ai.settings import AISettings
+from app.integrations.ai.settings import AISettings
 from app.admin import access
 from app.admin import activity as activity_data
 from app.auth import rbac
@@ -31,8 +31,8 @@ from app.models.user import Role, User
 from app.scheduler import background
 from app.services.costs import ai_cost_summary
 from app.services.health import check_health
-from app.sources.adzuna import AdzunaSource
-from app.sources.settings import AdzunaSettings
+from app.integrations.job_boards.adzuna import AdzunaSource
+from app.integrations.job_boards.settings import AdzunaSettings
 from app.ui.forms import parse_form, section_form
 from app.ui.routes import DEFAULT_CONFIG_PATH
 from app.ui.templating import templates

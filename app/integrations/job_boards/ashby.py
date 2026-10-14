@@ -10,7 +10,7 @@ from typing import Any
 
 import httpx
 
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.shared.htmlstrip import strip_html_tags
 from app.core.logging import log_event
 from app.shared.retry import with_retry
@@ -33,7 +33,7 @@ def _parse_datetime(value: str | None) -> datetime | None:
 
 
 class AshbySource:
-    """Structurally satisfies `app.sources.base.JobSource`."""
+    """Structurally satisfies `app.integrations.job_boards.base.JobSource`."""
 
     name = SOURCE_NAME
 

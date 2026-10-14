@@ -136,10 +136,11 @@ def _accounts(session: Session) -> Check:
 
 
 def _api_keys() -> Check:
-    from app.ai.settings import AISettings
+    from app.integrations.ai.settings import AISettings
     from app.auth.settings import AuthSettings
-    from app.notifications.telegram import TelegramSettings
-    from app.sources.settings import AdzunaSettings
+    from app.integrations.email import EmailSettings
+    from app.integrations.telegram import TelegramSettings
+    from app.integrations.job_boards.settings import AdzunaSettings
 
     adzuna = AdzunaSettings()
     auth = AuthSettings()
@@ -147,7 +148,7 @@ def _api_keys() -> Check:
         "analysis provider": bool(AISettings().openai_api_key),
         "job listings provider": bool(adzuna.app_id and adzuna.app_key),
         "Telegram bot": bool(TelegramSettings().bot_token),
-        "outgoing email": bool(auth.smtp_host),
+        "outgoing email": EmailSettings().configured,
     }
     missing = [name for name, present in keys.items() if not present]
     social = [p.title() for p in ("google", "facebook") if auth.provider_enabled(p)]
@@ -158,7 +159,7 @@ def _api_keys() -> Check:
 
 
 def _pdf() -> Check:
-    from app.documents.libreoffice import _find_soffice
+    from app.integrations.libreoffice import _find_soffice
 
     if _find_soffice():
         return Check("PDF export", OK, "LibreOffice found")

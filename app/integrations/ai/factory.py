@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from app.ai.base import AIProvider
-from app.ai.mock import MockAIProvider
-from app.ai.settings import AISettings
+from app.integrations.ai.base import AIProvider
+from app.integrations.ai.mock import MockAIProvider
+from app.integrations.ai.settings import AISettings
 from app.core.config.schema import AIConfig
 
 
@@ -22,6 +22,6 @@ def build_ai_provider(ai_config: AIConfig, settings: AISettings | None = None) -
             "(see .env.example), or set ai.provider: mock in config.yaml to use the free "
             "heuristic provider instead."
         )
-    from app.ai.openai_provider import OpenAIProvider
+    from app.integrations.ai.openai_provider import OpenAIProvider
 
     return OpenAIProvider(api_key=settings.openai_api_key, model=ai_config.model)

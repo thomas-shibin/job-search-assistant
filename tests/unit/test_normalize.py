@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.ingestion.normalize import infer_remote_type, normalize_raw_job
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 
 def _raw_job(**overrides) -> RawJob:

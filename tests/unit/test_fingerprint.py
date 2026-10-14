@@ -9,7 +9,7 @@ from app.core.database.base import Base
 from app.ingestion.fingerprint import compute_fingerprint, find_duplicate
 from app.ingestion.normalize import normalize_raw_job
 from app.ingestion.pipeline import ingest_raw_job
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 
 @pytest.fixture()

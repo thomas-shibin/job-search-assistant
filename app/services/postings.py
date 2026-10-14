@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.models.pool import PoolJob
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 EMPLOYMENT_TYPES = {
     "full_time": "Full-time", "part_time": "Part-time", "contract": "Contract", "temporary": "Temporary",

@@ -13,8 +13,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.ai.base import TailoredBulletDraft, TailoredResumeDraft
-from app.ai.mock import MockAIProvider
+from app.integrations.ai.base import TailoredBulletDraft, TailoredResumeDraft
+from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AddressProfile, AppConfig, CandidateConfig, SearchProfile
 from app.core.database.base import Base
 from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill

@@ -167,7 +167,7 @@ def test_guests_get_no_job_search(world):
 
 def test_public_registration_gives_job_seeker_and_never_admin(world, monkeypatch):
     http, factory = world
-    from app.auth import email as mailer
+    from app.integrations import email as mailer
     from tests.integration.test_auth import STRONG, _code
 
     import main

@@ -21,12 +21,7 @@ class AuthSettings(BaseSettings):
     facebook_client_secret: str | None = Field(default=None, alias="FACEBOOK_CLIENT_SECRET")
     facebook_graph_version: str = Field(default="v23.0", alias="FACEBOOK_GRAPH_VERSION")
 
-    smtp_host: str | None = Field(default=None, alias="SMTP_HOST")
-    smtp_port: int = Field(default=587, alias="SMTP_PORT")
-    smtp_user: str | None = Field(default=None, alias="SMTP_USER")
-    smtp_password: str | None = Field(default=None, alias="SMTP_PASSWORD")
-    smtp_from: str | None = Field(default=None, alias="SMTP_FROM")
-    smtp_starttls: bool = Field(default=True, alias="SMTP_STARTTLS")
+    # (SMTP settings: app/integrations/email.py, EmailSettings.)
 
     # Cookies only over HTTPS. Defaults to on when PUBLIC_URL is https.
     cookie_secure: bool | None = Field(default=None, alias="COOKIE_SECURE")

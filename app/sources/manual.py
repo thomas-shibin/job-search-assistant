@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import re
 
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.shared.hashing import content_hash
 
 SOURCE_NAME = "manual"

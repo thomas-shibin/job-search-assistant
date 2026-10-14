@@ -24,8 +24,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
 from datetime import timezone
 
-from app.sources.adzuna import AdzunaSource
-from app.sources.base import RawJob
+from app.integrations.job_boards.adzuna import AdzunaSource
+from app.integrations.job_boards.base import RawJob
 from app.shared.terms import normalize_term
 
 logger = logging.getLogger(__name__)

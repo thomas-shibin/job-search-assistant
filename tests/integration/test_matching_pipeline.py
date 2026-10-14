@@ -9,7 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.ai.mock import MockAIProvider
+from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
 from app.core.database.base import Base
 from app.matching.pipeline import analyze_job

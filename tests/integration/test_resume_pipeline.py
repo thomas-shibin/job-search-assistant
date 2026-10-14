@@ -13,10 +13,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  register all models on Base.metadata
-from app.ai.mock import MockAIProvider
+from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AppConfig, CandidateConfig
 from app.core.database.base import Base
-from app.documents.libreoffice import PdfConversionError
+from app.integrations.libreoffice import PdfConversionError
 from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
 from app.models.job import Job, JobStatus
 from app.resume.pipeline import generate_resume_bundle

@@ -20,7 +20,7 @@ from app.core.config.schema import AppConfig
 from app.core.config.store import USER_SECTIONS, WATCH_LIST_FIELDS, load_app_config, save_section, save_watch
 from app.models.job import Job
 from app.models.settings import WatchlistAlert, WatchlistEntry
-from app.notifications.telegram import TelegramSettings
+from app.integrations.telegram import TelegramSettings
 from app.services.search import queries_per_scan, scan_specs
 from app.services.telegram import disconnect, send_test_message, telegram_link
 from app.ui.forms import parse_form, section_form

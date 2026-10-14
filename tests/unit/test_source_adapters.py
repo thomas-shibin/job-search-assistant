@@ -10,9 +10,9 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from app.sources.adzuna import AdzunaSource
-from app.sources.greenhouse import GreenhouseSource
-from app.sources.lever import LeverSource
+from app.integrations.job_boards.adzuna import AdzunaSource
+from app.integrations.job_boards.greenhouse import GreenhouseSource
+from app.integrations.job_boards.lever import LeverSource
 
 
 def _client_with_response(payload) -> httpx.Client:
@@ -212,7 +212,7 @@ def test_adzuna_source_search_page_returns_empty_list_past_last_page():
 
 
 def test_adzuna_source_raises_on_http_error_without_leaking_the_key():
-    from app.sources.adzuna import AdzunaError
+    from app.integrations.job_boards.adzuna import AdzunaError
 
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={})
@@ -227,7 +227,7 @@ def test_adzuna_source_raises_on_http_error_without_leaking_the_key():
 
 
 def test_adzuna_source_retries_when_rate_limited(monkeypatch):
-    import app.sources.adzuna as adzuna_module
+    import app.integrations.job_boards.adzuna as adzuna_module
     from app.shared.retry import with_retry
 
     monkeypatch.setattr(adzuna_module, "with_retry", lambda fn, **kw: with_retry(fn, **kw, sleep=lambda s: None))
@@ -244,7 +244,7 @@ def test_adzuna_source_retries_when_rate_limited(monkeypatch):
 
 
 def test_adzuna_keeps_salary_and_job_type():
-    from app.sources.adzuna import AdzunaSource
+    from app.integrations.job_boards.adzuna import AdzunaSource
 
     raw = AdzunaSource(app_id="i", app_key="k", country="ca").to_raw_job({
         "id": 1, "title": "Java Dev", "company": {"display_name": "Acme"}, "location": {"display_name": "Toronto"},

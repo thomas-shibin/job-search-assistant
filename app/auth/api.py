@@ -27,7 +27,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.auth import email as mailer
+from app.auth import emails as mailer
 from app.auth import otp, rbac, service
 from app.auth.deps import current_user
 from app.auth.passwords import MIN_LENGTH, PASSWORD_RULES

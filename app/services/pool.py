@@ -29,10 +29,10 @@ from sqlalchemy.orm import Session
 
 from app.models.pool import PoolCompany, PoolJob
 from app.services import postings
-from app.sources.ashby import AshbySource
-from app.sources.base import RawJob
-from app.sources.greenhouse import GreenhouseSource
-from app.sources.lever import LeverSource
+from app.integrations.job_boards.ashby import AshbySource
+from app.integrations.job_boards.base import RawJob
+from app.integrations.job_boards.greenhouse import GreenhouseSource
+from app.integrations.job_boards.lever import LeverSource
 from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)

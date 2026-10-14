@@ -16,7 +16,7 @@ from app.models.job import Job
 from app.models.pool import PoolCompany, PoolJob
 from app.models.user import User
 from app.services import pool
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.core.tenancy import system_session, tenant_session
 
 MEMBER, ADMIN = 1, 2
@@ -238,7 +238,7 @@ def test_admin_manages_job_sources(http, factory):
 
 
 def test_greenhouse_descriptions_are_plain_text():
-    from app.sources.greenhouse import GreenhouseSource
+    from app.integrations.job_boards.greenhouse import GreenhouseSource
 
     raw = GreenhouseSource("acme")._to_raw_job(
         {"id": 1, "title": "T", "absolute_url": "u", "content": "&lt;p&gt;Pay &amp;amp; perks&lt;/p&gt;&lt;li&gt;SQL&lt;/li&gt;"})

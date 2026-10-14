@@ -30,7 +30,7 @@ from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory, Jo
 from app.models.matching import JobFitAssessment, MatchAnalysis
 from app.models.resume import TailoredBulletProvenance, TailoredResume
 from app.models.settings import WatchlistAlert
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)

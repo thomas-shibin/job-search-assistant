@@ -47,7 +47,7 @@ from app.models.candidate import CandidateProfile
 from app.models.job import Job
 
 if TYPE_CHECKING:
-    from app.ai.base import ExtractedJobRequirements
+    from app.integrations.ai.base import ExtractedJobRequirements
 
 NO_REQUIREMENT_SCORE = 100
 UNKNOWN_FIT_SCORE = 50

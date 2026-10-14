@@ -18,7 +18,7 @@ from app.core.database.base import Base
 from app.models.candidate import CandidateProfile, Employment, Skill
 from app.models.job import Job, JobStatus
 from app.models.scheduler import SchedulerRun, SourceRunResult
-from app.sources.base import RawJob
+from app.integrations.job_boards.base import RawJob
 
 
 @pytest.fixture()

@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app.core.config.schema import AppConfig, CandidateConfig, Watch, WatchlistConfig
 from app.models.job import Job, JobStatus
-from app.notifications.telegram import TelegramClient, TelegramError, TelegramSettings
+from app.integrations.telegram import TelegramClient, TelegramError, TelegramSettings
 from app.notifications.watchlist import WatchlistAlerter, build_watchlist_alerter, format_alert, watch_matches
 
 

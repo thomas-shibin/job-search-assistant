@@ -11,8 +11,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.ai.base import ExtractedJobRequirements
-from app.ai.openai_provider import OpenAIProvider
+from app.integrations.ai.base import ExtractedJobRequirements
+from app.integrations.ai.openai_provider import OpenAIProvider
 from app.matching.scorer import MatchScoreBreakdown
 
 

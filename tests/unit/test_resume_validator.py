@@ -4,7 +4,7 @@ doesn't introduce a number that bullet's own text doesn't already contain.
 """
 from __future__ import annotations
 
-from app.ai.base import TailoredBulletDraft, TailoredResumeDraft
+from app.integrations.ai.base import TailoredBulletDraft, TailoredResumeDraft
 from app.models.candidate import AccomplishmentBullet, CandidateProfile, Employment, Skill
 from app.resume.validator import validate_tailored_resume
 

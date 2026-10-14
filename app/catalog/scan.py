@@ -26,7 +26,7 @@ from sqlalchemy.orm import Session
 from app.catalog.seed_data import PROVINCE_CODES
 from app.catalog.store import Term, upsert_terms
 from app.models.catalog import LocationType, SearchTerm, TermKind, TermSource
-from app.sources.adzuna import AdzunaSource
+from app.integrations.job_boards.adzuna import AdzunaSource
 from app.core.logging import log_event
 from app.shared.terms import normalize_term
 
