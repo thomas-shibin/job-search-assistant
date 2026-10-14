@@ -1,3 +1,5 @@
+"""`RawJob`, the posting shape every job source returns, and the `JobSource`
+interface."""
 from __future__ import annotations
 
 from datetime import datetime

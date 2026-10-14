@@ -4,7 +4,7 @@ retried with exponential backoff (Milestone 13 hardening); anything else
 (bad request, auth failure) raises immediately since retrying it would never
 succeed. The caller still decides what a final failure means (the pipeline
 treats extraction as required but match-explanation polish as best-effort --
-see `app/matching/pipeline.py`).
+see `app/modules/matching/pipeline.py`).
 """
 from __future__ import annotations
 

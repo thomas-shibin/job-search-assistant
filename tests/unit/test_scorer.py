@@ -202,7 +202,7 @@ def test_seniority_mismatch_scores_lower_than_exact_match():
 def test_extracted_skill_not_in_configured_lists_is_recognized():
     # "Terraform" isn't in the candidate's configured required/preferred
     # lists at all -- exactly the gap Milestone 5's docstring says AI
-    # extraction closes (see app/matching/scorer.py module docstring).
+    # extraction closes (see app/modules/matching/scorer.py module docstring).
     candidate = _candidate(["Java", "Spring Boot", "Distributed Systems", "Terraform"])
     job = _job("Senior Backend Engineer", STRONG_JOB_DESCRIPTION + " Also requires Terraform.")
     requirements = ExtractedJobRequirements(required_skills=["Terraform"])

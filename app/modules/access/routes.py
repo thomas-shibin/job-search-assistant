@@ -2,8 +2,8 @@
 roles with the permission matrix, the permission catalog, feature switches
 and the audit log -- as pages (/admin/...) and as JSON (/api/admin/...).
 
-Which permission each route needs is in app/auth/rbac.py (ROUTE_PERMISSIONS);
-the rules on who may grant or assign what are in app/admin/access.py.
+Which permission each route needs is in app/modules/access/rbac.py (ROUTE_PERMISSIONS);
+the rules on who may grant or assign what are in app/modules/access/service.py.
 """
 from __future__ import annotations
 

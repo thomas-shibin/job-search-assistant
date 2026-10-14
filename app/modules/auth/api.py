@@ -1,6 +1,6 @@
 """The sign-in / sign-up API behind the "Welcome" dialog and the /login and
 /signup pages (app/ui/static/auth.js). JSON in, JSON out; the session itself
-is the same HttpOnly cookie the rest of the app uses (app/auth/sessions.py).
+is the same HttpOnly cookie the rest of the app uses (app/modules/auth/sessions.py).
 
 The flow starts from an email address only, and never says whether it has an
 account until the visitor has proven they own it:

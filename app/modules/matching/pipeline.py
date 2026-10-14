@@ -4,7 +4,7 @@ sections 9/10/14/22): the one place `MatchAnalysis` rows get created and
 
 Scoring itself stays deterministic (see docs/ARCHITECTURE.md's
 deterministic-vs-AI table) -- but as of Milestone 5, when `config.ai.enabled`,
-AI-based requirement extraction runs first (`app/ai/service.py`, cached so an
+AI-based requirement extraction runs first (`app/modules/matching/requirements.py`, cached so an
 unchanged job is never re-billed) and its output extends what the scorer can
 recognize beyond the user's configured skill lists. `config.ai.
 generate_match_explanations` (off by default) optionally replaces the

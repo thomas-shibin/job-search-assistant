@@ -4,10 +4,10 @@ the dashboard can edit.
 Multi-tenant split: *platform* sections (provider, scan schedule, retention,
 limits) are shared rows in `app_settings`, edited by admins only; every other
 section is the signed-in user's own row in `user_settings` (tenant-scoped, see
-app/tenancy.py). `load_app_config` assembles one `AppConfig` from both, so the
+app/core/tenancy.py). `load_app_config` assembles one `AppConfig` from both, so the
 rest of the app reads settings exactly as before.
 
-Defaults arrive through versioned Alembic migrations (`app/config/seeding.py`):
+Defaults arrive through versioned Alembic migrations (`app/core/config/seeding.py`):
 a new install's database is created with every default setting, user-specific
 ones blank, and later releases only add missing keys -- never overwriting what
 a user changed. config.yaml is an optional import source (`python cli.py

@@ -1,4 +1,4 @@
-"""Sign-in pages (/login, /signup -- the email-code flow in app/auth/api.py,
+"""Sign-in pages (/login, /signup -- the email-code flow in app/modules/auth/api.py,
 plus a password form that works without JavaScript), Google and Facebook
 sign-in, email verification for an email change, password reset, and the
 account (security) page."""

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import FileResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.tenancy import require_tenant
 from app.integrations.ai.factory import AIProviderConfigError
@@ -156,7 +156,7 @@ def retailor_job(job_id: int, session: Session = Depends(member_session), user: 
     if job is None:
         raise HTTPException(status_code=404, detail=f"No job found with id={job_id}")
     try:
-        config = load_config(session)
+        config = user_config(session)
         with quota.ai_action(session, user, ActivityKind.AI_TAILOR, quota.job_label(job), job_id=job.id):
             result = tailor_resume(session, job, config, update_status=False)
     except quota.LimitReached as exc:
@@ -192,7 +192,7 @@ async def apply_removals(job_id: int, request: Request, session: Session = Depen
         row.removed = row.id in chosen
     session.commit()
     try:
-        config = load_config(session)
+        config = user_config(session)
         path = rebuild_tailored_resume(session, detail.tailored_resume, config)
     except (ConfigError, TailorNoProfileError) as exc:
         return _job_redirect(job_id, error=str(exc))
@@ -227,7 +227,7 @@ def download_resume_pdf(job_id: int, session: Session = Depends(member_session))
 def _download_name(session: Session, detail, suffix: str) -> str:
     """"First Last - Company - timestamp.docx" (see resume_download_name)."""
     try:
-        config = load_config(session)
+        config = user_config(session)
     except ConfigError:
         return f"tailored_resume{suffix}"
     return resume_download_name(config, active_candidate(session), detail.job.company,
@@ -272,7 +272,7 @@ async def quick_tailor_submit(
         return _quick_form_response(request, error="Upload your resume (here, or once on the My resume page) first.")
 
     try:
-        config = load_config(session)
+        config = user_config(session)
     except ConfigError as exc:
         return _quick_form_response(request, error=f"Settings are invalid: {'; '.join(exc.errors)}", status_code=500)
     try:

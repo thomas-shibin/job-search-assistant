@@ -19,7 +19,7 @@ from app.core.database.base import Base
 
 class Role(str, enum.Enum):
     """The legacy account kind in `users.role`. What an account may do is
-    decided by its RBAC roles (app/models/rbac.py), not by this."""
+    decided by its RBAC roles (app/modules/access/models.py), not by this."""
 
     GUEST = "guest"    # name + email only (no longer created)
     MEMBER = "member"  # a full account
@@ -65,7 +65,7 @@ class User(Base):
 
     @property
     def roles(self) -> tuple[str, ...]:
-        """RBAC role names (e.g. JOB_SEEKER), read once per request (app/auth/rbac.py)."""
+        """RBAC role names (e.g. JOB_SEEKER), read once per request (app/modules/access/rbac.py)."""
         from app.modules.access import rbac  # rbac imports this module's User
 
         return rbac.roles_of(self)
@@ -154,7 +154,7 @@ class EmailCode(Base):
     """A six-digit code emailed to prove an address (sign-up or sign-in by
     code). Only an HMAC of the code is stored; it expires after a minute,
     allows a few attempts, and issuing a new one retires the old (see
-    app/auth/otp.py). Keyed by email, since a new user has no account yet."""
+    app/modules/auth/otp.py). Keyed by email, since a new user has no account yet."""
 
     __tablename__ = "email_codes"
     __table_args__ = (Index("ix_email_codes_email_created", "email", "created_at"),)

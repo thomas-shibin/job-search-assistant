@@ -1,5 +1,5 @@
 """The shared job pool: postings pulled from companies' public careers-site
-feeds (app/services/pool.py). Shared by every user like the search catalog --
+feeds (app/modules/jobs/pool/service.py). Shared by every user like the search catalog --
 public job ads, nobody's data -- so these tables are not `TenantOwned`. A
 posting only becomes a user's own `Job` when they analyze or track it."""
 from __future__ import annotations

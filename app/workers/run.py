@@ -154,7 +154,7 @@ def scan_members(session_factory, config_path) -> dict[int, RunSummary]:
         with run_lock():
             with system_session(session_factory) as session:
                 # Scheduled scans are job alerts: only while the feature is on, and only
-                # for accounts whose roles currently allow alerts (app/auth/rbac.py).
+                # for accounts whose roles currently allow alerts (app/modules/access/rbac.py).
                 members = [u.id for u in session.query(User).filter(
                     User.role != Role.GUEST.value, User.is_active.is_(True), User.email_verified_at.is_not(None)
                 ).order_by(User.id) if u.can("alerts.manage")]

@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.config.schema import AppConfig
 
@@ -22,6 +22,6 @@ def load_config_or_500(session: Session) -> AppConfig:
     """The user's settings for a settings page; invalid stored settings are a
     server error there (the page can't render a form from them)."""
     try:
-        return load_config(session)
+        return user_config(session)
     except ConfigError as exc:
         raise HTTPException(status_code=500, detail=f"Your settings are invalid: {'; '.join(exc.errors)}")

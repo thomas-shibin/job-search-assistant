@@ -1,5 +1,5 @@
 """DOCX -> PDF conversion via headless LibreOffice (Milestone 7). Implements
-the `PdfConverter` protocol in `app/documents/pdf.py`. LibreOffice isn't a
+the `PdfConverter` protocol in `app/modules/resumes/documents/pdf.py`. LibreOffice isn't a
 Python dependency -- it's an external binary the user installs separately
 (see README "Requirements") -- so a missing/failed conversion raises a
 specific, catchable `PdfConversionError` rather than crashing the whole

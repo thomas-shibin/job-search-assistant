@@ -1,7 +1,7 @@
 """Explicit allowed-transition map for the review/apply/outcome stages of
 `JobStatus` (spec §15: only the user decides these -- unlike the earlier
 DISCOVERED -> ... -> RESUME_GENERATED stages, which the pipeline
-(`app/matching/pipeline.py`, `app/resume/tailor.py`) advances on its own).
+(`app/modules/matching/pipeline.py`, `app/modules/resumes/tailor.py`) advances on its own).
 Every transition here is recorded via `JobStatusHistory`, same as the
 automated ones, so the full lifecycle stays in one audit trail regardless of
 who moved a job.

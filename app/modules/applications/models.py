@@ -1,3 +1,4 @@
+"""Records of the application files generated for a job (`ApplicationArtifactSet`)."""
 from __future__ import annotations
 
 from datetime import datetime

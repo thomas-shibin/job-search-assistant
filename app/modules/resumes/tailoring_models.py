@@ -1,3 +1,5 @@
+"""Tailored resumes (`TailoredResume`) and where each of their bullets came
+from in the original resume (`TailoredBulletProvenance`)."""
 from __future__ import annotations
 
 from datetime import datetime
@@ -29,7 +31,7 @@ class TailoredResume(TenantOwned, Base):
 class TailoredBulletProvenance(TenantOwned, Base):
     """Traces every AI-generated bullet back to the base-resume bullet it was derived from.
     This is the auditable half of the truthfulness guardrail (the other half is the
-    deterministic validator in app/resume/validator.py).
+    deterministic validator in app/modules/resumes/validator.py).
     """
 
     __tablename__ = "tailored_bullet_provenance"

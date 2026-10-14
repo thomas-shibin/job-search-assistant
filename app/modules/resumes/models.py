@@ -1,3 +1,6 @@
+"""The user's resume as structured data, one version per import or edit:
+`CandidateProfile` with its employments, bullets, skills, education,
+certifications and projects."""
 from __future__ import annotations
 
 from datetime import date, datetime

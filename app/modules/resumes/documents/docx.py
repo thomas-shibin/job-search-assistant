@@ -1,9 +1,9 @@
 """Deterministic DOCX rendering of a tailored resume from already-validated,
 structured data (Milestone 6/7) -- the fallback used only when the base
 resume is a PDF, so there is no Word document to keep. A .docx base resume is
-tailored in place instead, keeping its own formatting (`app/documents/docx_edit.py`).
+tailored in place instead, keeping its own formatting (`app/modules/resumes/documents/docx_edit.py`).
 
-Callers (see `app/resume/tailor.py`) are responsible for already having
+Callers (see `app/modules/resumes/tailor.py`) are responsible for already having
 resolved which text to show for every section (validated AI text vs. a
 verbatim fallback vs. dropped) -- this module only lays out whatever it's
 given.
@@ -58,12 +58,12 @@ def render_tailored_resume(
 ) -> None:
     """Writes a resume DOCX to `path`. `employment_bullets` is already ordered
     (most recent employment first) and already contains only the final bullet
-    text to display for each -- see `app/resume/tailor.py`.
+    text to display for each -- see `app/modules/resumes/tailor.py`.
 
     `contact_line` (email/phone/links, extracted from the base resume's own
-    header by `app/resume/parser.py`) and `address` (an explicit city/
+    header by `app/modules/resumes/parser.py`) and `address` (an explicit city/
     province/country override swapped in only for a job tied to a search
-    profile -- see `app/resume/tailor.py::resolve_address`) are independent:
+    profile -- see `app/modules/resumes/tailor.py::resolve_address`) are independent:
     both render if both are given, rather than one trying to edit the other.
     """
     doc = Document()

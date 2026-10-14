@@ -1,3 +1,4 @@
+"""Safe file names from user-supplied text."""
 from __future__ import annotations
 
 import re

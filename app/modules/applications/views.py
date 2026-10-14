@@ -6,7 +6,7 @@ from __future__ import annotations
 from fastapi import HTTPException, Request
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.modules.applications.service import get_job_detail, is_description_preview
 from app.modules.jobs.models import Job, JobStatus
@@ -57,12 +57,12 @@ def job_detail_response(request: Request, session: Session, job_id: int, *, erro
         raise HTTPException(status_code=404, detail=f"No job found with id={job_id}")
     resume_address = None
     try:
-        minimum_score = load_config(session).matching.minimum_score
+        minimum_score = user_config(session).matching.minimum_score
     except ConfigError:
         minimum_score = None
     if detail.tailored_resume is not None:
         try:
-            resume_address = resolve_address(load_config(session), detail.job, session)
+            resume_address = resolve_address(user_config(session), detail.job, session)
         except ConfigError:
             pass
     return templates.TemplateResponse(

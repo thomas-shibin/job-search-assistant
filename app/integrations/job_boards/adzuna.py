@@ -125,7 +125,7 @@ class AdzunaSource:
 
     def search_postings(self, *, page: int = 1, per_page: int = _RESULTS_PER_PAGE, **filters: str) -> list[dict]:
         """Raw postings (with Adzuna's full `location.area` path), for the
-        market scan that builds the search-term catalog (app/catalog/scan.py).
+        market scan that builds the search-term catalog (app/modules/jobs/catalog/scan.py).
         """
         return self._search(None, None, page=page, per_page=per_page, **filters)
 

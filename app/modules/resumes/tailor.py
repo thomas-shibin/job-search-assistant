@@ -1,7 +1,7 @@
 """Orchestrates resume tailoring (Milestone 6, spec §8): AI draft -> deterministic
-truthfulness validation (`app/resume/validator.py`) -> DOCX: a copy of the
+truthfulness validation (`app/modules/resumes/validator.py`) -> DOCX: a copy of the
 candidate's own .docx with only the tailored wording changed
-(`app/documents/docx_edit.py`), or a fresh layout (`app/documents/docx.py`) when
+(`app/modules/resumes/documents/docx_edit.py`), or a fresh layout (`app/modules/resumes/documents/docx.py`) when
 the base resume is a PDF. This is the one place `TailoredResume` rows get created,
 and the one place the truthfulness guardrail is actually enforced end to end: every
 bullet that ends up in the rendered resume is either the AI's own text (validated), a

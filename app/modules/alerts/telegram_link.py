@@ -1,6 +1,6 @@
 """Telegram actions for one signed-in user's Watchlist page: start linking
 their chat (a single-use code for `t.me/<bot>?start=<code>`, completed by the
-bot -- see app/notifications/telegram_commands.py), send a test message to
+bot -- see app/modules/alerts/telegram_commands.py), send a test message to
 their linked chat, or disconnect it."""
 from __future__ import annotations
 

@@ -1,3 +1,4 @@
+"""Choosing the analysis provider from settings (OpenAI, or the free mock)."""
 from __future__ import annotations
 
 from app.core.config.schema import AIConfig

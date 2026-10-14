@@ -65,7 +65,7 @@ def _no_hourly_limits(request, monkeypatch):
 
 
 # Test users are written with the legacy `role` column ("member" / "admin"); give
-# them the RBAC roles the migration would have (app/auth/rbac.py). Tests of role
+# them the RBAC roles the migration would have (app/modules/access/rbac.py). Tests of role
 # assignment itself mark themselves `rbac_strict` to see exactly what the app does.
 LEGACY_ROLES = {"admin": ["SUPER_ADMIN", "JOB_SEEKER"], "member": ["JOB_SEEKER"]}
 _legacy_bridge = {"on": True}

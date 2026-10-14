@@ -1,3 +1,4 @@
+"""The DOCX -> PDF converter interface (implemented by app/integrations/libreoffice.py)."""
 from __future__ import annotations
 
 from pathlib import Path

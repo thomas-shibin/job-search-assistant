@@ -12,7 +12,7 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.integrations.ai.factory import AIProviderConfigError
 from app.integrations.libreoffice import PdfConversionError, convert_to_pdf
@@ -58,7 +58,7 @@ def analyze_and_tailor(session: Session, job: Job, *, force: bool = False) -> st
     """
     use_full_description(session, job)
     try:
-        config = load_config(session)
+        config = user_config(session)
         analysis = analyze_job(session, job, config)
         if not analysis.filter_result.passed and not force:
             return ("Skipped by your hard filters (" + "; ".join(analysis.filter_result.reasons)
@@ -103,7 +103,7 @@ def assess_fit(session: Session, job: Job, *, force: bool, user: User) -> str | 
         return None  # already analyzed: nothing to run
     use_full_description(session, job)
     try:
-        config = load_config(session)
+        config = user_config(session)
         with quota.ai_action(session, user, ActivityKind.AI_ANALYSIS, quota.job_label(job), job_id=job.id):
             if job.status == JobStatus.DISCOVERED:
                 analyze_job(session, job, config)

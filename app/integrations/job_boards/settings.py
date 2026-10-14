@@ -1,5 +1,5 @@
 """Adzuna API credentials, loaded from the environment / `.env` -- kept out
-of config.yaml like every other secret (see `app/ai/settings.py`). Sign up
+of config.yaml like every other secret (see `app/integrations/ai/settings.py`). Sign up
 for a free app_id/app_key at https://developer.adzuna.com/.
 """
 from __future__ import annotations

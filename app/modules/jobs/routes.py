@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.config.store import save_section
 from app.modules.auth.deps import member_session, require_member
@@ -149,7 +149,7 @@ def save_search_defaults(
 ):
     """"Save as default": the current search box values become Settings -> Job search."""
     try:
-        current = load_config(session).search
+        current = user_config(session).search
         save_section(session, "search", {
             **current.model_dump(), "titles": jobs.picked(titles, split_terms),
             "locations": jobs.picked(locations, split_places), "keywords": jobs.picked(keywords, split_terms),

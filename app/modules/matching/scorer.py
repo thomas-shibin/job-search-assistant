@@ -10,7 +10,7 @@ configured (`matching.required_or_high_value_skills`,
 `matching.preferred_skills`) or detectable with simple, generic regexes (a
 "N+ years" pattern, a seniority keyword) -- a job asking for a skill nobody
 has configured (e.g. "Terraform" when it's not in your skill lists) is
-otherwise invisible to scoring. Milestone 5 (`app/ai/service.py`,
+otherwise invisible to scoring. Milestone 5 (`app/modules/matching/requirements.py`,
 `JobRequirements`, cached by `description_hash`) closes that gap: `score_job`
 takes the AI-extracted requirements as an optional `requirements` parameter
 and uses them only to *extend* the regex/configured-list detection above --
@@ -119,7 +119,7 @@ def _candidate_has_skill(skill: str, candidate_skills: set[str]) -> bool:
 
 def _merge_extra_skills(mentioned: list[str], extra: list[str]) -> list[str]:
     """Appends `extra` (e.g. AI-extracted skills, already known to have come
-    from this job's own text -- see `app/ai/base.py`) onto `mentioned`,
+    from this job's own text -- see `app/integrations/ai/base.py`) onto `mentioned`,
     skipping anything already covered case-insensitively.
     """
     if not extra:

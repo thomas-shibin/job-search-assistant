@@ -2,7 +2,7 @@
 and produces a tree of nodes that `_settings_form.html` renders, and
 `parse_form` turns the submitted fields back into the nested dict that
 `app.core.config.store.save_section` validates. Driving both from the schema means a
-new field in `app/config/schema.py` shows up on the Settings page by itself.
+new field in `app/core/config/schema.py` shows up on the Settings page by itself.
 
 Form field names are dotted paths ("search_profiles.0.titles") plus a type
 suffix the parser needs: ":lines" (textarea, one item per line), ":tags"

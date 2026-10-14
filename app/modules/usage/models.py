@@ -1,3 +1,5 @@
+"""The activity log (`ActivityEvent`): what each user did, for the admin
+dashboard and the hourly limits."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -15,7 +17,7 @@ def _utcnow() -> datetime:
 
 class ActivityKind:
     """What a user did. `SEARCH` and the AI kinds also count toward the hourly
-    limits (app/services/quota.py)."""
+    limits (app/modules/usage/quota.py)."""
 
     SIGN_IN = "sign_in"
     SEARCH = "search"              # a new job search -- counts toward the search limit

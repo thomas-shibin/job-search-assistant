@@ -1,3 +1,4 @@
+"""Scheduled-scan history: each run (`SchedulerRun`) and each source's result in it."""
 from __future__ import annotations
 
 from datetime import datetime

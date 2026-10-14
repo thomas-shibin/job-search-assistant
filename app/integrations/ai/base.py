@@ -1,3 +1,5 @@
+"""The analysis provider interface (`AIProvider`) and the shapes it returns:
+extracted requirements, tailored resume drafts, fit assessments."""
 from __future__ import annotations
 
 from typing import Any, Protocol
@@ -75,7 +77,7 @@ class AIProvider(Protocol):
         ...
 
     def assess_fit(self, candidate: dict, job: Any) -> FitAssessmentResult:
-        """Judge the resume (`candidate`, see app/ai/fit.py) against `job`."""
+        """Judge the resume (`candidate`, see app/modules/matching/fit.py) against `job`."""
         ...
 
     def generate_match_explanation(self, score: MatchScoreBreakdown) -> str:

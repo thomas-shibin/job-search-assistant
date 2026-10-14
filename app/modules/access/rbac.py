@@ -429,7 +429,7 @@ def role_id(session: Session, name: str) -> int | None:
 def grant_role(session: Session, user, name: str) -> bool:
     """Give `user` the role (no-op if they hold it). Trusted callers only --
     registration, the ADMIN_EMAILS bootstrap and the command line; admins go
-    through app/admin/access.py, which checks who may assign what."""
+    through app/modules/access/service.py, which checks who may assign what."""
     rid = role_id(session, name)
     if rid is None:
         sync_catalog(session.connection())

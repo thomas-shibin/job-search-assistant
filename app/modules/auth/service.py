@@ -331,7 +331,7 @@ def purge_expired(session_factory) -> None:
         delete_account(session_factory, uid)
 
 
-# ---- sign-up and sign-in by emailed code (app/auth/otp.py, app/auth/api.py) -----------------
+# ---- sign-up and sign-in by emailed code (app/modules/auth/otp.py, app/modules/auth/api.py) -----------------
 
 REGISTRATION_TTL = timedelta(minutes=20)
 

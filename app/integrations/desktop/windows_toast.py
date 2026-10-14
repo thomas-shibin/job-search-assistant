@@ -1,5 +1,5 @@
 """Windows toast notification provider (Milestone 10). Implements the
-`NotificationProvider` protocol in `app/notifications/base.py` using
+`NotificationProvider` protocol in `app/modules/alerts/base.py` using
 `win10toast`, a thin ctypes wrapper around the native Windows notification
 API -- no extra background service or account needed, consistent with this
 being a local, single-user tool.
@@ -48,7 +48,7 @@ class WindowsToastNotificationProvider:
             # threaded=False (blocking): win10toast's threaded mode raises inside a
             # background thread that this try/except can't observe, so a failure
             # there would go uncaught. This call already runs on the scheduler's own
-            # background thread (see app/scheduler/background.py), so blocking for
+            # background thread (see app/workers/background.py), so blocking for
             # the toast's ~10s duration doesn't affect the web server.
             self._toaster.show_toast(title, message, duration=_TOAST_DURATION_SECONDS, threaded=False)
         except Exception:

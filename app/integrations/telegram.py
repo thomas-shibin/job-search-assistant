@@ -1,7 +1,7 @@
 """Telegram Bot API client for watchlist alerts. Talks to the documented HTTP
 API (https://core.telegram.org/bots/api) over httpx -- no extra dependency.
 The bot token and target chat id are secrets, so they live in `.env`
-(see `app/ai/settings.py`), never in config.yaml.
+(see `app/integrations/ai/settings.py`), never in config.yaml.
 """
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Wires `app/scheduler/run.py` into an APScheduler `BackgroundScheduler`
+"""Wires `app/workers/run.py` into an APScheduler `BackgroundScheduler`
 for `python cli.py serve` (Milestone 11) -- runs on its own thread alongside
 the uvicorn web server. Settings live in the database and can change from the
 dashboard at any time, so the scheduler always runs: each tick re-reads them,
@@ -49,7 +49,7 @@ def _run_tick(config_path: Path, *, force: bool = False) -> None:
 
 def _pool_tick() -> None:
     """Refresh the job pool's companies older than `platform.pool_refresh_hours`
-    (app/services/pool.py). Runs every half hour; most ticks find nothing stale."""
+    (app/modules/jobs/pool/service.py). Runs every half hour; most ticks find nothing stale."""
     try:
         with SessionLocal() as session:
             hours = quota.platform_limits(session).pool_refresh_hours

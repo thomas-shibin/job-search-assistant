@@ -1,3 +1,4 @@
+"""Structured JSON logging for the whole app (`configure_logging`, `log_event`)."""
 from __future__ import annotations
 
 import json

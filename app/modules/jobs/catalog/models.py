@@ -1,3 +1,5 @@
+"""The search-term catalog: shared titles, keywords, locations and companies
+(`SearchTerm`) and the terms each user has used (`UserSearchTerm`)."""
 from __future__ import annotations
 
 import enum
@@ -19,7 +21,7 @@ class TermKind(str, enum.Enum):
 
 class TermSource(str, enum.Enum):
     """Where a term came from, in increasing order of trust: a later scan never
-    demotes a seeded or user-added term (see app/catalog/store.py).
+    demotes a seeded or user-added term (see app/modules/jobs/catalog/store.py).
     """
 
     SCAN = "scan"

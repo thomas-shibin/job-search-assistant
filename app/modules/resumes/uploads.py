@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.config.store import save_section
 from app.core.paths import PROJECT_ROOT
@@ -65,7 +65,7 @@ def import_resume_file(session: Session, filename: str, data: bytes) -> tuple[Im
         dest_path.unlink(missing_ok=True)  # same content as the current resume: keep nothing new
     else:
         try:  # keep Settings -> Candidate -> base resume pointing at the file in use
-            candidate = load_config(session).candidate
+            candidate = user_config(session).candidate
             save_section(session, "candidate", {**candidate.model_dump(), "base_resume": str(result.profile.raw_resume_path)})
         except ConfigError:
             pass

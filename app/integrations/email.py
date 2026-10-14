@@ -3,7 +3,7 @@
 Without SMTP settings (local development) each email is saved as a file in
 MAIL_OUTBOX_DIR (default `data/mail_outbox/`) instead -- never written to the
 log, since emails carry codes and links that sign people in. What the emails
-say lives with the feature that sends them (e.g. app/auth/emails.py).
+say lives with the feature that sends them (e.g. app/modules/auth/emails.py).
 """
 from __future__ import annotations
 

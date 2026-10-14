@@ -1,3 +1,4 @@
+"""The database: declarative base, engine and per-request sessions."""
 from app.core.database.base import Base
 from app.core.database.session import DATABASE_URL, SessionLocal, engine, get_session
 

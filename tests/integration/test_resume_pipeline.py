@@ -1,4 +1,4 @@
-"""Tests for `app/resume/pipeline.py::generate_resume_bundle` -- the shared
+"""Tests for `app/modules/resumes/pipeline.py::generate_resume_bundle` -- the shared
 tailor -> PDF -> artifact bundle -> READY_FOR_REVIEW flow used by both the
 CLI's `generate-resume` and the scheduler's automated run.
 """

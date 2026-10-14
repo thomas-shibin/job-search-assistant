@@ -1,3 +1,5 @@
+"""One row per analysis-provider call or cache hit (`AICallLog`): tokens and
+estimated cost, for the usage pages and hourly limits."""
 from __future__ import annotations
 
 from datetime import datetime

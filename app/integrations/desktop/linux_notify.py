@@ -1,5 +1,5 @@
 """Linux desktop notification provider. Implements the `NotificationProvider`
-protocol in `app/notifications/base.py` by shelling out to `notify-send`
+protocol in `app/modules/alerts/base.py` by shelling out to `notify-send`
 (libnotify-bin, preinstalled on Ubuntu desktop) -- the Linux counterpart of
 `windows_toast.py`, with no extra Python dependency.
 """

@@ -1,3 +1,5 @@
+"""The settings schema (pydantic): every section a user or the platform can
+set, with defaults and validation. Stored values are validated against it."""
 from __future__ import annotations
 
 from pydantic import BaseModel, Field, model_validator
@@ -6,7 +8,7 @@ from pydantic import BaseModel, Field, model_validator
 class CandidateConfig(BaseModel):
     name: str = ""
     base_resume: str = ""
-    # By default the name parsed off the resume's own header (app/resume/parser.py)
+    # By default the name parsed off the resume's own header (app/modules/resumes/parser.py)
     # wins, since config.yaml's `name` commonly gets left at its placeholder value.
     # Set true to force `name` above to always win instead (e.g. you want a
     # different spelling/nickname on the resume than what's printed on the file).
@@ -61,7 +63,7 @@ class SearchProfile(BaseModel):
 def _picker(catalog: str) -> dict:
     """Marks a list field the dashboard edits with a searchable multi-select
     whose options come from the search-term catalog of this kind (app/catalog),
-    accepting custom values too (see app/ui/forms.py, _tag_picker.html).
+    accepting custom values too (see app/web/forms.py, _tag_picker.html).
     """
     return {"input": "tags", "catalog": catalog}
 
@@ -71,7 +73,7 @@ class GlobalSearchConfig(BaseModel):
     (prefilled and run on landing) and the scheduler's Adzuna scans. One Adzuna
     query runs per title x location; leaving both empty searches every job in
     `country`. A location containing "Remote" searches the whole country with
-    "remote" added to the keywords (see app/services/search.py). Needs ADZUNA_APP_ID/ADZUNA_APP_KEY in .env.
+    "remote" added to the keywords (see app/modules/jobs/search.py). Needs ADZUNA_APP_ID/ADZUNA_APP_KEY in .env.
     """
 
     titles: list[str] = Field(default_factory=list, json_schema_extra=_picker("title"))
@@ -211,7 +213,7 @@ class Watch(BaseModel):
 class WatchlistConfig(BaseModel):
     """Telegram alerts for newly discovered jobs matching any watch, independent
     of the match score (spec: notifications are pluggable -- see
-    app/notifications/base.py). Needs TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in .env.
+    app/modules/alerts/base.py). Needs TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in .env.
     """
 
     enabled: bool = False

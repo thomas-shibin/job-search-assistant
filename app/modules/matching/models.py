@@ -1,3 +1,5 @@
+"""Stored results of matching a job to the resume: the keyword score
+(`MatchAnalysis`) and the AI fit assessment (`JobFitAssessment`)."""
 from __future__ import annotations
 
 from datetime import datetime

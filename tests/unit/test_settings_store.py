@@ -1,5 +1,5 @@
-"""Tests for DB-backed settings (app/config/store.py) and the schema-driven
-settings form parser (app/ui/forms.py).
+"""Tests for DB-backed settings (app/core/config/store.py) and the schema-driven
+settings form parser (app/web/forms.py).
 """
 from __future__ import annotations
 

@@ -16,7 +16,7 @@ from app.core.paths import PROJECT_ROOT
 
 def _applications_root() -> Path:
     """Overridable via APPLICATIONS_DATA_DIR (same pattern as DATABASE_URL in
-    app/database/session.py) so tests don't write into the real project's
+    app/core/database/session.py) so tests don't write into the real project's
     data/applications folder.
     """
     override = os.environ.get("APPLICATIONS_DATA_DIR")

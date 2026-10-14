@@ -1,3 +1,6 @@
+"""The one database engine (DATABASE_URL, default data/job_assistant.db) and
+session factory. SQLite runs in WAL mode so pages can read while background
+jobs write. `get_session` is the per-request FastAPI dependency."""
 from __future__ import annotations
 
 import os
@@ -30,7 +33,7 @@ if DATABASE_URL.startswith("sqlite"):
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.close()
 
-# Strict (app/tenancy.py): touching user data needs a user bound to the
+# Strict (app/core/tenancy.py): touching user data needs a user bound to the
 # session, so nothing can read across users by accident.
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, info={"tenant_strict": True})
 

@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.tenancy import require_tenant
 from app.integrations.ai.factory import AIProviderConfigError
@@ -83,7 +83,7 @@ def update_job_description(job_id: int, description: str = Form(...), session: S
     reassess = latest_assessment(session, job_id) is not None
     if rescore or reassess:
         try:  # one resume action, however many provider calls it takes
-            config = load_config(session)
+            config = user_config(session)
             with quota.ai_action(session, user, ActivityKind.AI_ANALYSIS, quota.job_label(job), job_id=job.id):
                 if rescore:
                     analyze_job(session, job, config, update_status=False)

@@ -5,7 +5,7 @@ be exercised in tests and by users without an OpenAI key/API cost).
 This is a heuristic, not a language model: it can only recognize a
 "Requirements:"/"Preferred:"-style bulleted posting, not extract skills from
 arbitrary prose. That's an intentional, honest limitation (see
-`app/matching/scorer.py`'s module docstring on the same theme) -- postings
+`app/modules/matching/scorer.py`'s module docstring on the same theme) -- postings
 that don't use this structure yield empty extracted-skill lists here, same as
 if Milestone 5's AI step had never run, rather than guessing.
 """

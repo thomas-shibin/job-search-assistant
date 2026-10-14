@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.config.current import load_config
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.config.schema import GlobalSearchConfig
 from app.integrations.job_boards.adzuna import AdzunaSource
@@ -199,7 +199,7 @@ def search_terms(session: Session, q: str | None, l: str | None, titles, locatio
     """
     config_error = None
     try:
-        search_config = load_config(session).search
+        search_config = user_config(session).search
     except ConfigError as exc:
         config_error = f"Settings are invalid (fix them on the Settings page): {'; '.join(exc.errors)}"
         search_config = GlobalSearchConfig()

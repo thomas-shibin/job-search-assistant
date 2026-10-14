@@ -2,8 +2,8 @@
 feature switches, and the audit log of administrative changes.
 
 These are platform tables (not `TenantOwned`): they decide what a user may
-do, so they are read for the signed-in user by `app/auth/rbac.py` and changed
-only through `app/admin/access.py`, which enforces the escalation rules.
+do, so they are read for the signed-in user by `app/modules/access/rbac.py` and changed
+only through `app/modules/access/service.py`, which enforces the escalation rules.
 """
 from __future__ import annotations
 

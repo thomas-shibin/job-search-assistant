@@ -1,3 +1,4 @@
+"""Reading and validating config/config.yaml (the seed for stored settings)."""
 from __future__ import annotations
 
 from pathlib import Path

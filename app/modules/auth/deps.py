@@ -2,13 +2,13 @@
 
 Every route that touches user data takes its database session from
 `member_session` (or `viewer_session`), which binds the session to the signed-in
-user before the route runs (app/tenancy.py). A route can't forget to filter by
+user before the route runs (app/core/tenancy.py). A route can't forget to filter by
 user: the session itself only sees that user's rows.
 
 Access levels:
 - viewer: anyone signed in (the email-confirmation pages).
 - member: an active account with a verified email, holding the permission
-  the route needs (app/auth/rbac.py: ROUTE_PERMISSIONS) -- checked here for
+  the route needs (app/modules/access/rbac.py: ROUTE_PERMISSIONS) -- checked here for
   every member and admin route, on every request, from the database.
 - admin: a member who may open the admin area (admin.dashboard.view); admin
   routes get a cross-user session for platform totals.
@@ -107,7 +107,7 @@ def authorize(request: Request, session: Session, user: User) -> None:
     refused (fail closed)."""
     template = route_template(request)
     rbac.permissions_of(user, session)  # resolve from this request's database, once
-    request.state.db = session  # for the page's permission-aware menus (app/ui/templating.py)
+    request.state.db = session  # for the page's permission-aware menus (app/web/templating.py)
     if template.startswith(("/admin", "/api/admin")) and not user.can("admin.dashboard.view"):
         raise AdminOnly(_next(request))
     rule = rbac.rule_for(request.method, template)

@@ -2,7 +2,7 @@
 the activity dashboard (what each member does, what it costs, hourly-limit
 overrides, suspending an account). Admins see account details and activity
 -- search terms and the titles of jobs acted on -- but never a user's resume,
-tailored resumes, job descriptions or settings (see app/admin/activity.py)."""
+tailored resumes, job descriptions or settings (see app/modules/admin/activity.py)."""
 from __future__ import annotations
 
 from urllib.parse import urlencode

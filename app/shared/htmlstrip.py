@@ -1,3 +1,4 @@
+"""Plain text from HTML job descriptions."""
 from __future__ import annotations
 
 import html

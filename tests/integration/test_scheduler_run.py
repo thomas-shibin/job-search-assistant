@@ -1,7 +1,7 @@
 """End-to-end test of the Milestone 11 scheduler run: discover -> analyze ->
 tailor across configured sources, with per-source failure isolation and the
 run-lock. Sources are faked (no real HTTP) by monkeypatching the adapter
-classes `app/scheduler/run.py` imports.
+classes `app/workers/run.py` imports.
 """
 from __future__ import annotations
 

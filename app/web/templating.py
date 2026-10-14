@@ -95,7 +95,7 @@ def feature(ctx, key: str) -> bool:
 
 
 # The account menu and the admin area's navigation: shown item by item to whoever
-# may open each route (app/auth/rbac.py), so a revoked permission hides its link.
+# may open each route (app/modules/access/rbac.py), so a revoked permission hides its link.
 ACCOUNT_MENU = [
     [("/profile", "My Profile", "user"), ("/saved", "Saved Jobs", "bookmark"),
      ("/applications", "Applications", "briefcase")],
