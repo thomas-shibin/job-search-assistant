@@ -112,11 +112,14 @@ def _config(enabled: bool) -> AppConfig:
     )
 
 
-def test_build_alerter_requires_enabled_and_credentials():
-    creds = TelegramSettings(TELEGRAM_BOT_TOKEN="t", TELEGRAM_CHAT_ID="42")
+def test_build_alerter_requires_enabled_token_and_the_users_own_chat():
+    creds = TelegramSettings(TELEGRAM_BOT_TOKEN="t")
+    linked = _config(True)
+    linked.watchlist.telegram_chat_id = "42"
     assert build_watchlist_alerter(_config(False), creds) is None
-    assert build_watchlist_alerter(_config(True), TelegramSettings(TELEGRAM_BOT_TOKEN=None, TELEGRAM_CHAT_ID=None)) is None
-    assert build_watchlist_alerter(_config(True), creds) is not None
+    assert build_watchlist_alerter(linked, TelegramSettings(TELEGRAM_BOT_TOKEN=None)) is None
+    assert build_watchlist_alerter(_config(True), creds) is None  # no linked chat: no shared fallback
+    assert build_watchlist_alerter(linked, creds) is not None
 
 
 def test_telegram_client_raises_on_api_error_without_leaking_token():

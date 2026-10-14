@@ -1,6 +1,7 @@
+from app.models.activity import ActivityEvent, ActivityKind
 from app.models.ai_usage import AICallLog
 from app.models.application import ApplicationArtifactSet
-from app.models.catalog import LocationType, SearchTerm, TermKind, TermSource
+from app.models.catalog import LocationType, SearchTerm, TermKind, TermSource, UserSearchTerm
 from app.models.candidate import (
     AccomplishmentBullet,
     CandidateProfile,
@@ -11,12 +12,31 @@ from app.models.candidate import (
     Skill,
 )
 from app.models.job import Job, JobRequirements, JobStatus, JobStatusHistory, JobTombstone
+from app.models.pool import PoolCompany, PoolJob
+from app.models.rbac import AuditLog, FeatureFlag, Permission, RbacRole, RolePermission, UserRole
+from app.models.profile import JobSeekerProfile, ProfileEducation, ProfileExperience, SavedJob
 from app.models.matching import JobFitAssessment, MatchAnalysis
 from app.models.resume import TailoredBulletProvenance, TailoredResume
 from app.models.scheduler import SchedulerRun, SourceRunResult
-from app.models.settings import AppSetting, WatchlistAlert, WatchlistEntry
+from app.models.settings import AppSetting, UserSetting, WatchlistAlert, WatchlistEntry
+from app.models.user import AuthSession, AuthToken, EmailCode, OAuthIdentity, Role, TokenPurpose, User
 
 __all__ = [
+    "ActivityEvent",
+    "AuditLog",
+    "FeatureFlag",
+    "Permission",
+    "RbacRole",
+    "RolePermission",
+    "UserRole",
+    "ActivityKind",
+    "PoolCompany",
+    "PoolJob",
+    "JobSeekerProfile",
+    "ProfileExperience",
+    "ProfileEducation",
+    "SavedJob",
+    "EmailCode",
     "CandidateProfile",
     "Employment",
     "AccomplishmentBullet",
@@ -38,6 +58,14 @@ __all__ = [
     "SchedulerRun",
     "SourceRunResult",
     "AppSetting",
+    "UserSetting",
+    "UserSearchTerm",
+    "User",
+    "Role",
+    "OAuthIdentity",
+    "AuthSession",
+    "AuthToken",
+    "TokenPurpose",
     "WatchlistEntry",
     "WatchlistAlert",
     "SearchTerm",

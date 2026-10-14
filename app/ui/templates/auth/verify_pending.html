@@ -1,0 +1,14 @@
+{% extends "auth/base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Confirm your email - Job Assistant{% endblock %}
+{% block layout %}single{% endblock %}
+{% block aside %}{% endblock %}
+{% block card %}
+<div class="auth-notice">
+  <span class="notice-icon">{{ icon("mail") }}</span>
+  <h1 class="flow-title">Confirm your email</h1>
+  <p>We sent a confirmation link to <strong>{{ user.email }}</strong>. Open it to unlock every feature.</p>
+  <form method="post" action="/verify-email/resend"><button type="submit" class="primary pill large">Send a new link</button></form>
+  <form method="post" action="/logout"><button type="submit" class="link-button">Sign out</button></form>
+</div>
+{% endblock %}

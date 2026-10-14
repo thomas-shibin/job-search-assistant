@@ -15,7 +15,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.catalog import seed_data
-from app.models.catalog import LocationType, SearchTerm, TermKind, TermSource
+from app.models.catalog import LocationType, SearchTerm, TermKind, TermSource, UserSearchTerm
+from app.tenancy import sees_user_data
 from app.utils.terms import normalize_term
 
 _TRUST = {TermSource.SCAN.value: 0, TermSource.SEED.value: 1, TermSource.USER.value: 2}
@@ -74,12 +75,27 @@ def upsert_terms(session: Session, kind: TermKind, terms: Iterable[Term | str], 
 
 
 def remember_user_terms(session: Session, **labels_by_kind: Iterable[str]) -> None:
-    """Add anything the user typed (settings, searches, watches) to the
-    catalog so it is offered in every picker from then on.
-    `remember_user_terms(session, title=[...], location=[...])`.
+    """Add anything the signed-in user typed (settings, searches, watches) to
+    *their own* term list, so it is offered in their pickers from then on --
+    never in anyone else's. `remember_user_terms(session, title=[...], location=[...])`.
     """
+    if not sees_user_data(session):
+        return
     for kind, labels in labels_by_kind.items():
-        upsert_terms(session, TermKind(kind), labels, TermSource.USER)
+        incoming = {}
+        for label in labels:
+            label = " ".join(label.split())
+            norm = normalize_term(label)
+            if norm:
+                incoming.setdefault(norm, label)
+        if not incoming:
+            continue
+        known = {norm for (norm,) in session.query(UserSearchTerm.norm).filter(
+            UserSearchTerm.kind == kind, UserSearchTerm.norm.in_(list(incoming)))}
+        for norm, label in incoming.items():
+            if norm not in known:
+                session.add(UserSearchTerm(kind=kind, label=label, norm=norm))
+    session.commit()
 
 
 def suggestions(session: Session, kind: TermKind, limit: int | None = None) -> list[dict]:
@@ -91,7 +107,14 @@ def suggestions(session: Session, kind: TermKind, limit: int | None = None) -> l
     )
     if limit:
         query = query.limit(limit)
-    return [{"label": label, "count": count, "type": location_type} for label, count, location_type in query]
+    shared = [{"label": label, "count": count, "type": location_type} for label, count, location_type in query]
+    if not sees_user_data(session):
+        return shared
+    seen = {normalize_term(item["label"]) for item in shared}
+    own = [{"label": label, "count": 0, "type": None} for label, norm in session.query(
+        UserSearchTerm.label, UserSearchTerm.norm).filter(UserSearchTerm.kind == kind.value).order_by(
+        UserSearchTerm.label) if norm not in seen]
+    return own + shared
 
 
 def location_paths(session: Session) -> dict[str, list[str]]:

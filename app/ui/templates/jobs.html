@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% from "_job_detail.html" import job_detail with context %}
+{% block title %}{{ (q ~ " jobs") if q else "Find jobs" }}{% if l %} in {{ l }}{% endif %} - Job Assistant{% endblock %}
+{% block main_class %}app-main wide{% endblock %}
+{% block content %}
+<form class="results-search" action="/jobs" method="get" role="search">
+  <label class="hero-field">{{ icon("search") }}<span class="visually-hidden">Job title, keywords, or company</span>
+    <input type="text" name="q" value="{{ q }}" placeholder="Job title, keywords, or company"></label>
+  <span class="hero-divider" aria-hidden="true"></span>
+  <label class="hero-field">{{ icon("pin") }}<span class="visually-hidden">City, province, or location</span>
+    <input type="text" name="l" value="{{ l }}" placeholder="City, province, or location"></label>
+  <input type="hidden" name="country" value="{{ country }}">
+  <button type="submit" class="primary pill">Find Jobs</button>
+</form>
+
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+{% if search.limited %}
+<div class="warning-box">{{ icon("clock") }}<div class="alert-body">{{ search.error }}
+  {% if search.last_search %}<div><a href="{{ search.last_search.url }}">Back to your last search: {{ search.last_search.summary }}</a></div>{% endif %}</div></div>
+{% elif search.error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ search.error }}</div></div>{% endif %}
+{% if not has_resume %}
+<div class="notice">{{ icon("file") }}<div class="alert-body"><strong>Add your resume</strong> to see how well each job fits you. <a href="/resume">Upload it</a> or <a href="/profile">complete your profile</a>.</div></div>
+{% endif %}
+
+<input type="checkbox" id="filters-toggle" class="filters-toggle" hidden>
+<div class="results-bar">
+  <p class="result-count">
+    {% if search.limited %}&nbsp;{% else %}<strong>{{ postings|length }}</strong> job{{ "s" if postings|length != 1 }}{% if q %} for <strong>{{ q }}</strong>{% endif %}{% if l %} in <strong>{{ l }}</strong>{% endif %}{% if search.page > 1 %} &middot; page {{ search.page }}{% endif %}{% if filters.active and found_count != postings|length %} <span class="muted">({{ found_count }} before filters)</span>{% endif %}{% endif %}
+  </p>
+  <label for="filters-toggle" class="button pill outline filters-button">{{ icon("filter") }} Filters{% if filters.active %} ({{ filters.active }}){% endif %}</label>
+</div>
+
+<div class="results-layout{% if request.query_params.get('view') %} show-detail{% endif %}">
+  <aside class="filter-panel" aria-label="Filters">
+    <form method="get" action="/jobs" class="filter-form">
+      <input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="l" value="{{ l }}">
+      <input type="hidden" name="country" value="{{ country }}">
+      {% for k in keywords %}<input type="hidden" name="keywords" value="{{ k }}">{% endfor %}
+      <div class="filter-head"><h2>Filters</h2><label for="filters-toggle" class="filter-close" aria-label="Close filters">{{ icon("x") }}</label></div>
+      <fieldset><legend>Workplace</legend>
+        {% for key, label in workplaces.items() %}<label class="check"><input type="checkbox" name="workplace" value="{{ key }}" {{ "checked" if key in filters.workplaces }}> {{ label }}</label>{% endfor %}
+      </fieldset>
+      <fieldset><legend>Employment type</legend>
+        {% for key, label in employment_types.items() %}<label class="check"><input type="checkbox" name="type" value="{{ key }}" {{ "checked" if key in filters.employment_types }}> {{ label }}</label>{% endfor %}
+      </fieldset>
+      <fieldset><legend>Experience level</legend>
+        {% for key, label in levels.items() %}<label class="check"><input type="checkbox" name="level" value="{{ key }}" {{ "checked" if key in filters.levels }}> {{ label }}</label>{% endfor %}
+      </fieldset>
+      <fieldset><legend>Minimum salary</legend>
+        <select name="salary" aria-label="Minimum salary">
+          <option value="">Any salary</option>
+          {% for amount in salaries %}<option value="{{ amount }}" {{ "selected" if filters.min_salary == amount }}>${{ (amount // 1000) }}K+ a year</option>{% endfor %}
+        </select>
+        <small class="field-hint">Shows only jobs that state a salary.</small>
+      </fieldset>
+      <fieldset><legend>Date posted</legend>
+        <label class="check"><input type="radio" name="days" value="" {{ "checked" if not filters.days }}> Any time</label>
+        {% for key, label in date_ranges.items() %}<label class="check"><input type="radio" name="days" value="{{ key }}" {{ "checked" if filters.days == key|int }}> {{ label }}</label>{% endfor %}
+      </fieldset>
+      <div class="filter-actions">
+        <button type="submit" class="primary pill wide">Apply filters</button>
+        <a class="button pill ghost wide" href="/jobs?{{ {'q': q, 'l': l, 'country': country}|urlencode }}">Clear all</a>
+      </div>
+    </form>
+  </aside>
+
+  <section class="results-list" aria-label="Job results">
+    {% for p in postings %}
+    {% set track = tracked.get(p.ref) %}
+    <article class="result-card{% if selected and selected.ref == p.ref %} selected{% endif %}" data-ref="{{ p.ref }}">
+      <a class="result-main" href="{{ page_base }}&page={{ search.page }}&view={{ p.ref }}" data-view-job="{{ p.ref }}">
+        <div class="result-top">
+          {{ avatar(p.company) }}
+          <div class="result-title">
+            <h3>{{ p.title }}</h3>
+            <span>{{ p.company }}{% if p.location %} &middot; {{ p.location|truncate(48) }}{% endif %}</span>
+          </div>
+          {% if track and track.fit %}<span class="fit-badge fit-{{ track.fit.verdict }}">Fit {{ track.fit.fit_score }}</span>
+          {% elif track and track.score is not none %}<span class="fit-badge">Score {{ track.score }}</span>{% endif %}
+        </div>
+        <div class="chips">
+          <span class="chip">{{ p.workplace_label }}</span>
+          {% if p.employment_label %}<span class="chip">{{ p.employment_label }}</span>{% endif %}
+          {% if p.salary_text %}<span class="chip chip-on">{{ p.salary_text }}</span>{% endif %}
+          {% if p.date_posted %}<span class="chip">{{ p.date_posted|ago }}</span>{% endif %}
+        </div>
+        <p class="result-snippet">{{ p.snippet }}</p>
+      </a>
+      <div class="result-actions">
+        <a class="button pill ghost small" href="{{ page_base }}&page={{ search.page }}&view={{ p.ref }}" data-view-job="{{ p.ref }}">View Details</a>
+        {% with ref=p.ref, saved_job_id=saved.get(p.ref) %}{% include "_save_button.html" %}{% endwith %}
+        <a class="button pill outline small" href="{{ p.url }}" target="_blank" rel="noopener">Apply {{ icon("external") }}</a>
+      </div>
+      <template id="detail-{{ p.ref }}">{{ job_detail(p, track, saved.get(p.ref), has_resume) }}</template>
+    </article>
+    {% else %}
+      {% if not search.limited and not search.error %}
+      <div class="empty-state">{{ icon("search") }}
+        <p><strong>No jobs found. Try adjusting your search filters.</strong></p>
+        <p class="muted">Use fewer filters, a broader title, or a nearby city.</p>
+        {% if filters.active %}<a class="button pill outline" href="/jobs?{{ {'q': q, 'l': l, 'country': country}|urlencode }}">Clear filters</a>{% endif %}
+      </div>
+      {% endif %}
+    {% endfor %}
+
+    {% if postings or search.page > 1 %}
+    <nav class="pager" aria-label="Pages">
+      {% if search.page > 1 %}<a class="button pill outline" href="{{ page_base }}&page={{ search.page - 1 }}">{{ icon("back") }} Previous</a>{% else %}<span></span>{% endif %}
+      <span class="muted">Page {{ search.page }}</span>
+      {% if search.has_next %}<a class="button pill outline" href="{{ page_base }}&page={{ search.page + 1 }}">Next {{ icon("forward") }}</a>{% else %}<span></span>{% endif %}
+    </nav>
+    {% endif %}
+    {% set allowance = search.allowance %}
+    {% if allowance and not allowance.unlimited %}
+    <p class="quota-note">{{ icon("clock") }} New searches this hour: {{ allowance.used }} of {{ allowance.limit }}{% if allowance.exhausted and allowance.next_free_at %} &middot; next in {{ allowance.minutes_until_free() }} min{% endif %}. Filters and paging don't count.</p>
+    {% endif %}
+  </section>
+
+  <section class="job-detail-panel" id="job-detail" aria-label="Job details" aria-live="polite">
+    {% if selected %}{{ job_detail(selected, tracked.get(selected.ref), saved.get(selected.ref), has_resume) }}
+    {% else %}<div class="detail-empty">{{ icon("briefcase") }}<p>Select a job to see its details.</p></div>{% endif %}
+  </section>
+</div>
+{% endblock %}

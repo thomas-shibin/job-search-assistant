@@ -7,6 +7,7 @@ from sqlalchemy import JSON, DateTime, Index, Integer, String, UniqueConstraint,
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
 class TermKind(str, enum.Enum):
@@ -65,3 +66,18 @@ class SearchTerm(Base):
     geo_path: Mapped[list | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class UserSearchTerm(TenantOwned, Base):
+    """A label one user typed into a search, setting or watch: offered back in
+    *their* pickers only. The shared `SearchTerm` catalog holds just the
+    built-in list and market scans, so nobody sees what anyone else searched."""
+
+    __tablename__ = "user_search_terms"
+    __table_args__ = (UniqueConstraint("user_id", "kind", "norm", name="uq_user_search_terms_user_kind_norm"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    label: Mapped[str] = mapped_column(String(255))
+    norm: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())

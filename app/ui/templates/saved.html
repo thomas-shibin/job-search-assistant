@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}Saved jobs - Job Assistant{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Saved jobs</h1>
+    <p class="lead">Jobs you've bookmarked to come back to.</p>
+  </div>
+  <a class="button pill outline" href="/applications">{{ icon("briefcase") }} Applications</a>
+</header>
+<div class="saved-list">
+  {% for saved, job in rows %}
+  <article class="result-card static">
+    <div class="result-top">
+      {{ avatar(job.company) }}
+      <div class="result-title">
+        <h3><a href="/jobs/{{ job.id }}">{{ job.title }}</a></h3>
+        <span>{{ job.company }}{% if job.location %} &middot; {{ job.location }}{% endif %}</span>
+      </div>
+      <span class="muted saved-when">Saved {{ saved.created_at|ago }}</span>
+    </div>
+    <div class="result-actions">
+      <a class="button pill primary small" href="{{ job.source_url }}" target="_blank" rel="noopener">Apply {{ icon("external") }}</a>
+      <a class="button pill outline small" href="/jobs/{{ job.id }}">{{ icon("sparkles") }} Analyze &amp; tailor</a>
+      <form method="post" action="/saved/{{ job.id }}/remove"><button type="submit" class="pill ghost small">{{ icon("trash") }} Remove</button></form>
+    </div>
+  </article>
+  {% else %}
+  <div class="empty-state">{{ icon("bookmark") }}
+    <p><strong>No saved jobs yet.</strong></p>
+    <p class="muted">Use "Save" on any job in your search results to keep it here.</p>
+    <a class="button primary pill" href="/jobs">Find jobs</a>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

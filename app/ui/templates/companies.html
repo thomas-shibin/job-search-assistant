@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}Companies hiring in Canada - Job Assistant{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Companies hiring in Canada</h1>
+    <p class="lead">Open roles straight from each company's own career site, refreshed through the day.</p>
+  </div>
+  <form method="get" action="/companies" class="page-search" role="search">
+    <label class="visually-hidden" for="company-q">Find a company</label>
+    <input id="company-q" type="search" name="q" value="{{ q }}" placeholder="Find a company">
+    <button type="submit" class="pill">{{ icon("search") }} Search</button>
+  </form>
+</header>
+<div class="company-grid wide">
+  {% for c in companies %}
+  <a class="company-card" href="/jobs?{{ {'q': c.label}|urlencode }}" data-auth-open data-reason="Sign in or create a free account to see jobs at {{ c.label }}.">
+    {{ avatar(c.label, "lg") }}
+    <strong>{{ c.label }}</strong>
+    <small>{{ c.canada_count }} open role{{ "s" if c.canada_count != 1 }} in Canada</small>
+  </a>
+  {% else %}
+  <div class="empty-state">{{ icon("building") }}<p><strong>No companies match "{{ q }}".</strong></p></div>
+  {% endfor %}
+</div>
+{% endblock %}

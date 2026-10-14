@@ -1,6 +1,12 @@
 """Database-backed settings: the source of truth for every `AppConfig` section
 the dashboard can edit.
 
+Multi-tenant split: *platform* sections (provider, scan schedule, retention,
+limits) are shared rows in `app_settings`, edited by admins only; every other
+section is the signed-in user's own row in `user_settings` (tenant-scoped, see
+app/tenancy.py). `load_app_config` assembles one `AppConfig` from both, so the
+rest of the app reads settings exactly as before.
+
 Defaults arrive through versioned Alembic migrations (`app/config/seeding.py`):
 a new install's database is created with every default setting, user-specific
 ones blank, and later releases only add missing keys -- never overwriting what
@@ -17,17 +23,21 @@ from typing import Any
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+import os
+
 from app.config.loader import ConfigError, load_config_dict
-from app.config.schema import AppConfig, Watch
-from app.models.settings import AppSetting, WatchlistEntry
+from app.config.schema import AppConfig, PlatformConfig, Watch
+from app.models.settings import AppSetting, UserSetting, WatchlistEntry
+from app.tenancy import sees_user_data, tenant_of
 from app.utils.logging import log_event
 
 logger = logging.getLogger(__name__)
 
-SECTIONS = (
-    "candidate", "search", "address_profiles", "search_profiles", "matching", "ai",
-    "resume", "notifications", "watchlist", "scheduler", "retention",
+PLATFORM_SECTIONS = ("ai", "scheduler", "retention", "platform")
+USER_SECTIONS = (
+    "candidate", "search", "address_profiles", "search_profiles", "matching", "resume", "notifications", "watchlist",
 )
+SECTIONS = USER_SECTIONS + PLATFORM_SECTIONS
 WATCH_LIST_FIELDS = ("companies", "titles", "keywords", "locations", "exclude_keywords", "exclude_companies", "job_types")
 WATCH_VALUE_FIELDS = ("min_score", "min_salary", "max_salary", "posted_within_days", "search")
 
@@ -43,8 +53,11 @@ def has_settings(session: Session) -> bool:
     return session.query(AppSetting.key).first() is not None
 
 
-def import_yaml_config(session: Session, yaml_path: Path, *, replace_watches: bool = True) -> AppConfig:
-    """Copy config.yaml into the database, overwriting every section it defines."""
+def import_yaml_config(session: Session, yaml_path: Path, *, replace_watches: bool = True,
+                       platform_only: bool = False) -> AppConfig:
+    """Copy config.yaml into the database, overwriting every section it defines:
+    the platform sections, plus -- unless `platform_only` -- the session's own
+    user's sections and watches."""
     if not yaml_path.exists():
         raise ConfigError([
             f"No settings in the database yet and no config file to import at {yaml_path}. "
@@ -55,19 +68,50 @@ def import_yaml_config(session: Session, yaml_path: Path, *, replace_watches: bo
 
     dumped = config.model_dump(mode="json")
     watches = dumped["watchlist"].pop("watches")
-    for key in SECTIONS:
+    for key in PLATFORM_SECTIONS:
         session.merge(AppSetting(key=key, value=dumped[key]))
-    if replace_watches:
-        session.query(WatchlistEntry).delete()
-        for watch in watches:
-            session.add(WatchlistEntry(enabled=True, **watch))
+    if not platform_only and sees_user_data(session):  # a user's own sections only ever go to that user
+        for key in USER_SECTIONS:
+            _put_user_section(session, key, dumped[key])
+        if replace_watches:
+            session.query(WatchlistEntry).delete()
+            for watch in watches:
+                session.add(WatchlistEntry(enabled=True, **watch))
     session.commit()
     log_event(logger, "CONFIG_IMPORTED", path=str(yaml_path), watches=len(watches))
     return config
 
 
+def _put_user_section(session: Session, key: str, value: Any) -> None:
+    row = session.query(UserSetting).filter(UserSetting.key == key).one_or_none()
+    if row is None:
+        session.add(UserSetting(key=key, value=value))
+    else:
+        row.value = value
+
+
+def _user_defaults(session: Session) -> dict[str, Any]:
+    """A new user's settings: the schema defaults, with their own name."""
+    from app.models.user import User
+
+    user_id = tenant_of(session)
+    user = session.get(User, user_id) if user_id is not None else None
+    return {"candidate": {"name": user.full_name if user else "", "base_resume": ""}}
+
+
 def _section_values(session: Session) -> dict[str, Any]:
-    return {row.key: row.value for row in session.query(AppSetting).all()}
+    platform = {row.key: row.value for row in session.query(AppSetting).filter(AppSetting.key.in_(PLATFORM_SECTIONS))}
+    data: dict[str, Any] = {key: value for key, value in platform.items()}
+    if sees_user_data(session):
+        data.update(_user_defaults(session))
+        data.update({row.key: row.value for row in session.query(UserSetting).filter(UserSetting.key.in_(USER_SECTIONS))})
+    else:
+        data.setdefault("candidate", {})
+    # Platform-controlled values inside user sections: always the platform's.
+    limits = PlatformConfig.model_validate(data.get("platform") or {})
+    data["search"] = {**(data.get("search") or {}), "adzuna_daily_limit": limits.job_search_daily_limit}
+    data["watchlist"] = {**(data.get("watchlist") or {}), "dashboard_url": os.environ.get("PUBLIC_URL") or None}
+    return data
 
 
 def _watch_dicts(session: Session, *, enabled_only: bool) -> list[dict]:
@@ -85,16 +129,23 @@ def _watch_dicts(session: Session, *, enabled_only: bool) -> list[dict]:
 
 
 def load_app_config(session: Session, yaml_path: Path) -> AppConfig:
-    """The effective configuration: DB settings plus enabled watches, importing
-    `yaml_path` first if the database has never been populated.
+    """The effective configuration for the session's user: platform settings,
+    their own sections and enabled watches. Imports `yaml_path` first if the
+    database has never been populated (a fresh, unmigrated database).
     """
     if not has_settings(session):
         # A fresh install may not have created config.yaml: start from the
-        # neutral starter settings next to it instead.
+        # neutral starter settings next to it instead -- or, with neither, the
+        # built-in defaults.
         example = yaml_path.with_name("config.example.yaml")
-        import_yaml_config(session, yaml_path if yaml_path.exists() or not example.exists() else example)
+        # Platform sections only: a file's personal values (names, searches,
+        # addresses, watches) must never land in whoever happens to be signed in.
+        source = yaml_path if yaml_path.exists() else example
+        if source.exists():
+            import_yaml_config(session, source, platform_only=True)
     data = _section_values(session)
-    data["watchlist"] = {**data.get("watchlist", {}), "watches": _watch_dicts(session, enabled_only=True)}
+    watches = _watch_dicts(session, enabled_only=True) if sees_user_data(session) else []
+    data["watchlist"] = {**data.get("watchlist", {}), "watches": watches}
     return _validate(data)
 
 
@@ -104,15 +155,24 @@ def save_section(session: Session, key: str, value: Any) -> AppConfig:
     """
     if key not in SECTIONS:
         raise ConfigError([f"Unknown settings section {key!r}"])
+    if key in USER_SECTIONS and not sees_user_data(session):
+        raise ConfigError([f"{key!r} settings belong to a user -- sign in first"])
     data = _section_values(session)
     data[key] = value
-    data["watchlist"] = {**data.get("watchlist", {}), "watches": _watch_dicts(session, enabled_only=True)}
+    watches = _watch_dicts(session, enabled_only=True) if sees_user_data(session) else []
+    data["watchlist"] = {**data.get("watchlist", {}), "watches": watches}
     config = _validate(data)
 
     stored = config.model_dump(mode="json")[key]
     if key == "watchlist":
         stored.pop("watches")
-    session.merge(AppSetting(key=key, value=stored))
+        stored.pop("dashboard_url", None)  # platform-controlled (PUBLIC_URL)
+    if key == "search":
+        stored.pop("adzuna_daily_limit", None)  # platform-controlled
+    if key in PLATFORM_SECTIONS:
+        session.merge(AppSetting(key=key, value=stored))
+    else:
+        _put_user_section(session, key, stored)
     session.commit()
     log_event(logger, "SETTINGS_SAVED", section=key)
     return config

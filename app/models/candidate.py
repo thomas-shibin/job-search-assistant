@@ -6,9 +6,10 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
-class CandidateProfile(Base):
+class CandidateProfile(TenantOwned, Base):
     __tablename__ = "candidate_profiles"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -42,7 +43,7 @@ class CandidateProfile(Base):
     )
 
 
-class Employment(Base):
+class Employment(TenantOwned, Base):
     __tablename__ = "employments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -60,7 +61,7 @@ class Employment(Base):
     )
 
 
-class AccomplishmentBullet(Base):
+class AccomplishmentBullet(TenantOwned, Base):
     __tablename__ = "accomplishment_bullets"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -71,7 +72,7 @@ class AccomplishmentBullet(Base):
     employment: Mapped["Employment"] = relationship(back_populates="bullets")
 
 
-class Skill(Base):
+class Skill(TenantOwned, Base):
     __tablename__ = "skills"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -83,7 +84,7 @@ class Skill(Base):
     candidate_profile: Mapped["CandidateProfile"] = relationship(back_populates="skills")
 
 
-class Education(Base):
+class Education(TenantOwned, Base):
     __tablename__ = "education"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -97,7 +98,7 @@ class Education(Base):
     candidate_profile: Mapped["CandidateProfile"] = relationship(back_populates="education")
 
 
-class Certification(Base):
+class Certification(TenantOwned, Base):
     __tablename__ = "certifications"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -110,7 +111,7 @@ class Certification(Base):
     candidate_profile: Mapped["CandidateProfile"] = relationship(back_populates="certifications")
 
 
-class Project(Base):
+class Project(TenantOwned, Base):
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True)

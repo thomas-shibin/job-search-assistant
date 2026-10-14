@@ -6,9 +6,10 @@ from sqlalchemy import DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
-class MatchAnalysis(Base):
+class MatchAnalysis(TenantOwned, Base):
     """One row per scoring run. Rows are never overwritten in place so score history
     survives config/weight changes (see weights_snapshot).
     """
@@ -38,7 +39,7 @@ class MatchAnalysis(Base):
     scored_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
-class JobFitAssessment(Base):
+class JobFitAssessment(TenantOwned, Base):
     """An AI fit assessment of the active resume against one job ("Analyze with
     AI"). Cached per (job, candidate profile): the same resume is never
     sent for the same job twice unless the user explicitly re-runs it.

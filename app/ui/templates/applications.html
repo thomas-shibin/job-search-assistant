@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Applications - Job Assistant{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Applications</h1>
+    <p class="lead">Jobs you've analyzed, tailored a resume for or applied to, best match first.</p>
+  </div>
+  <a class="button pill outline" href="/saved">{{ icon("bookmark") }} Saved jobs</a>
+</header>
+<section class="panel flush">
+  <div class="panel-head">
+    <div><h2>Your jobs</h2><p>Open a job to see its match analysis, tailored resume and next steps.</p></div>
+    <form method="get" action="/applications" class="filters"
+          hx-get="/tracked-jobs" hx-target="#tracked-jobs" hx-swap="outerHTML"
+          hx-trigger="submit" hx-sync="this:replace">
+      <label>Status
+        <select name="status">
+          <option value="" {% if not status %}selected{% endif %}>All statuses</option>
+          {% for s in statuses %}<option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ s|replace("_", " ")|title }}</option>{% endfor %}
+        </select>
+      </label>
+      <label>Min score
+        <input type="number" name="min_score" min="0" max="100" value="{{ min_score if min_score is not none else '' }}" placeholder="0">
+      </label>
+      <button type="submit">Filter</button>
+    </form>
+  </div>
+  {% include "_tracked_jobs.html" %}
+</section>
+{% endblock %}

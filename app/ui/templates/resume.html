@@ -7,11 +7,12 @@
   <div>
     <p class="eyebrow">Resume</p>
     <h1>My resume</h1>
-    <p class="lead">Your base resume is what every AI analysis compares against and what every tailored resume is made from.</p>
+    <p class="lead">Your base resume is what every match analysis compares against and what every tailored resume is made from.</p>
   </div>
-  {% if current and file_available %}
+  {% if current %}
   <div class="page-actions">
-    <a class="button" href="/resume/file" hx-boost="false" download>{{ icon("download") }} Download current</a>
+    <a class="button primary" href="/resume/edit">{{ icon("pen") }} Edit resume</a>
+    {% if file_available %}<a class="button" href="/resume/file" hx-boost="false" download>{{ icon("download") }} Download current</a>{% endif %}
   </div>
   {% endif %}
 </header>
@@ -73,7 +74,7 @@
       {% endif %}
       {% if unparsed %}
       <details class="parsed-block parsed-other">
-        <summary><span class="change-label">Other text</span> <span class="muted">— {{ unparsed | length }} part{{ "s" if unparsed | length != 1 }} not sorted into a section; still sent to the AI as part of your resume</span></summary>
+        <summary><span class="change-label">Other text</span> <span class="muted">— {{ unparsed | length }} part{{ "s" if unparsed | length != 1 }} not sorted into a section; still used as part of your resume</span></summary>
         {% for part in unparsed %}<pre>{{ part }}</pre>{% endfor %}
       </details>
       {% endif %}
@@ -103,7 +104,7 @@
       <ul class="steps">
         <li><div><strong>Use Word if you can</strong>Tailored resumes keep your exact design: fonts, layout, tables. Only the wording changes.</div></li>
         <li><div><strong>Takes effect right away</strong>New analyses and tailored resumes use it. Ones already made keep the version they were made from.</div></li>
-        <li><div><strong>Nothing leaves your machine</strong>Reading the file is done locally; only AI analysis and tailoring send its text to the AI.</div></li>
+        <li><div><strong>Private to your account</strong>Only you can see your resume. Its text is used only to analyze jobs and tailor resumes for you.</div></li>
       </ul>
     </section>
 

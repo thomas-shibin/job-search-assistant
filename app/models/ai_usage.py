@@ -6,9 +6,10 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Numeric, String, 
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
-class AICallLog(Base):
+class AICallLog(TenantOwned, Base):
     """Cost-tracking record per spec §19. One row per AI provider call, including cache hits
     (cache_hit=True, tokens null) so cache effectiveness is visible.
     """

@@ -170,7 +170,7 @@ def _base_docx(candidate: CandidateProfile) -> Path | None:
         if candidate_path.is_file():
             return candidate_path
     if candidate.source_file:
-        restored = RESTORED_DIR / f"resume_v{candidate.version}_{candidate.id}.docx"
+        restored = RESTORED_DIR / f"user_{candidate.user_id}" / f"resume_v{candidate.version}_{candidate.id}.docx"
         if not restored.is_file():
             restored.parent.mkdir(parents=True, exist_ok=True)
             restored.write_bytes(candidate.source_file)

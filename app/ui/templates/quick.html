@@ -8,6 +8,7 @@
     <p class="eyebrow">Resume</p>
     <h1>Quick tailor</h1>
     <p class="lead">Found a job somewhere else? Paste its description and get your resume tailored to it right away.</p>
+    {% if ai_allowance and not ai_allowance.unlimited %}<p class="quota-note">{{ icon("clock") }} Resume actions left this hour: {{ ai_allowance.remaining }} of {{ ai_allowance.limit }}{% if ai_allowance.exhausted and ai_allowance.next_free_at %} (more in {{ ai_allowance.minutes_until_free() }} min){% endif %}</p>{% endif %}
   </div>
 </header>
 

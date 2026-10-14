@@ -4,8 +4,8 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class CandidateConfig(BaseModel):
-    name: str
-    base_resume: str
+    name: str = ""
+    base_resume: str = ""
     # By default the name parsed off the resume's own header (app/resume/parser.py)
     # wins, since config.yaml's `name` commonly gets left at its placeholder value.
     # Set true to force `name` above to always win instead (e.g. you want a
@@ -243,6 +243,26 @@ class SchedulerConfig(BaseModel):
     interval_minutes: int = 15
 
 
+class PlatformConfig(BaseModel):
+    """Platform-wide limits, set by an admin."""
+
+    # Requests/day the job-listings provider allows across the whole platform.
+    # Scheduled scans share at most 60% of it among all members; the rest serves
+    # interactive searches. Overrides every user's `search.adzuna_daily_limit`.
+    job_search_daily_limit: int = Field(default=250, ge=1)
+    # New job searches a member may run per hour (paging through a search, or
+    # running it again within the hour, is free). Admins can override per user.
+    member_searches_per_hour: int = Field(default=10, ge=0)
+    # Match analyses + tailored resumes a member may run per hour.
+    member_ai_actions_per_hour: int = Field(default=5, ge=0)
+    # New job searches one guest may run per hour.
+    guest_searches_per_hour: int = Field(default=1, ge=0)
+    # Result pages one search may page through (each page is a listing request).
+    max_search_pages: int = Field(default=10, ge=1, le=100)
+    # How often the job pool (companies' careers-site feeds) is refreshed; 0 = never.
+    pool_refresh_hours: int = Field(default=6, ge=0, le=168)
+
+
 class AppConfig(BaseModel):
     candidate: CandidateConfig
     search: GlobalSearchConfig = Field(default_factory=GlobalSearchConfig)
@@ -255,3 +275,4 @@ class AppConfig(BaseModel):
     watchlist: WatchlistConfig = Field(default_factory=WatchlistConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    platform: PlatformConfig = Field(default_factory=PlatformConfig)

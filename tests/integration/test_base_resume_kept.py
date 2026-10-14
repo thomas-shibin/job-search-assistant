@@ -52,7 +52,7 @@ def test_a_lost_word_resume_is_restored_from_the_database(session, tmp_path):
 
     result = tailor_resume(session, _job(session), _config())
 
-    restored = tmp_path / "restored" / f"resume_v{profile.version}_{profile.id}.docx"
+    restored = tmp_path / "restored" / f"user_{profile.user_id}" / f"resume_v{profile.version}_{profile.id}.docx"
     assert restored.read_bytes() == SAMPLE.read_bytes()
     # Tailored in place from the original, not laid out afresh: the base's styles are all there.
     assert Path(result.docx_path).stat().st_size > 10_000

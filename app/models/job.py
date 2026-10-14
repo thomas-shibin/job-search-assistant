@@ -7,6 +7,7 @@ from sqlalchemy import DateTime, Enum as SAEnum, ForeignKey, Integer, JSON, Stri
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
 class JobStatus(str, enum.Enum):
@@ -26,9 +27,9 @@ class JobStatus(str, enum.Enum):
     ERROR = "ERROR"
 
 
-class Job(Base):
+class Job(TenantOwned, Base):
     __tablename__ = "jobs"
-    __table_args__ = (UniqueConstraint("source", "external_id", name="uq_job_source_external_id"),)
+    __table_args__ = (UniqueConstraint("user_id", "source", "external_id", name="uq_job_user_source_external_id"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     external_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -62,7 +63,7 @@ class Job(Base):
     )
 
 
-class JobStatusHistory(Base):
+class JobStatusHistory(TenantOwned, Base):
     __tablename__ = "job_status_history"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -76,7 +77,7 @@ class JobStatusHistory(Base):
     job: Mapped["Job"] = relationship(back_populates="status_history")
 
 
-class JobRequirements(Base):
+class JobRequirements(TenantOwned, Base):
     __tablename__ = "job_requirements"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -91,7 +92,7 @@ class JobRequirements(Base):
     job: Mapped["Job"] = relationship(back_populates="requirements")
 
 
-class JobTombstone(Base):
+class JobTombstone(TenantOwned, Base):
     """What's left of a job the retention clean-up deleted: just enough to
     recognise the same posting if a later scan finds it again, so it isn't
     re-saved, re-scored (AI cost) and re-alerted as if it were new.

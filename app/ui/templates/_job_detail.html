@@ -1,0 +1,40 @@
+{# The details of one search result: `p` (a Posting), `track` (its tracked job, if any), `saved_job_id`. #}
+{% from "_icons.html" import icon, avatar %}
+{% macro job_detail(p, track, saved_job_id, has_resume, close=true) %}
+<div class="detail-inner">
+  {% if close %}<button type="button" class="detail-back" data-detail-close>{{ icon("back") }} Back to results</button>{% endif %}
+  <header class="detail-head">
+    {{ avatar(p.company, "lg") }}
+    <div>
+      <h2>{{ p.title }}</h2>
+      <p class="detail-company">{{ p.company }}{% if p.location %} &middot; {{ p.location }}{% endif %}</p>
+    </div>
+  </header>
+  <div class="chips">
+    <span class="chip">{{ p.workplace_label }}</span>
+    {% if p.employment_label %}<span class="chip">{{ p.employment_label }}</span>{% endif %}
+    {% if p.salary_text %}<span class="chip chip-on">{{ icon("dollar") }}{{ p.salary_text }}</span>{% endif %}
+    {% if p.date_posted %}<span class="chip">{{ icon("clock") }}Posted {{ p.date_posted|ago }}</span>{% endif %}
+    {% if p.company_site %}<span class="chip">{{ icon("building") }}Company career site</span>{% endif %}
+  </div>
+  <div class="detail-actions">
+    <a class="button primary pill" href="{{ p.url }}" target="_blank" rel="noopener">Apply {{ icon("external") }}</a>
+    {% with ref=p.ref, saved_job_id=saved_job_id %}{% include "_save_button.html" %}{% endwith %}
+    {% if track and track.fit and can_route("/jobs/{job_id}") %}
+      <a class="button pill outline" href="/jobs/{{ track.job_id }}#fit">{{ icon("sparkles") }} Fit {{ track.fit.fit_score }}/100 &middot; view analysis</a>
+    {% elif track and can_route("/jobs/{job_id}") %}
+      <a class="button pill outline" href="/jobs/{{ track.job_id }}">{{ icon("sparkles") }} Open analysis</a>
+    {% elif not track and can_route("/browse/analyze", "POST") %}
+      <form method="post" action="/browse/analyze" hx-boost="false">
+        <input type="hidden" name="ref" value="{{ p.ref }}">
+        <button type="submit" class="pill outline" title="{{ 'Compare this job with your resume' if has_resume else 'Upload your resume first to compare it with this job' }}">{{ icon("sparkles") }} Analyze match</button>
+      </form>
+    {% endif %}
+  </div>
+  {% if not p.company_site %}
+  <p class="detail-note">{{ icon("info") }} The job board shares a preview of this posting. Open it to read everything; when you analyze it, we use the full description wherever the company's career site has it.</p>
+  {% endif %}
+  <h3>Job description</h3>
+  <div class="job-description">{{ p.description }}</div>
+</div>
+{% endmacro %}

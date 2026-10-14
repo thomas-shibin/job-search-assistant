@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My profile - Job Assistant{% endblock %}
+{% macro month(value) %}{{ value.strftime("%Y-%m") if value else "" }}{% endmacro %}
+{% macro span(start, end, current) %}{% if start %}{{ start.strftime("%b %Y") }}{% endif %}{% if start or end or current %} – {% endif %}{% if current %}Present{% elif end %}{{ end.strftime("%b %Y") }}{% endif %}{% endmacro %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>My profile</h1>
+    <p class="lead">Complete your profile to discover more relevant opportunities and make applying easier. Only you can see it.</p>
+  </div>
+  {% if next %}<a class="button pill outline" href="{{ next }}">Continue job search {{ icon("forward") }}</a>{% endif %}
+</header>
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+<div class="profile-layout">
+  <aside class="profile-side">
+    <section class="panel completion-card">
+      <h2>Profile strength</h2>
+      <div class="completion">
+        <div class="completion-bar"><span style="width: {{ completion.percent }}%"></span></div>
+        <span>Your profile is <strong>{{ completion.percent }}%</strong> complete.</span>
+      </div>
+      {% if completion.missing %}
+      <ul class="suggestions">
+        {% for label, anchor in completion.missing %}<li><a href="#{{ anchor }}">{{ icon("plus") }} {{ label }}</a></li>{% endfor %}
+      </ul>
+      {% else %}<p class="muted">Your profile is complete. Nice work!</p>{% endif %}
+    </section>
+    <nav class="profile-toc" aria-label="Profile sections">
+      <a href="#personal">Personal information</a><a href="#professional">Professional information</a>
+      <a href="#preferences">Job preferences</a><a href="#experience">Work experience</a>
+      <a href="#education">Education</a><a href="#resume">Resume</a>
+    </nav>
+  </aside>
+
+  <div class="profile-main">
+    <section class="panel" id="personal">
+      <h2>Personal information</h2>
+      <form method="post" action="/profile/personal" class="form-grid">
+        <div class="field"><label for="p-first">First name</label><input id="p-first" name="first_name" value="{{ user.first_name }}" required maxlength="100" autocomplete="given-name"></div>
+        <div class="field"><label for="p-last">Last name</label><input id="p-last" name="last_name" value="{{ user.last_name }}" required maxlength="100" autocomplete="family-name"></div>
+        <div class="field"><label for="p-email">Email</label><input id="p-email" type="email" value="{{ user.email }}" readonly>
+          <small class="field-hint">Change it in <a href="/account">Account &amp; security</a>.</small></div>
+        <div class="field"><label for="p-phone">Phone number</label><input id="p-phone" type="tel" name="phone" value="{{ user.phone or '' }}" placeholder="+1 604 555 1234" autocomplete="tel"></div>
+        <div class="field"><label for="p-city">City</label><input id="p-city" name="city" value="{{ profile.city or '' }}" autocomplete="address-level2"></div>
+        <div class="field"><label for="p-province">Province</label><input id="p-province" name="province" value="{{ profile.province or '' }}" autocomplete="address-level1"></div>
+        <div class="field"><label for="p-country">Country</label><input id="p-country" name="country" value="{{ profile.country or 'Canada' }}" autocomplete="country-name"></div>
+        <div class="form-actions"><button type="submit" class="primary pill">Save</button></div>
+      </form>
+    </section>
+
+    <section class="panel" id="professional">
+      <h2>Professional information</h2>
+      <form method="post" action="/profile/professional" class="form-grid">
+        <div class="field span-2"><label for="p-headline">Professional headline</label>
+          <input id="p-headline" name="headline" value="{{ profile.headline or '' }}" maxlength="200" placeholder="e.g. Data analyst turning messy data into clear decisions"></div>
+        <div class="field"><label for="p-title">Current job title</label><input id="p-title" name="current_title" value="{{ profile.current_title or '' }}" maxlength="200"></div>
+        <div class="field"><label for="p-years">Years of experience</label><input id="p-years" type="number" min="0" max="60" name="years_experience" value="{{ profile.years_experience if profile.years_experience is not none else '' }}"></div>
+        <div class="field span-2"><label for="p-skills">Skills</label>
+          <input id="p-skills" name="skills" value="{{ (profile.skills or [])|join(', ') }}" placeholder="SQL, Python, Power BI, Stakeholder management">
+          <small class="field-hint">Separate skills with commas.</small></div>
+        <div class="form-actions"><button type="submit" class="primary pill">Save</button></div>
+      </form>
+    </section>
+
+    <section class="panel" id="preferences">
+      <h2>Job preferences</h2>
+      <form method="post" action="/profile/preferences" class="form-grid">
+        <div class="field"><label for="p-ptitles">Preferred job titles</label>
+          <input id="p-ptitles" name="preferred_titles" value="{{ (profile.preferred_titles or [])|join(', ') }}" placeholder="Data Analyst, BI Developer"></div>
+        <div class="field"><label for="p-plocs">Preferred locations</label>
+          <input id="p-plocs" name="preferred_locations" value="{{ (profile.preferred_locations or [])|join(', ') }}" placeholder="Vancouver, Remote"></div>
+        <fieldset class="field"><legend>Employment type</legend>
+          <div class="check-row">{% for key, label in employment_types.items() %}<label class="check"><input type="checkbox" name="employment_types" value="{{ key }}" {{ "checked" if key in (profile.employment_types or []) }}> {{ label }}</label>{% endfor %}</div>
+        </fieldset>
+        <fieldset class="field"><legend>Workplace</legend>
+          <div class="check-row">{% for key, label in workplaces.items() %}<label class="check"><input type="checkbox" name="workplaces" value="{{ key }}" {{ "checked" if key in (profile.workplaces or []) }}> {{ label }}</label>{% endfor %}</div>
+        </fieldset>
+        <div class="form-actions"><button type="submit" class="primary pill">Save</button></div>
+      </form>
+    </section>
+
+    <section class="panel" id="experience">
+      <div class="panel-head">
+        <h2>Work experience</h2>
+        {% if not experiences and resume %}
+        <form method="post" action="/profile/import-resume"><button type="submit" class="pill outline small">{{ icon("download") }} Import from my resume</button></form>
+        {% endif %}
+      </div>
+      {% macro experience_fields(e=none) %}
+        <div class="field"><label>Job title<input name="job_title" value="{{ e.job_title if e else '' }}" required maxlength="200"></label></div>
+        <div class="field"><label>Company<input name="company" value="{{ e.company if e else '' }}" required maxlength="200"></label></div>
+        <div class="field"><label>Location<input name="location" value="{{ e.location or '' if e else '' }}" maxlength="200"></label></div>
+        <div class="field"><label>Start date<input type="month" name="start_date" value="{{ month(e.start_date) if e else '' }}"></label></div>
+        <div class="field"><label>End date<input type="month" name="end_date" value="{{ month(e.end_date) if e else '' }}"></label></div>
+        <label class="check align-end"><input type="checkbox" name="is_current" value="1" {{ "checked" if e and e.is_current }}> I currently work here</label>
+        <div class="field span-2"><label>Description<textarea name="description" rows="4" maxlength="5000">{{ e.description or '' if e else '' }}</textarea></label></div>
+      {% endmacro %}
+      <ul class="entry-list">
+        {% for e in experiences %}
+        <li class="entry">
+          <div class="entry-head">
+            <div><strong>{{ e.job_title }}</strong><span>{{ e.company }}{% if e.location %} &middot; {{ e.location }}{% endif %}</span>
+              <small class="muted">{{ span(e.start_date, e.end_date, e.is_current) }}</small></div>
+            <form method="post" action="/profile/experience/{{ e.id }}/delete"><button type="submit" class="pill ghost small" aria-label="Remove {{ e.job_title }}">{{ icon("trash") }}</button></form>
+          </div>
+          {% if e.description %}<p class="entry-text">{{ e.description }}</p>{% endif %}
+          <details class="entry-edit"><summary>Edit</summary>
+            <form method="post" action="/profile/experience/{{ e.id }}" class="form-grid">{{ experience_fields(e) }}
+              <div class="form-actions"><button type="submit" class="primary pill">Save</button></div></form>
+          </details>
+        </li>
+        {% else %}<li class="muted">No experience added yet.</li>{% endfor %}
+      </ul>
+      <details class="entry-add" {{ "open" if not experiences and not resume }}>
+        <summary class="button pill outline">{{ icon("plus") }} Add experience</summary>
+        <form method="post" action="/profile/experience" class="form-grid">{{ experience_fields() }}
+          <div class="form-actions"><button type="submit" class="primary pill">Add experience</button></div></form>
+      </details>
+    </section>
+
+    <section class="panel" id="education">
+      <h2>Education</h2>
+      {% macro education_fields(e=none) %}
+        <div class="field"><label>School or institution<input name="institution" value="{{ e.institution if e else '' }}" required maxlength="200"></label></div>
+        <div class="field"><label>Qualification<input name="qualification" value="{{ e.qualification or '' if e else '' }}" placeholder="e.g. Bachelor of Commerce" maxlength="200"></label></div>
+        <div class="field"><label>Field of study<input name="field_of_study" value="{{ e.field_of_study or '' if e else '' }}" maxlength="200"></label></div>
+        <div class="field"><label>Start date<input type="month" name="start_date" value="{{ month(e.start_date) if e else '' }}"></label></div>
+        <div class="field"><label>End date<input type="month" name="end_date" value="{{ month(e.end_date) if e else '' }}"></label></div>
+      {% endmacro %}
+      <ul class="entry-list">
+        {% for e in educations %}
+        <li class="entry">
+          <div class="entry-head">
+            <div><strong>{{ e.institution }}</strong><span>{{ [e.qualification, e.field_of_study]|select|join(", ") }}</span>
+              <small class="muted">{{ span(e.start_date, e.end_date, false) }}</small></div>
+            <form method="post" action="/profile/education/{{ e.id }}/delete"><button type="submit" class="pill ghost small" aria-label="Remove {{ e.institution }}">{{ icon("trash") }}</button></form>
+          </div>
+          <details class="entry-edit"><summary>Edit</summary>
+            <form method="post" action="/profile/education/{{ e.id }}" class="form-grid">{{ education_fields(e) }}
+              <div class="form-actions"><button type="submit" class="primary pill">Save</button></div></form>
+          </details>
+        </li>
+        {% else %}<li class="muted">No education added yet.</li>{% endfor %}
+      </ul>
+      <details class="entry-add">
+        <summary class="button pill outline">{{ icon("plus") }} Add education</summary>
+        <form method="post" action="/profile/education" class="form-grid">{{ education_fields() }}
+          <div class="form-actions"><button type="submit" class="primary pill">Add education</button></div></form>
+      </details>
+    </section>
+
+    <section class="panel" id="resume">
+      <h2>Resume</h2>
+      {% if resume %}
+      <p>{{ icon("file") }} Version {{ resume.version }} is in use for match analysis and tailoring.
+        <a href="/resume">View or edit it</a> &middot; <a href="/resume/file">Download</a></p>
+      {% else %}
+      <p class="muted">Upload your resume to compare it with jobs and get tailored copies. PDF or Word, up to 10 MB. It's private to you.</p>
+      {% endif %}
+      <form method="post" action="/resume/upload" enctype="multipart/form-data" hx-boost="false" class="inline-form">
+        <input type="hidden" name="next" value="/profile#resume">
+        <input type="file" name="resume" accept=".pdf,.docx" required aria-label="Resume file">
+        <button type="submit" class="primary pill">{{ icon("upload") }} {{ "Upload a new version" if resume else "Upload resume" }}</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

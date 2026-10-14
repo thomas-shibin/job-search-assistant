@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Job sources - Job Assistant{% endblock %}
+{% block crumb %}Job sources{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Job sources</h1>
+    <p class="lead">Companies whose careers sites feed the shared job pool: free to read, with full job descriptions.
+      Every search includes these jobs at no cost, and a job-board result the pool also has is analyzed with its full text.
+      Refreshed every {{ refresh_hours }} hours (<a href="/admin/settings#platform">change</a>). Members see these as
+      "Company site" jobs, never the provider's name.</p>
+  </div>
+  <form method="post" action="/admin/sources/refresh-all">
+    <button type="submit">{{ icon("refresh") }} Refresh all now</button>
+  </form>
+</header>
+
+{% if message %}<div class="flash">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+{% if status.running %}<div class="notice">{{ icon("refresh") }}<div class="alert-body">Refreshing: {{ status.done }} of {{ status.total }} companies done.</div></div>{% endif %}
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-label">{{ icon("briefcase") }} Open jobs in the pool</div>
+    <div class="stat-value">{{ "{:,}".format(totals.jobs) }}</div>
+    <div class="stat-sub">all with full descriptions</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("pin") }} In Canada</div>
+    <div class="stat-value">{{ "{:,}".format(totals.canada) }}</div>
+    <div class="stat-sub">what members searching Canada see</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("globe") }} Companies</div>
+    <div class="stat-value">{{ totals.enabled }}</div>
+    <div class="stat-sub">{{ totals.companies - totals.enabled }} paused</div>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="panel-head"><div><h2>Add a company</h2>
+    <p>Paste the company's careers-page URL (e.g. <code>https://jobs.lever.co/acme</code>,
+      <code>https://job-boards.greenhouse.io/acme</code>, <code>https://jobs.ashbyhq.com/acme</code>) or pick the
+      provider and type its board name. It's checked and loaded right away.</p></div></div>
+  <form method="post" action="/admin/sources/add" class="filters">
+    <label>Provider
+      <select name="provider">
+        {% for key, label in providers.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Board name or careers-page URL <input type="text" name="board" required placeholder="acme" style="width: 320px"></label>
+    <button type="submit" class="primary">{{ icon("plus") }} Add company</button>
+  </form>
+</section>
+
+<section class="panel flush">
+  <div class="panel-head">
+    <div><h2>Companies</h2><p>Sorted by Canadian jobs. Pausing hides a company's jobs from searches without deleting them.</p></div>
+    <form method="get" action="/admin/sources" class="filters">
+      <label>Find <input type="search" name="q" value="{{ q }}" placeholder="Company" style="width: 180px"></label>
+      <button type="submit">Filter</button>
+    </form>
+  </div>
+  <div class="table-wrap" style="margin-top: 1rem">
+    <table class="job-table">
+      <thead><tr><th>Company</th><th>Provider</th><th class="num">Open jobs</th><th class="num">In Canada</th>
+        <th>Last refresh (UTC)</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for c in companies %}
+        <tr{% if not c.enabled %} class="muted"{% endif %}>
+          <td class="cell-title">{{ c.label }}<div class="muted">{{ c.board }}</div></td>
+          <td>{{ providers.get(c.provider, c.provider) }}</td>
+          <td class="num">{{ c.job_count }}</td>
+          <td class="num">{{ c.canada_count }}</td>
+          <td class="muted">{{ c.last_synced_at.strftime("%Y-%m-%d %H:%M") if c.last_synced_at else "not yet" }}</td>
+          <td>
+            {% if not c.enabled %}<span class="status-badge missing">paused</span>
+            {% elif c.last_status == "error" %}<span class="status-badge missing" title="{{ c.last_error }}">error</span>
+            {% elif c.last_status == "ok" %}<span class="status-badge ok">ok</span>
+            {% else %}<span class="chip">waiting</span>{% endif %}
+          </td>
+          <td class="row-actions">
+            <form method="post" action="/admin/sources/{{ c.id }}/refresh"><button type="submit" title="Refresh now">{{ icon("refresh") }}</button></form>
+            <form method="post" action="/admin/sources/{{ c.id }}/toggle"><button type="submit">{{ "Pause" if c.enabled else "Enable" }}</button></form>
+            <form method="post" action="/admin/sources/{{ c.id }}/delete"><button type="submit" class="danger" title="Remove">{{ icon("trash") }}</button></form>
+          </td>
+        </tr>
+        {% if c.last_status == "error" and c.last_error %}
+        <tr><td colspan="7" class="muted">{{ c.last_error }}</td></tr>
+        {% endif %}
+        {% else %}
+        <tr><td colspan="7" class="empty">No companies yet -- add one above.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

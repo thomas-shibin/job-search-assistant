@@ -42,6 +42,13 @@ def client(tmp_path, monkeypatch):
     import app.ui.settings_routes as settings_routes
 
     monkeypatch.setattr(settings_routes, "DEFAULT_CONFIG_PATH", yaml_path)
+    import app.admin.routes as admin_routes
+
+    monkeypatch.setattr(admin_routes, "DEFAULT_CONFIG_PATH", yaml_path)
+    from app.config.store import import_yaml_config
+
+    with TestSessionLocal() as session:  # the signed-in test member's own settings
+        import_yaml_config(session, yaml_path)
 
     import main
 
@@ -55,12 +62,23 @@ def _config(SessionLocal, yaml_path):
         return load_app_config(session, yaml_path)
 
 
+def _as_admin():
+    import main
+    from app.auth.deps import current_user
+    from tests.conftest import make_member
+
+    admin = make_member(role="admin")
+    main.app.dependency_overrides[current_user] = lambda: admin
+
+
 def test_settings_page_renders_every_section(client):
     http, _, _ = client
     response = http.get("/settings")
     assert response.status_code == 200
-    for section in ("scheduler", "search_profiles", "matching", "candidate", "address_profiles", "ai", "resume"):
+    for section in ("search", "search_profiles", "matching", "candidate", "address_profiles", "resume"):
         assert f'action="/settings/{section}"' in response.text
+    for platform_section in ("scheduler", "ai", "retention", "platform"):  # admins only, elsewhere
+        assert f'action="/settings/{platform_section}"' not in response.text
     assert 'name="search_profiles.0.titles:lines"' in response.text
 
 
@@ -68,8 +86,27 @@ def test_saving_a_section_persists_to_db(client):
     http, SessionLocal, yaml_path = client
     http.get("/settings")
 
+    response = http.post("/settings/matching", data={"matching.minimum_score": "61"}, follow_redirects=False)
+
+    assert response.status_code == 303
+    assert _config(SessionLocal, yaml_path).matching.minimum_score == 61
+
+
+def test_members_cant_change_platform_settings(client):
+    http, SessionLocal, yaml_path = client
+    assert http.post("/settings/scheduler", data={"scheduler.interval_minutes": "1"}).status_code == 404
+    assert http.post("/admin/settings/scheduler", data={"scheduler.interval_minutes": "1"}).status_code == 404
+    assert http.get("/admin/settings").status_code == 404
+    assert _config(SessionLocal, yaml_path).scheduler.interval_minutes == 15
+
+
+def test_admin_saves_platform_settings(client):
+    http, SessionLocal, yaml_path = client
+    _as_admin()
+    assert http.get("/admin/settings").status_code == 200
+
     response = http.post(
-        "/settings/scheduler",
+        "/admin/settings/scheduler",
         data={"scheduler.enabled:bool": ["false", "true"], "scheduler.interval_minutes": "60"},
         follow_redirects=False,
     )
@@ -95,9 +132,10 @@ def test_adding_a_search_profile_with_sources(client):
 
 def test_invalid_save_shows_error_and_changes_nothing(client):
     http, SessionLocal, yaml_path = client
-    http.get("/settings")
+    _as_admin()
+    http.get("/admin/settings")
 
-    response = http.post("/settings/scheduler", data={"scheduler.interval_minutes": "not a number"})
+    response = http.post("/admin/settings/scheduler", data={"scheduler.interval_minutes": "not a number"})
 
     assert response.status_code == 400
     assert "interval_minutes" in response.text
@@ -135,25 +173,29 @@ def test_watch_without_criteria_is_rejected(client):
         assert s.query(WatchlistEntry).filter_by(name="Everything").count() == 0
 
 
-def test_saving_alert_settings_keeps_detected_chat_id(client, monkeypatch):
+def test_connect_telegram_links_this_users_chat_and_saving_keeps_it(client, monkeypatch):
     http, SessionLocal, yaml_path = client
     import app.services.telegram as telegram_service
+    from app.models.user import User
+    from app.notifications.telegram_commands import BotActions, reply_for
 
-    class _FakeClient:
-        def __init__(self, token):
-            pass
+    with SessionLocal() as s:  # the bot only links verified members
+        s.add(User(id=1, email="user1@example.com", first_name="Test", last_name="User1", role="member",
+                   email_verified_at=__import__("datetime").datetime(2026, 1, 1)))
+        s.commit()
+    monkeypatch.setattr(telegram_service, "bot_username", lambda settings=None: "JobBot")
+    monkeypatch.setattr(telegram_service, "TelegramSettings", lambda: type("S", (), {"bot_token": "t"})())
 
-        def recent_chats(self):
-            return [{"id": 6348, "type": "private", "first_name": "Me"}]
+    response = http.post("/watchlist/telegram/connect", follow_redirects=False)
+    link = response.headers["location"]
+    assert link.startswith("https://t.me/JobBot?start=")
+    code = link.split("start=", 1)[1]
 
-    monkeypatch.setattr(telegram_service, "TelegramClient", _FakeClient)
-    monkeypatch.setattr(
-        telegram_service, "TelegramSettings",
-        lambda: type("S", (), {"bot_token": "t", "chat_id": None})(),
-    )
-
-    response = http.post("/watchlist/telegram/detect", follow_redirects=False)
-    assert "6348" in response.headers["location"]
+    # The user taps Start in Telegram: the bot receives "/start <code>" from their chat.
+    update = {"update_id": 1, "message": {"chat": {"id": 6348, "type": "private"},
+                                          "date": __import__("time").time(), "text": f"/start {code}"}}
+    chat_id, reply = reply_for(update, BotActions(SessionLocal, yaml_path))
+    assert chat_id == "6348" and "Connected" in reply
 
     http.post("/settings/watchlist", data={
         "watchlist.enabled:bool": ["false", "true"], "watchlist.max_alerts_per_run": "5",

@@ -1,0 +1,9 @@
+{% from "_icons.html" import icon %}
+<dialog class="auth-dialog" id="auth-dialog" aria-labelledby="auth-dialog-title">
+  <div class="auth-dialog-body">
+    <button type="button" class="dialog-close" data-dialog-close aria-label="Close">&times;</button>
+    <p class="dialog-reason" id="auth-dialog-title" data-dialog-reason>Sign in to see jobs that match your search.</p>
+    {% set flow_mode = "login" %}{% set flow_next = "/jobs" %}
+    {% include "auth/_flow.html" %}
+  </div>
+</dialog>

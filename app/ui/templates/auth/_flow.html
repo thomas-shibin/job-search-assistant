@@ -1,0 +1,134 @@
+{# The sign-in / sign-up flow, driven by /static/app.js against /api/auth/*.
+   flow_mode: "login" or "signup" (only changes the first screen's wording). #}
+{% from "_icons.html" import icon %}
+{% set google_on = auth_providers.google if auth_providers is defined else false %}
+<div class="auth-flow" hx-boost="false" data-auth-flow data-next="{{ flow_next|default('/jobs') }}" data-mode="{{ flow_mode|default('login') }}">
+  <div class="flow-progress" data-progress hidden aria-label="Sign-up progress">
+    <span data-progress-step="1"><i>1</i> Email</span><span data-progress-step="2"><i>2</i> Verification</span><span data-progress-step="3"><i>3</i> Account details</span>
+  </div>
+
+  {# 1. Email #}
+  <section class="flow-step" data-step="email">
+    <h2 class="flow-title" data-title-login>Welcome</h2>
+    <h2 class="flow-title" data-title-signup hidden>Create your account</h2>
+    <p class="flow-sub">Sign in or create an account to continue.</p>
+    <div class="flow-error" role="alert" hidden></div>
+    {% if google_on %}
+    <a class="button pill outline large wide social" data-google href="/auth/google/start?next={{ flow_next|default('/jobs')|urlencode }}">
+      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8Z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.1-4 1.1-3.1 0-5.7-2.1-6.6-4.9h-4v3.1A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" d="M5.4 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1Z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.3.6 4.5 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8Z"/></svg>
+      Continue with Google</a>
+    <div class="or-divider"><span>or</span></div>
+    {% endif %}
+    <form class="auth-form" data-form="email" novalidate>
+      <div class="field">
+        <label for="af-email">Email address</label>
+        <input type="email" id="af-email" name="email" placeholder="Enter your email address" autocomplete="email" required>
+        <span class="field-error" data-field-error="email" hidden></span>
+      </div>
+      <button type="submit" class="primary pill large wide">Continue</button>
+    </form>
+    <button type="button" class="link-button flow-alt" data-goto="password">Sign in with password instead</button>
+    <p class="flow-legal">By continuing, you agree to our <a href="/terms" target="_blank">Terms of Service</a> and <a href="/privacy" target="_blank">Privacy Policy</a>.</p>
+  </section>
+
+  {# Password sign-in #}
+  <section class="flow-step" data-step="password" hidden>
+    <h2 class="flow-title">Welcome back</h2>
+    <p class="flow-sub">Sign in with your email and password.</p>
+    <div class="flow-error" role="alert" hidden></div>
+    <form class="auth-form" data-form="password" method="post" action="/login" novalidate>
+      <input type="hidden" name="next" value="{{ flow_next|default('/jobs') }}">
+      <div class="field">
+        <label for="af-login-email">Email</label>
+        <input type="email" id="af-login-email" name="email" autocomplete="username" required>
+      </div>
+      <div class="field">
+        <label for="af-login-password">Password</label>
+        <div class="input-with-action">
+          <input type="password" id="af-login-password" name="password" autocomplete="current-password" required>
+          <button type="button" class="input-action" data-password-toggle="af-login-password" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+      </div>
+      <button type="button" class="link-button flow-inline-link" data-goto="forgot">Forgot password?</button>
+      <button type="submit" class="primary pill large wide">Sign In</button>
+    </form>
+    <button type="button" class="link-button flow-alt" data-action="email-code">Sign in with email code</button>
+  </section>
+
+  {# 2. Code #}
+  <section class="flow-step" data-step="verify" hidden>
+    <h2 class="flow-title">Verify your email</h2>
+    <p class="flow-sub">We've sent a verification code to <strong data-email-label></strong>. <button type="button" class="link-button" data-goto="email">Change</button></p>
+    <div class="flow-error" role="alert" hidden></div>
+    <form class="auth-form" data-form="verify" novalidate>
+      <fieldset class="otp" aria-label="6-digit verification code">
+        {% for i in range(6) %}<input type="text" inputmode="numeric" pattern="[0-9]*" maxlength="1" autocomplete="{{ 'one-time-code' if i == 0 else 'off' }}" aria-label="Digit {{ i + 1 }}" data-otp>{% endfor %}
+      </fieldset>
+      <p class="otp-meta"><span data-countdown>Code expires in 1:00</span>
+        <button type="button" class="link-button" data-action="resend" disabled>Resend code</button></p>
+      <button type="submit" class="primary pill large wide">Verify</button>
+    </form>
+  </section>
+
+  {# 3. Details #}
+  <section class="flow-step" data-step="details" hidden>
+    <h2 class="flow-title">Create your account</h2>
+    <p class="flow-sub">Your email <strong data-email-label></strong> is verified. Just a few details.</p>
+    <div class="flow-error" role="alert" hidden></div>
+    <form class="auth-form" data-form="details" novalidate>
+      <div class="two-inputs">
+        <div class="field"><label for="af-first">First name</label>
+          <input id="af-first" name="first_name" autocomplete="given-name" required maxlength="100">
+          <span class="field-error" data-field-error="first_name" hidden></span></div>
+        <div class="field"><label for="af-last">Last name</label>
+          <input id="af-last" name="last_name" autocomplete="family-name" required maxlength="100">
+          <span class="field-error" data-field-error="last_name" hidden></span></div>
+      </div>
+      <div class="field">
+        <label for="af-password">Password</label>
+        <div class="input-with-action">
+          <input type="password" id="af-password" name="password" autocomplete="new-password" required minlength="12" maxlength="128" aria-describedby="af-strength">
+          <button type="button" class="input-action" data-password-toggle="af-password" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+        <div class="strength" id="af-strength" aria-live="polite"><span class="strength-bar"><i data-strength-bar></i></span><span data-strength-text>At least 12 characters. A short phrase works well.</span></div>
+        <span class="field-error" data-field-error="password" hidden></span>
+      </div>
+      <div class="field">
+        <label for="af-confirm">Confirm password</label>
+        <div class="input-with-action">
+          <input type="password" id="af-confirm" name="confirm_password" autocomplete="new-password" required>
+          <button type="button" class="input-action" data-password-toggle="af-confirm" aria-label="Show password" aria-pressed="false">Show</button>
+        </div>
+        <span class="field-error" data-field-error="confirm_password" hidden></span>
+      </div>
+      <button type="submit" class="primary pill large wide">Create Account</button>
+    </form>
+  </section>
+
+  {# Created #}
+  <section class="flow-step flow-center" data-step="created" hidden>
+    <span class="notice-icon success">{{ icon("check") }}</span>
+    <h2 class="flow-title">Your account has been created successfully.</h2>
+    <p class="flow-sub">You're signed in. Let's find your next role.</p>
+    <a class="button primary pill large wide" data-continue href="/jobs">Continue</a>
+  </section>
+
+  {# Forgot password #}
+  <section class="flow-step" data-step="forgot" hidden>
+    <h2 class="flow-title">Reset your password</h2>
+    <p class="flow-sub">Enter your account's email and we'll send you a link to choose a new password.</p>
+    <div class="flow-error" role="alert" hidden></div>
+    <form class="auth-form" data-form="forgot" novalidate>
+      <div class="field"><label for="af-forgot-email">Email</label>
+        <input type="email" id="af-forgot-email" name="email" autocomplete="email" required></div>
+      <button type="submit" class="primary pill large wide">Send reset link</button>
+    </form>
+    <button type="button" class="link-button flow-alt" data-goto="password">Back to sign in</button>
+  </section>
+  <section class="flow-step flow-center" data-step="forgot-sent" hidden>
+    <span class="notice-icon">{{ icon("mail") }}</span>
+    <h2 class="flow-title">Check your email</h2>
+    <p class="flow-sub">If that address has an account, a reset link is on its way. It expires in 1 hour.</p>
+    <button type="button" class="button pill outline large wide" data-goto="password">Back to sign in</button>
+  </section>
+</div>

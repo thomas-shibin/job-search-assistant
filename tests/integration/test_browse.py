@@ -111,17 +111,16 @@ def client(tmp_path, monkeypatch):
 def test_landing_page_prefills_saved_search_and_runs_it(client):
     test_client, SessionLocal = client
 
-    response = test_client.get("/")
+    response = test_client.get("/jobs")
 
     assert response.status_code == 200
-    # Preselected as picker tags, one value each -- "Victoria, BC" stays whole.
-    assert '<input type="hidden" name="titles" value="Backend Engineer">' in response.text
-    assert '<input type="hidden" name="titles" value="Java Developer">' in response.text
-    assert '<input type="hidden" name="locations" value="Victoria, BC">' in response.text
+    # Prefilled in the search boxes -- "Victoria, BC" stays whole.
+    assert 'name="q" value="Backend Engineer, Java Developer"' in response.text
+    assert 'name="l" value="Victoria, BC"' in response.text
     assert sorted(QUERIES) == [("Backend Engineer", "Victoria, BC", "ca"), ("Java Developer", "Victoria, BC", "ca")]
     assert "Senior Backend Engineer" in response.text  # one card -- the same posting from both queries
-    assert response.text.count('class="job-card"') == 1
-    assert "Analyze with AI" in response.text and "Open job" in response.text
+    assert response.text.count('class="result-card') == 1
+    assert "Analyze match" in response.text and "Apply" in response.text
 
     from app.models.job import Job
 
@@ -133,7 +132,7 @@ def test_landing_page_prefills_saved_search_and_runs_it(client):
 def test_blank_search_boxes_search_all_jobs(client):
     test_client, _ = client
 
-    test_client.get("/", params={"titles": "", "locations": "", "country": "gb"})
+    test_client.get("/jobs", params={"titles": "", "locations": "", "country": "gb"})
 
     assert QUERIES == [(None, None, "gb")]
 
@@ -141,7 +140,7 @@ def test_blank_search_boxes_search_all_jobs(client):
 def test_comma_separated_locations_keep_region_codes(client):
     test_client, _ = client
 
-    test_client.get("/", params={"titles": "Backend", "locations": "Victoria, BC, Vancouver, BC"})
+    test_client.get("/jobs", params={"titles": "Backend", "locations": "Victoria, BC, Vancouver, BC"})
 
     assert sorted(q[1] for q in QUERIES) == ["Vancouver, BC", "Victoria, BC"]
 
@@ -149,7 +148,7 @@ def test_comma_separated_locations_keep_region_codes(client):
 def test_picker_values_arrive_one_per_field(client):
     test_client, _ = client
 
-    test_client.get("/", params=[("titles", ""), ("titles", "Backend"), ("locations", ""),
+    test_client.get("/jobs", params=[("titles", ""), ("titles", "Backend"), ("locations", ""),
                                  ("locations", "Victoria, BC"), ("locations", "Toronto, Ontario")])
 
     assert sorted(q[1] for q in QUERIES) == ["Toronto, Ontario", "Victoria, BC"]
@@ -158,7 +157,7 @@ def test_picker_values_arrive_one_per_field(client):
 def test_keywords_narrow_every_query_without_extra_requests(client):
     test_client, _ = client
 
-    test_client.get("/", params=[("titles", "Backend"), ("locations", "Victoria, BC"),
+    test_client.get("/jobs", params=[("titles", "Backend"), ("locations", "Victoria, BC"),
                                  ("keywords", "Kafka"), ("keywords", "Spring Boot")])
 
     assert len(DETAILS) == 1
@@ -175,7 +174,7 @@ def test_catalog_locations_are_searched_by_exact_path(client):
             Term("Victoria, BC", geo_path=["Canada", "British Columbia", "Capital", "Victoria"]),
         ], TermSource.SCAN)
 
-    test_client.get("/", params=[("titles", "Backend"), ("locations", "victoria bc"), ("locations", "Remote")])
+    test_client.get("/jobs", params=[("titles", "Backend"), ("locations", "victoria bc"), ("locations", "Remote")])
 
     by_where = {d["what"]: d for d in DETAILS}
     assert by_where["Backend"]["area"] == ("Canada", "British Columbia", "Capital", "Victoria")
@@ -183,26 +182,28 @@ def test_catalog_locations_are_searched_by_exact_path(client):
     assert by_where["Backend remote"]["area"] == () and by_where["Backend remote"]["where"] is None
 
 
-def test_searched_custom_terms_join_the_catalog(client):
+def test_searched_custom_terms_join_the_users_own_catalog(client):
     test_client, SessionLocal = client
-    from app.models.catalog import SearchTerm
+    from app.models.catalog import SearchTerm, UserSearchTerm
 
-    test_client.get("/", params=[("titles", "Rust Wizard"), ("locations", "Tofino, BC")])
+    test_client.get("/jobs", params=[("titles", "Rust Wizard"), ("locations", "Tofino, BC")])
 
     with SessionLocal() as session:
-        labels = {(t.kind, t.label, t.source) for t in session.query(SearchTerm)}
-    assert ("title", "Rust Wizard", "user") in labels
-    assert ("location", "Tofino, BC", "user") in labels
+        own = {(t.kind, t.label, t.user_id) for t in session.query(UserSearchTerm)}
+        shared = {t.label for t in session.query(SearchTerm)}
+    assert ("title", "Rust Wizard", 1) in own
+    assert ("location", "Tofino, BC", 1) in own
+    assert "Rust Wizard" not in shared  # never offered to anyone else
     assert [t["label"] for t in test_client.get("/api/terms/title").json()] == ["Rust Wizard"]
 
 
 def test_dashboard_search_with_no_results_shows_empty_state_and_no_next(client):
     test_client, _ = client
 
-    response = test_client.get("/", params={"titles": "Backend Engineer", "page": 2})
+    response = test_client.get("/jobs", params={"titles": "Backend Engineer", "page": 2})
 
     assert response.status_code == 200
-    assert "No jobs found on this page." in response.text
+    assert "No jobs found. Try adjusting your search filters." in response.text
     assert "Next" not in response.text
     assert "Previous" in response.text  # page 2 -> previous still offered
 
@@ -236,7 +237,7 @@ def test_analyze_card_saves_job_and_shows_ai_fit(client):
     assert response.status_code == 303
     assert response.headers["location"].endswith("#fit")
     detail = test_client.get(response.headers["location"])
-    assert "AI fit analysis" in detail.text
+    assert "Match analysis" in detail.text
     assert "Re-run analysis" in detail.text
 
     from app.models.matching import JobFitAssessment
@@ -248,8 +249,8 @@ def test_analyze_card_saves_job_and_shows_ai_fit(client):
     session.close()
 
     # The card for an analyzed posting now links to its analysis instead.
-    landing = test_client.get("/")
-    assert "View analysis" in landing.text
+    landing = test_client.get("/jobs")
+    assert "view analysis" in landing.text
 
 
 def test_analyze_card_twice_reuses_the_cached_assessment(client):
@@ -276,20 +277,21 @@ def test_analyze_card_without_resume_explains_what_to_do(client):
 
     response = test_client.post("/browse/analyze", data=_TRACK_PAYLOAD)
 
-    assert "No resume imported yet" in response.text
+    assert "No resume yet" in response.text
     assert "Upload your resume first" in response.text
 
 
-def test_dashboard_search_missing_credentials_shows_setup_message(client, monkeypatch):
+def test_dashboard_search_missing_credentials_shows_neutral_message(client, monkeypatch):
     import app.ui.routes as ui_routes
 
     monkeypatch.setattr(ui_routes, "AdzunaSettings", lambda: SimpleNamespace(app_id=None, app_key=None))
     test_client, _ = client
 
-    response = test_client.get("/", params={"titles": ""})
+    response = test_client.get("/jobs", params={"titles": ""})
 
     assert response.status_code == 200
-    assert "ADZUNA_APP_ID" in response.text
+    assert "Job search is temporarily unavailable" in response.text
+    assert "ADZUNA" not in response.text.upper()  # users never see the provider's name
 
 
 def test_browse_track_saves_job_and_redirects_to_detail(client):

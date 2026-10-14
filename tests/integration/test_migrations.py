@@ -26,14 +26,15 @@ def test_fresh_database_is_created_with_default_settings(tmp_path):
     db = tmp_path / "fresh.db"
     _alembic(db, "upgrade", "head")
 
-    settings = {k: json.loads(v) for k, v in sqlite3.connect(db).execute("select key, value from app_settings")}
-    assert set(settings) >= {"candidate", "search", "matching", "ai", "resume", "watchlist", "scheduler", "retention"}
-    assert settings["candidate"]["name"] == "" and settings["candidate"]["base_resume"] == ""   # user-specific: blank
-    assert settings["search"]["titles"] == [] and settings["search"]["locations"] == []
-    assert settings["address_profiles"] == {} and settings["search_profiles"] == []
+    connection = sqlite3.connect(db)
+    settings = {k: json.loads(v) for k, v in connection.execute("select key, value from app_settings")}
+    # Shared rows are platform settings only; each user's sections live in user_settings.
+    assert set(settings) == {"ai", "scheduler", "retention", "platform"}
     assert settings["retention"] == {"delete_jobs_after_days": 7, "keep_jobs_you_acted_on": True}
-    assert settings["matching"]["weights"]["technical_skills"] == 30
+    assert settings["platform"]["job_search_daily_limit"] == 250
     assert not any("key" in k.lower() or "token" in k.lower() for k in settings)  # secrets stay in .env
+    assert connection.execute("select count(*) from users").fetchone()[0] == 0  # no owner on a fresh install
+    assert connection.execute("select count(*) from user_settings").fetchone()[0] == 0
 
     from sqlalchemy.orm import Session
 

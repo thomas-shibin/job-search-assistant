@@ -6,9 +6,10 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
-class SchedulerRun(Base):
+class SchedulerRun(TenantOwned, Base):
     __tablename__ = "scheduler_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -21,7 +22,7 @@ class SchedulerRun(Base):
     )
 
 
-class SourceRunResult(Base):
+class SourceRunResult(TenantOwned, Base):
     """Per-source outcome for one scheduler run, so one failing source never hides the
     others' results (spec §21 — pipeline continues on per-source failure).
     """

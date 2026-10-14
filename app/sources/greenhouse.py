@@ -6,6 +6,7 @@ assessment").
 """
 from __future__ import annotations
 
+import html
 import logging
 from datetime import datetime
 from typing import Any
@@ -62,7 +63,8 @@ class GreenhouseSource:
             company=posting.get("company_name") or self._board_token,
             title=posting.get("title") or "Unknown Title",
             location=location,
-            description=strip_html_tags(posting.get("content") or ""),
+            # Greenhouse sends the HTML entity-escaped (&lt;p&gt;): unescape, then strip the tags.
+            description=strip_html_tags(html.unescape(posting.get("content") or "")),
             date_posted=_parse_datetime(posting.get("updated_at")),
             raw_payload=posting,
         )

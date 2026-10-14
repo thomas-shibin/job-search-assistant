@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Admin dashboard - Job Assistant{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Admin dashboard</h1>
+    <p class="lead">Accounts, roles and features at a glance. What you can change here depends on your own permissions.</p>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="stat-label">{{ icon("users") }} Accounts</div>
+    <div class="stat-value">{{ totals.users }}</div><div class="stat-sub">+{{ totals.new_week }} in the last 7 days</div></div>
+  <div class="stat"><div class="stat-label">{{ icon("check") }} Active</div>
+    <div class="stat-value">{{ totals.active }}</div><div class="stat-sub">email confirmed, not suspended</div></div>
+  <div class="stat"><div class="stat-label">{{ icon("lock") }} Suspended</div>
+    <div class="stat-value">{{ totals.suspended }}</div><div class="stat-sub">can't sign in</div></div>
+  <div class="stat"><div class="stat-label">{{ icon("toggle") }} Features on</div>
+    <div class="stat-value">{{ totals.features_on }} / {{ totals.features }}</div>
+    <div class="stat-sub">{% if can_route("/admin/features") %}<a href="/admin/features">manage features</a>{% else %}optional features{% endif %}</div></div>
+</div>
+
+<div class="chart-grid">
+  <section class="panel">
+    <div class="panel-head"><div><h2>Roles</h2><p>Users can hold several roles; they get every permission of each.</p></div>
+      {% if can_route("/admin/roles") %}<a class="button pill outline small" href="/admin/roles">Manage roles</a>{% endif %}</div>
+    <div class="table-wrap">
+      <table class="job-table">
+        <thead><tr><th>Role</th><th class="num">Users</th><th class="num">Permissions</th></tr></thead>
+        <tbody>
+          {% for r in roles %}
+          <tr>
+            <td>{% if can_route("/admin/roles") %}<a href="/admin/roles/{{ r.role.id }}">{{ r.role.name }}</a>{% else %}{{ r.role.name }}{% endif %}
+              {% if r.role.is_system_role %}<span class="chip">built-in</span>{% endif %}</td>
+            <td class="num">{% if can_route("/admin/users") %}<a href="/admin/users?role={{ r.role.name|urlencode }}">{{ r.users }}</a>{% else %}{{ r.users }}{% endif %}</td>
+            <td class="num">{{ r.permissions }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Quick links</h2></div></div>
+    <ul class="admin-links">
+      {% for href, label, ic in menu(ADMIN_MENU) if href != "/admin" %}
+      <li><a href="{{ href }}">{{ icon(ic) }} {{ label }}</a></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if can("audit_logs.view") %}
+  <section class="panel chart-panel wide">
+    <div class="panel-head"><div><h2>Recent administrative changes</h2></div>
+      <a class="button pill outline small" href="/admin/audit">Full audit log</a></div>
+    {% with rows = recent %}{% include "admin/_audit_rows.html" %}{% endwith %}
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

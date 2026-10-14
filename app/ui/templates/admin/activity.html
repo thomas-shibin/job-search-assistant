@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Activity - Job Assistant{% endblock %}
+{% block crumb %}Activity{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+{% set t = data.totals %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Activity</h1>
+    <p class="lead">What members do, what it costs, and who is hitting the hourly limits
+      ({{ platform.member_searches_per_hour }} new search{{ "es" if platform.member_searches_per_hour != 1 }} and
+      {{ platform.member_ai_actions_per_hour }} resume actions per member per hour &middot;
+      <a href="/admin/settings#platform">change</a>). Times are UTC.</p>
+  </div>
+  <nav class="range-tabs" aria-label="Date range">
+    {% for r in ranges %}
+    <a href="?days={{ r }}{% if q %}&amp;q={{ q|urlencode }}{% endif %}{% if guests %}&amp;guests=true{% endif %}&amp;sort={{ sort }}"
+       class="{{ 'active' if r == days }}">{{ r }} days</a>
+    {% endfor %}
+  </nav>
+</header>
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-label">{{ icon("user") }} Members</div>
+    <div class="stat-value">{{ t.members }}</div>
+    <div class="stat-sub">+{{ t.new_members }} new &middot; {{ t.unverified }} unconfirmed{% if t.suspended %} &middot; {{ t.suspended }} suspended{% endif %}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("activity") }} Active users</div>
+    <div class="stat-value">{{ t.active }}</div>
+    <div class="stat-sub">{{ t.active_today }} today &middot; {{ t.guests }} guest visits</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("search") }} Searches</div>
+    <div class="stat-value">{{ "{:,}".format(t.searches) }}</div>
+    <div class="stat-sub">{{ "{:,}".format(t.listing_requests) }} listing requests</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("sparkles") }} Resume actions</div>
+    <div class="stat-value">{{ "{:,}".format(t.ai_actions) }}</div>
+    <div class="stat-sub">{{ "{:,}".format(t.ai_calls) }} paid calls &middot; {{ "{:,}".format(t.ai_cache_hits) }} from cache</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("coins") }} Analysis cost</div>
+    <div class="stat-value">{{ t.ai_cost | money }}</div>
+    <div class="stat-sub">USD, estimated &middot; <a href="/admin/usage">by operation</a></div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("alert") }} Limit hits</div>
+    <div class="stat-value">{{ t.limit_hits }}</div>
+    <div class="stat-sub">{{ t.sign_ins }} sign-ins</div>
+  </div>
+</div>
+
+<div class="chart-grid">
+  <section class="panel chart-panel wide">
+    <div class="panel-head"><div><h2>Activity per day</h2><p>Searches, resume actions (analyses and tailoring), sign-ins, resume and job updates, and limit hits.</p></div></div>
+    {{ data.charts.activity }}
+  </section>
+  <section class="panel chart-panel">
+    <div class="panel-head"><div><h2>Analysis cost per day</h2><p>Estimated, in USD.</p></div></div>
+    {{ data.charts.cost }}
+  </section>
+  <section class="panel chart-panel">
+    <div class="panel-head"><div><h2>Paid analysis calls per day</h2><p>Answers served from cache excluded.</p></div></div>
+    {{ data.charts.ai_calls }}
+  </section>
+  <section class="panel chart-panel">
+    <div class="panel-head"><div><h2>Job-listing requests per day</h2><p>From members' and guests' searches (scheduled scans not included).</p></div></div>
+    {{ data.charts.listing }}
+  </section>
+  <section class="panel chart-panel">
+    <div class="panel-head"><div><h2>Sign-ups per day</h2><p>New member accounts and guest visits.</p></div></div>
+    {{ data.charts.signups }}
+  </section>
+  <section class="panel chart-panel wide">
+    <div class="panel-head"><div><h2>Activity by hour of day</h2><p>When people use the app (UTC), over the selected range.</p></div></div>
+    {{ data.charts.hours }}
+  </section>
+</div>
+
+<section class="panel flush" id="users">
+  <div class="panel-head">
+    <div><h2>Users</h2><p>Activity in the last {{ days }} days. Open a user for their details, graphs, activity log and limits.</p></div>
+    <form method="get" action="/admin/activity#users" class="filters">
+      <input type="hidden" name="days" value="{{ days }}">
+      <label>Find <input type="search" name="q" value="{{ q }}" placeholder="Name or email" style="width: 200px"></label>
+      <label>Sort by
+        <select name="sort">
+          {% for key, label in [("last_active", "Last active"), ("ai_cost", "Analysis cost"), ("ai_actions", "Resume actions"), ("searches", "Searches"), ("limit_hits", "Limit hits"), ("joined", "Newest")] %}
+          <option value="{{ key }}" {{ "selected" if sort == key }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label class="check"><span><input type="checkbox" name="guests" value="true" {{ "checked" if guests }}> Include guests</span></label>
+      <button type="submit">Apply</button>
+    </form>
+  </div>
+  <div class="table-wrap" style="margin-top: 1rem">
+    <table class="job-table">
+      <thead>
+        <tr>
+          <th>User</th><th>Status</th><th>Joined</th><th>Last active</th>
+          <th class="num">Searches</th><th class="num">Resume actions</th><th class="num">Analysis cost</th>
+          <th class="num">Listing requests</th><th class="num">Limit hits</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in data.rows %}
+        <tr>
+          <td class="cell-title"><a href="/admin/users/{{ r.user.id }}">{{ r.user.full_name or r.user.email }}</a>
+            {% if r.user.is_admin %}<span class="chip chip-on">admin</span>{% endif %}
+            <div class="muted">{{ r.user.email }}</div></td>
+          <td><span class="status-badge {{ 'ok' if r.status == 'active' else 'missing' }}">{{ r.status }}</span>
+            {% if r.user.search_limit_per_hour is not none or r.user.ai_limit_per_hour is not none %}<span class="chip">custom limits</span>{% endif %}</td>
+          <td class="muted">{{ r.user.created_at.strftime("%Y-%m-%d") if r.user.created_at else "" }}</td>
+          <td class="muted">{{ r.last_active.strftime("%Y-%m-%d %H:%M") if r.last_active else "never" }}</td>
+          <td class="num">{{ r.searches }}</td>
+          <td class="num">{{ r.ai_actions }}</td>
+          <td class="num">{{ r.ai_cost | money }}</td>
+          <td class="num">{{ r.listing_requests }}</td>
+          <td class="num">{% if r.limit_hits %}<span class="chip chip-warn">{{ r.limit_hits }}</span>{% else %}0{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="9" class="empty">No users match.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<div class="chart-grid">
+  <section class="panel flush">
+    <div class="panel-head"><div><h2>Recent limit hits</h2><p>Possible abuse or members who need a higher limit.</p></div></div>
+    <ul class="feed">
+      {% for e, u in data.limit_hits %}
+      <li><span class="feed-time">{{ e.created_at.strftime("%m-%d %H:%M") }}</span>
+        {% if u %}<a href="/admin/users/{{ u.id }}">{{ u.full_name or u.email }}</a>{% else %}<span class="muted">deleted user</span>{% endif %}
+        <span class="feed-text">{{ e.summary or "" }}</span></li>
+      {% else %}
+      <li class="empty">Nobody has hit a limit in this range.</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="panel flush">
+    <div class="panel-head"><div><h2>Latest activity</h2><p>Across every user.</p></div></div>
+    <ul class="feed">
+      {% for e, u in data.recent %}
+      <li><span class="feed-time">{{ e.created_at.strftime("%m-%d %H:%M") }}</span>
+        {% if u %}<a href="/admin/users/{{ u.id }}">{{ u.full_name or u.email }}</a>{% else %}<span class="muted">deleted user</span>{% endif %}
+        <span class="chip kind-{{ e.kind }}">{{ labels.get(e.kind, e.kind) }}</span>
+        <span class="feed-text">{{ e.summary or "" }}</span></li>
+      {% else %}
+      <li class="empty">No activity yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

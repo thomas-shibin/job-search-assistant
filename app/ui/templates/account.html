@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Account - Job Assistant{% endblock %}
+{% block crumb %}Account{% endblock %}
+{% macro field_error(name) %}{% if errors and errors[name] %}<span class="field-error">{{ errors[name] }}</span>{% endif %}{% endmacro %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <p class="eyebrow">{{ icon("user") }} Your account</p>
+    <h1>{{ user.full_name }}</h1>
+    <p class="muted">{{ user.email }} &middot; {{ "Admin" if user.is_admin else "Member" }} since {{ user.created_at.strftime("%b %Y") if user.created_at else "today" }}</p>
+  </div>
+</div>
+
+<div class="account-grid">
+  <section class="panel">
+    <div class="panel-head"><div><h2>Profile</h2><p>How you appear on your account and in emails.</p></div></div>
+    <form method="post" action="/account/profile" class="auth-form">
+      <div class="two-inputs">
+        <label>First name<input name="first_name" value="{{ user.first_name }}" autocomplete="given-name" required maxlength="100">{{ field_error("first_name") }}</label>
+        <label>Last name<input name="last_name" value="{{ user.last_name }}" autocomplete="family-name" required maxlength="100">{{ field_error("last_name") }}</label>
+      </div>
+      <label>Phone <span class="optional">(optional)</span><input type="tel" name="phone" value="{{ user.phone or '' }}" autocomplete="tel" placeholder="+1 604 555 1234">{{ field_error("phone") }}</label>
+      <div class="form-foot"><button type="submit" class="primary">Save profile</button></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Email</h2><p>Changing it sends a confirmation link to the new address.</p></div></div>
+    <p><span class="status-badge status-QUALIFIED">{{ icon("check") }} Verified</span> {{ user.email }}</p>
+    <form method="post" action="/account/email" class="auth-form">
+      <label>New email<input type="email" name="email" autocomplete="email" required>{{ field_error("email") }}</label>
+      <div class="form-foot"><button type="submit">Change email</button></div>
+    </form>
+    {% if providers %}<p class="muted">Signed in with: {{ providers|map("title")|join(", ") }}</p>{% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>{{ "Change password" if user.password_hash else "Set a password" }}</h2>
+      <p>{% if user.password_hash %}Changing it signs out your other devices.{% else %}You sign in with {{ providers|map("title")|join(" / ") }}; add a password to also sign in with your email.{% endif %}</p></div></div>
+    {% if errors.password %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ errors.password }}</div></div>{% endif %}
+    <form method="post" action="/account/password" class="auth-form">
+      {% if user.password_hash %}<label>Current password<input type="password" name="current_password" autocomplete="current-password" required></label>{% endif %}
+      <label>New password<input type="password" name="new_password" autocomplete="new-password" required minlength="12" maxlength="128">
+        <small class="muted">{{ password_rules }}</small></label>
+      <label>Confirm new password<input type="password" name="confirm_password" autocomplete="new-password" required></label>
+      <div class="form-foot"><button type="submit" class="primary">Save password</button></div>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Devices</h2><p>{{ other_sessions }} other device{{ "s" if other_sessions != 1 else "" }} signed in.</p></div></div>
+    <form method="post" action="/account/sessions/revoke"><button type="submit">{{ icon("logout") }} Sign out other devices</button></form>
+  </section>
+
+  <section class="panel danger-zone">
+    <div class="panel-head"><div><h2>Delete account</h2>
+      <p>Permanently deletes your account, resume, jobs, tailored resumes, alerts and settings. This can't be undone.</p></div></div>
+    {% if errors.delete %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ errors.delete }}</div></div>{% endif %}
+    <form method="post" action="/account/delete" class="auth-form" hx-boost="false">
+      <label>Type your email to confirm<input type="email" name="confirm_email" autocomplete="off" required></label>
+      <div class="form-foot"><button type="submit" class="danger">{{ icon("trash") }} Delete my account</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

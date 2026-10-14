@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}Job Assistant - Find your next career opportunity in Canada{% endblock %}
+{% block main_class %}landing{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="hero-inner">
+    <h1>Find Your Next Career Opportunity</h1>
+    <p class="hero-sub">Explore job opportunities and connect with employers looking for talent like you.</p>
+    <form class="hero-search" action="/jobs" method="get" data-auth-search role="search">
+      <label class="hero-field">
+        {{ icon("search") }}
+        <span class="visually-hidden">Job title, keywords, or company</span>
+        <input type="text" name="q" placeholder="Job title, keywords, or company" autocomplete="off">
+      </label>
+      <span class="hero-divider" aria-hidden="true"></span>
+      <label class="hero-field">
+        {{ icon("pin") }}
+        <span class="visually-hidden">City, province, or location</span>
+        <input type="text" name="l" placeholder="City, province, or location" autocomplete="off">
+      </label>
+      <button type="submit" class="primary pill">Find Jobs</button>
+    </form>
+    <p class="hero-hint">Popular:
+      {% for label, q in [("Software Engineer", "Software Engineer"), ("Data Analyst", "Data Analyst"), ("Product Manager", "Product Manager"), ("Remote", "")] %}
+        <a href="/jobs?{{ {'q': q, 'l': 'Remote' if label == 'Remote' else ''}|urlencode }}" data-auth-open data-reason="Sign in or create a free account to see these jobs.">{{ label }}</a>{{ "," if not loop.last }}
+      {% endfor %}
+    </p>
+    {% if total %}<p class="hero-stat">{{ "{:,}".format(total) }} open roles in Canada from company career sites, plus job boards.</p>{% endif %}
+  </div>
+</section>
+
+<section class="landing-section">
+  <div class="section-head">
+    <h2>Popular job categories</h2>
+    <p>Browse openings by field.</p>
+  </div>
+  <div class="category-grid">
+    {% for c in categories %}
+    <a class="category-card" href="/jobs?{{ {'q': c.query}|urlencode }}" data-auth-open data-reason="Sign in or create a free account to browse {{ c.label }} jobs.">
+      <span class="category-icon">{{ icon(c.icon) }}</span>
+      <span><strong>{{ c.label }}</strong>{% if c.count %}<small>{{ "{:,}".format(c.count) }} open roles</small>{% endif %}</span>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+{% if recent %}
+<section class="landing-section">
+  <div class="section-head">
+    <h2>Recently posted jobs</h2>
+    <p>Fresh from company career sites in Canada.</p>
+  </div>
+  <div class="recent-grid">
+    {% for p in recent %}
+    <a class="recent-card" href="/jobs/posting/{{ p.ref }}" data-auth-open data-reason="Sign in or create a free account to see the full job.">
+      <div class="recent-top">{{ avatar(p.company) }}<div><strong>{{ p.title }}</strong><span>{{ p.company }}</span></div></div>
+      <div class="chips">
+        {% if p.location %}<span class="chip">{{ icon("pin") }}{{ p.location|truncate(38) }}</span>{% endif %}
+        <span class="chip">{{ p.workplace_label }}</span>
+        {% if p.salary_text %}<span class="chip">{{ p.salary_text }}</span>{% endif %}
+      </div>
+      {% if p.date_posted %}<span class="recent-date">{{ p.date_posted|ago }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if companies %}
+<section class="landing-section">
+  <div class="section-head">
+    <h2>Companies hiring in Canada</h2>
+    <p>Jobs straight from their own career sites. <a href="/companies">See all companies</a></p>
+  </div>
+  <div class="company-grid">
+    {% for c in companies %}
+    <a class="company-card" href="/jobs?{{ {'q': c.name}|urlencode }}" data-auth-open data-reason="Sign in or create a free account to see jobs at {{ c.name }}.">
+      {{ avatar(c.name, "lg") }}
+      <strong>{{ c.name }}</strong>
+      <small>{{ c.count }} open role{{ "s" if c.count != 1 }}</small>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="landing-section band">
+  <div class="section-head center">
+    <h2>How it works</h2>
+    <p>From search to application in three steps.</p>
+  </div>
+  <ol class="how-steps">
+    <li><span class="step-number">1</span><h3>Search once</h3><p>One search covers job boards and companies' own career sites across Canada.</p></li>
+    <li><span class="step-number">2</span><h3>See where you fit</h3><p>Compare any job with your experience: strengths, gaps and a match score.</p></li>
+    <li><span class="step-number">3</span><h3>Apply with confidence</h3><p>Get your resume tailored to the role in your own design, then apply on the employer's site.</p></li>
+  </ol>
+</section>
+
+<section class="landing-section">
+  <div class="section-head center">
+    <h2>Built for job seekers</h2>
+  </div>
+  <div class="benefit-grid">
+    <div class="benefit"><span class="category-icon">{{ icon("globe") }}</span><h3>More openings</h3><p>Roles from company career sites often never reach the big job boards.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("file") }}</span><h3>Full job descriptions</h3><p>Read the whole posting, not a two-line preview.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("bell") }}</span><h3>Alerts that matter</h3><p>Get notified when a job matching your criteria is posted.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("shield") }}</span><h3>Private by default</h3><p>Your resume and applications are visible only to you.</p></div>
+  </div>
+</section>
+
+<section class="landing-cta">
+  <div>
+    <h2>Ready to find your next role?</h2>
+    <p>Create a free account in under a minute.</p>
+  </div>
+  <a class="button primary pill large" href="/signup">Get started</a>
+</section>
+{% endblock %}

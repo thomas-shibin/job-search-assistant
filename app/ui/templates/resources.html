@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Career resources - Job Assistant{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Career resources</h1>
+    <p class="lead">Practical guidance for every stage of your job search.</p>
+  </div>
+</header>
+<div class="resources-layout">
+  <nav class="resources-toc" aria-label="On this page">
+    <a href="#resume">Write a resume that gets read</a>
+    <a href="#tailor">Tailor every application</a>
+    <a href="#search">Search smarter</a>
+    <a href="#interview">Prepare for interviews</a>
+    <a href="#offer">Evaluate and negotiate offers</a>
+  </nav>
+  <div class="article-list">
+    <article class="article" id="resume">
+      <span class="category-icon">{{ icon("file") }}</span>
+      <h2>Write a resume that gets read</h2>
+      <p>Recruiters scan a resume in seconds. Lead with a two-line summary of what you do and the level you work at, then list roles newest first.</p>
+      <ul>
+        <li>Start each bullet with an action and end with a result: "Cut month-end close from 10 days to 6 by automating reconciliations."</li>
+        <li>Use numbers wherever you honestly can: money, time, volume, people.</li>
+        <li>Keep it to one or two pages, in a simple layout that applicant-tracking systems can read.</li>
+        <li>In Canada, leave out your photo, date of birth and marital status.</li>
+      </ul>
+    </article>
+    <article class="article" id="tailor">
+      <span class="category-icon">{{ icon("target") }}</span>
+      <h2>Tailor every application</h2>
+      <p>A resume that mirrors the job posting's language does better with both people and screening software.</p>
+      <ul>
+        <li>Reorder your bullets so the experience the posting asks for comes first.</li>
+        <li>Use the posting's own terms for skills you genuinely have.</li>
+        <li>Never claim experience you don't have; interviews find it out.</li>
+      </ul>
+      <p>Job Assistant compares any job with your resume and produces a tailored copy that only rewords what's already true.</p>
+    </article>
+    <article class="article" id="search">
+      <span class="category-icon">{{ icon("search") }}</span>
+      <h2>Search smarter</h2>
+      <ul>
+        <li>Search a few related titles: "Data Analyst", "Business Intelligence Analyst", "Reporting Analyst".</li>
+        <li>Check companies' own career sites; many roles never reach the big job boards.</li>
+        <li>Apply within the first few days a job is posted, when recruiters are reviewing most actively.</li>
+        <li>Set up alerts so new matches come to you.</li>
+      </ul>
+    </article>
+    <article class="article" id="interview">
+      <span class="category-icon">{{ icon("user") }}</span>
+      <h2>Prepare for interviews</h2>
+      <ul>
+        <li>Prepare five short stories using Situation, Task, Action, Result; most behavioural questions fit one of them.</li>
+        <li>Research the company's products, customers and recent news.</li>
+        <li>Prepare two or three questions about the team and how success is measured.</li>
+        <li>Send a brief thank-you note within a day.</li>
+      </ul>
+    </article>
+    <article class="article" id="offer">
+      <span class="category-icon">{{ icon("dollar") }}</span>
+      <h2>Evaluate and negotiate offers</h2>
+      <ul>
+        <li>Compare total compensation: base, bonus, equity, benefits, RRSP matching and vacation.</li>
+        <li>Research the market range for the role and city before you discuss numbers.</li>
+        <li>Ask for changes politely and in one conversation, with a specific number and a reason.</li>
+        <li>Get the final offer in writing before you resign from your current job.</li>
+      </ul>
+    </article>
+  </div>
+</div>
+{% endblock %}

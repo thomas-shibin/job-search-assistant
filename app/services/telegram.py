@@ -1,35 +1,43 @@
-"""Telegram setup actions shared by the dashboard's Watchlist page and the CLI:
-detect the chat id from the bot's recent messages (saving it as the
-`watchlist.telegram_chat_id` setting), and send a test message.
-"""
+"""Telegram actions for one signed-in user's Watchlist page: start linking
+their chat (a single-use code for `t.me/<bot>?start=<code>`, completed by the
+bot -- see app/notifications/telegram_commands.py), send a test message to
+their linked chat, or disconnect it."""
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.auth.tokens import issue_token
 from app.config.schema import AppConfig
 from app.config.store import save_section
+from app.models.user import TokenPurpose
 from app.notifications.telegram import TelegramClient, TelegramError, TelegramSettings
+from app.notifications.telegram_commands import LINK_TTL, bot_username
+from app.tenancy import require_tenant
 
 
 def _client(settings: TelegramSettings) -> TelegramClient:
     if not settings.bot_token:
-        raise TelegramError("TELEGRAM_BOT_TOKEN is not set in .env")
+        raise TelegramError("Telegram alerts aren't available right now.")
     return TelegramClient(settings.bot_token)
 
 
-def detect_and_save_chat_id(session: Session, config: AppConfig, settings: TelegramSettings | None = None) -> dict:
-    """Saves the most recent chat that messaged the bot; returns that chat."""
-    chats = _client(settings or TelegramSettings()).recent_chats()
-    if not chats:
-        raise TelegramError("No messages found -- open your bot in Telegram, press Start, then try again.")
-    chat = chats[-1]
-    save_section(session, "watchlist", {**config.watchlist.model_dump(), "telegram_chat_id": str(chat["id"])})
-    return chat
+def telegram_link(session: Session, settings: TelegramSettings | None = None) -> str:
+    """The deep link that connects the signed-in user's Telegram chat."""
+    settings = settings or TelegramSettings()
+    _client(settings)
+    username = bot_username(settings)
+    code = issue_token(session, TokenPurpose.TELEGRAM_LINK, user_id=require_tenant(session), ttl=LINK_TTL)
+    session.commit()
+    return f"https://t.me/{username}?start={code}"
+
+
+def disconnect(session: Session, config: AppConfig) -> None:
+    save_section(session, "watchlist", {**config.watchlist.model_dump(exclude={"watches"}), "telegram_chat_id": None})
 
 
 def send_test_message(config: AppConfig, settings: TelegramSettings | None = None) -> None:
     settings = settings or TelegramSettings()
-    chat_id = config.watchlist.telegram_chat_id or settings.chat_id
+    chat_id = config.watchlist.telegram_chat_id
     if not chat_id:
-        raise TelegramError("No Telegram chat id yet -- use Detect chat ID first.")
+        raise TelegramError("Connect Telegram first.")
     _client(settings).send_message(chat_id, "✅ Job Search Assistant is connected. Watchlist alerts will arrive here.")

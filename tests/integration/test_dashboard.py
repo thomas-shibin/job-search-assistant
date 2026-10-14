@@ -85,7 +85,7 @@ def test_job_list_page_renders(client):
     test_client, SessionLocal = client
     _seed_job_with_resume(SessionLocal)
 
-    response = test_client.get("/")
+    response = test_client.get("/applications")
 
     assert response.status_code == 200
     assert "Senior Engineer" in response.text
@@ -96,10 +96,10 @@ def test_job_list_filters_by_status(client):
     test_client, SessionLocal = client
     _seed_job_with_resume(SessionLocal, status=JobStatus.APPLIED)
 
-    matching = test_client.get("/?status=APPLIED")
+    matching = test_client.get("/applications?status=APPLIED")
     assert "Senior Engineer" in matching.text
 
-    non_matching = test_client.get("/?status=SKIPPED")
+    non_matching = test_client.get("/applications?status=SKIPPED")
     assert "No jobs match" in non_matching.text
 
 
@@ -139,14 +139,27 @@ def test_tracked_jobs_table_lists_best_match_first(client):
     assert text.index("Role 2") < text.index("Role 0") < text.index("Role 1")
 
 
-def test_health_endpoint_returns_the_report(client):
+def test_public_health_is_liveness_only(client):
     test_client, _ = client
     response = test_client.get("/health")
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["status"] in ("ok", "degraded")
+    assert response.json() == {"status": "ok"}  # nothing about the platform's setup
+
+
+def test_detailed_health_is_admin_only(client):
+    import main
+    from app.auth.deps import current_user
+    from tests.conftest import make_member
+
+    test_client, _ = client
+    assert test_client.get("/admin/health").status_code == 404  # members don't even learn it exists
+
+    admin = make_member(role="admin")
+    main.app.dependency_overrides[current_user] = lambda: admin
+    body = test_client.get("/admin/health.json").json()
     assert body["checks"][0]["name"] == "Database" and body["checks"][0]["status"] == "ok"
+    assert "Database" in test_client.get("/admin/health").text
 
 
 def test_job_list_blank_min_score_is_no_filter(client):
@@ -155,7 +168,7 @@ def test_job_list_blank_min_score_is_no_filter(client):
     test_client, SessionLocal = client
     _seed_job_with_resume(SessionLocal, status=JobStatus.APPLIED)
 
-    response = test_client.get("/?status=APPLIED&min_score=")
+    response = test_client.get("/applications?status=APPLIED&min_score=")
 
     assert response.status_code == 200
     assert "Senior Engineer" in response.text
@@ -238,11 +251,17 @@ def test_invalid_action_for_current_status_returns_409(client):
     assert response.status_code == 409
 
 
-def test_costs_page_renders_with_no_data(client):
+def test_usage_page_is_admin_only(client):
+    import main
+    from app.auth.deps import current_user
+    from tests.conftest import make_member
+
     test_client, _ = client
-    response = test_client.get("/costs")
+    assert test_client.get("/admin/usage").status_code == 404
+    main.app.dependency_overrides[current_user] = lambda: make_member(role="admin")
+    response = test_client.get("/admin/usage")
     assert response.status_code == 200
-    assert "No AI calls logged yet." in response.text
+    assert "No analysis calls logged yet." in response.text
 
 
 def test_api_list_jobs_returns_json(client):

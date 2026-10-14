@@ -195,7 +195,7 @@ class MockAIProvider:
         return FitAssessmentResult(
             fit_score=score, verdict=verdict, matched=matched[:8], gaps=gaps[:8],
             summary=f"Mock assessment: you list {len(matched)} of the {len(wanted)} skills detected in this posting.",
-            recommendation="Switch Settings -> AI -> provider to openai for a real assessment.",
+            recommendation="This is a quick keyword-based assessment; a detailed one isn't available right now.",
         )
 
     def generate_match_explanation(self, score: MatchScoreBreakdown) -> str:

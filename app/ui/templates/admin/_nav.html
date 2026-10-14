@@ -1,0 +1,9 @@
+{# The admin area's section links -- only those the signed-in admin may open. #}
+{% from "_icons.html" import icon %}
+{% set here = request.url.path %}
+<nav class="admin-nav" aria-label="Admin sections">
+  {% for href, label, ic in menu(ADMIN_MENU) %}
+  {% set active = here == href or (href != "/admin" and here.startswith(href ~ "/")) %}
+  <a href="{{ href }}" class="{{ 'active' if active }}"{% if active %} aria-current="page"{% endif %}>{{ icon(ic) }} {{ label }}</a>
+  {% endfor %}
+</nav>

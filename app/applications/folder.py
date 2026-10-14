@@ -23,9 +23,15 @@ def _applications_root() -> Path:
     return Path(override) if override else PROJECT_ROOT / "data" / "applications"
 
 
+def user_applications_root(user_id: int | None) -> Path:
+    """One folder per user, so no two users' files ever share a directory."""
+    root = _applications_root()
+    return root / f"user_{user_id}" if user_id is not None else root
+
+
 def application_folder_path(job: Job) -> Path:
     """Where `job`'s generated artifacts live (not created)."""
-    return _applications_root() / f"{sanitize_filename(job.company)}_{sanitize_filename(job.title)}_{job.id}"
+    return user_applications_root(job.user_id) / f"{sanitize_filename(job.company)}_{sanitize_filename(job.title)}_{job.id}"
 
 
 def get_application_folder(job: Job) -> Path:

@@ -5,6 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Job Assistant{% endblock %}</title>
+  <meta name="description" content="{% block description %}Search jobs from job boards and company career sites across Canada, see how well each one fits you, and apply with a resume tailored to the role.{% endblock %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
@@ -12,63 +13,100 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232453d4'/%3E%3Cpath d='M9 12h14v10H9z M13 12V9h6v3' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
   <script src="/static/tagpicker.js" defer></script>
-  <script>
-    // Sidebar state lives on <html>, which hx-boost never swaps, so it survives
-    // navigation. Wide screens: shown unless hidden (remembered). Narrow
-    // screens: hidden, slides over the page when pulled out.
-    (function () {
-      var root = document.documentElement;
-      try { if (localStorage.getItem("navHidden") === "1") root.classList.add("nav-hidden"); } catch (e) {}
-      window.toggleNav = function () {
-        if (window.matchMedia("(max-width: 860px)").matches) {
-          root.classList.toggle("nav-open");
-          return;
-        }
-        var hidden = root.classList.toggle("nav-hidden");
-        try { localStorage.setItem("navHidden", hidden ? "1" : "0"); } catch (e) {}
-      };
-      document.addEventListener("htmx:beforeSwap", function () { root.classList.remove("nav-open"); });
-      document.addEventListener("keydown", function (e) { if (e.key === "Escape") root.classList.remove("nav-open"); });
-    })();
-  </script>
+  <script src="/static/app.js" defer></script>
 </head>
-<body hx-boost="true">
-  {% set path = request.url.path if request is defined else "" %}
-  {% macro nav_link(path, href, name, label) %}
-    {% set active = path == href or (href != "/" and path.startswith(href)) or (href == "/" and path.startswith("/jobs")) %}
-    <a href="{{ href }}" class="{{ 'active' if active else '' }}"{% if active %} aria-current="page"{% endif %}>{{ icon(name) }}<span>{{ label }}</span></a>
-  {% endmacro %}
-  <aside class="sidebar" id="sidebar">
-    <a class="brand" href="/">
-      <span class="brand-mark">{{ icon("briefcase") }}</span>
-      <span class="brand-name">Job Assistant<small>Career workspace</small></span>
-    </a>
-    <div class="nav-label">Search</div>
-    <nav>
-      {{ nav_link(path, "/", "search", "Find jobs") }}
-      {{ nav_link(path, "/watchlist", "bell", "Watchlist") }}
-    </nav>
-    <div class="nav-label">Resume</div>
-    <nav>
-      {{ nav_link(path, "/resume", "file", "My resume") }}
-      {{ nav_link(path, "/quick", "pen", "Quick Tailor") }}
-    </nav>
-    <div class="nav-label">Account</div>
-    <nav>
-      {{ nav_link(path, "/settings", "sliders", "Settings") }}
-      {{ nav_link(path, "/costs", "chart", "AI usage") }}
-    </nav>
-    <div class="sidebar-foot">Runs locally &middot; your data stays on this machine</div>
-  </aside>
-  <div class="nav-backdrop" onclick="toggleNav()"></div>
-  <header class="topbar">
-    <button type="button" class="nav-toggle" onclick="toggleNav()" aria-controls="sidebar" aria-label="Show or hide menu" title="Show or hide menu">{{ icon("menu") }}</button>
-    <div class="crumbs"><span>Job Assistant</span><span aria-hidden="true">/</span><strong>{% block crumb %}Home{% endblock %}</strong></div>
-    <div class="topbar-actions">{% block topbar_actions %}{% endblock %}</div>
+{% set path = request.url.path if request is defined else "" %}
+{% set nav_user = request.state.user if request is defined and request.state.user is defined else none %}
+{% set signed_in = nav_user is not none and not nav_user.is_guest %}
+{% set nav_member = signed_in and nav_user.is_member %}
+<body hx-boost="{% block boost %}true{% endblock %}" data-auth="{{ '1' if signed_in else '0' }}" class="{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="site-logo" href="/" aria-label="Job Assistant home">
+        <span class="site-logo-mark">{{ icon("briefcase") }}</span><span>Job Assistant</span>
+      </a>
+      {% macro top_link(href, label, match) %}
+        {% set active = path.startswith(match) %}
+        <a href="{{ href }}" class="{{ 'active' if active }}"{% if active %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endmacro %}
+      <nav class="site-nav" aria-label="Main">
+        {% if signed_in %}{% if can_route("/jobs") %}{{ top_link("/jobs", "Find Jobs", "/jobs") }}{% endif %}{% else %}
+        <a href="/jobs" data-auth-open data-next="/jobs">Find Jobs</a>{% endif %}
+        {{ top_link("/companies", "Companies", "/companies") }}
+        {{ top_link("/resources", "Career Resources", "/resources") }}
+      </nav>
+      <div class="site-actions">
+        {% if signed_in %}
+          {% if can_route("/saved") %}<a class="icon-link" href="/saved" title="Saved jobs" aria-label="Saved jobs">{{ icon("bookmark") }}</a>{% endif %}
+          <details class="user-menu" data-dropdown>
+            <summary aria-label="Account menu">
+              <span class="avatar-circle">{{ (nav_user.first_name[:1] ~ nav_user.last_name[:1])|upper }}</span>
+              <span class="user-menu-name">{{ nav_user.first_name }}</span>
+            </summary>
+            <div class="menu-panel" role="menu">
+              <div class="menu-head">
+                <span class="avatar-circle large">{{ (nav_user.first_name[:1] ~ nav_user.last_name[:1])|upper }}</span>
+                <div><strong>{{ nav_user.full_name }}</strong><small>{{ nav_user.email }}</small></div>
+              </div>
+              {% for group in ACCOUNT_MENU %}{% set items = menu(group) %}
+              {% if items %}{% if not loop.first %}<hr>{% endif %}
+              {% for href, label, ic in items %}<a role="menuitem" href="{{ href }}">{{ icon(ic) }} {{ label }}</a>{% endfor %}
+              {% endif %}{% endfor %}
+              {% if can_route("/admin") %}
+              <hr><a role="menuitem" href="/admin">{{ icon("grid") }} Admin dashboard</a>
+              {% endif %}
+              <hr>
+              <form method="post" action="/logout" hx-boost="false"><button type="submit" role="menuitem" class="menu-button">{{ icon("logout") }} Log Out</button></form>
+            </div>
+          </details>
+        {% else %}
+          {% block header_auth %}
+          <a class="header-link" href="/login">Log In</a>
+          <a class="button pill primary" href="/signup">Sign Up</a>
+          {% endblock %}
+        {% endif %}
+        <details class="mobile-menu" data-dropdown>
+          <summary aria-label="Menu">{{ icon("menu") }}</summary>
+          <div class="menu-panel">
+            {% if signed_in %}{% if can_route("/jobs") %}<a href="/jobs">Find Jobs</a>{% endif %}{% else %}<a href="/jobs" data-auth-open data-next="/jobs">Find Jobs</a>{% endif %}
+            <a href="/companies">Companies</a>
+            <a href="/resources">Career Resources</a>
+            {% if not signed_in %}<hr><a href="/login">Log In</a><a href="/signup">Sign Up</a>{% endif %}
+          </div>
+        </details>
+      </div>
+    </div>
   </header>
-  <main>
+
+  <main id="main" class="{% block main_class %}app-main{% endblock %}">
+    {% if signed_in and not nav_user.email_verified %}<div class="warning-box">{{ icon("mail") }}<div class="alert-body">Confirm your email to unlock every feature. <a href="/verify-email/pending">Resend the link</a></div></div>{% endif %}
     {% if message %}<div class="flash">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
     {% block content %}{% endblock %}
   </main>
+
+  {% block footer %}
+  <footer class="site-footer">
+    <div class="site-footer-inner">
+      <div class="footer-brand">
+        <a class="site-logo" href="/"><span class="site-logo-mark">{{ icon("briefcase") }}</span><span>Job Assistant</span></a>
+        <p>Job search for Canada: openings from job boards and company career sites, matched to your experience.</p>
+      </div>
+      <div class="footer-col"><h4>Job seekers</h4>
+        <a href="/jobs"{% if not signed_in %} data-auth-open data-next="/jobs"{% endif %}>Find jobs</a>
+        <a href="/companies">Companies</a><a href="/resources">Career resources</a>
+        {% if signed_in %}{% if can_route("/profile") %}<a href="/profile">My profile</a>{% endif %}{% else %}<a href="/signup">Create an account</a>{% endif %}</div>
+      <div class="footer-col"><h4>Company</h4>
+        <a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a></div>
+    </div>
+    <div class="site-footer-base">&copy; 2026 Job Assistant. Your resume and applications are private to your account.</div>
+  </footer>
+  {% endblock %}
+
+  {% if signed_in %}
+  {# For app.js (hasPermission & co.); a convenience only -- the server checks every request. #}
+  <script type="application/json" id="access-state">{{ {"roles": nav_user.roles|list, "permissions": nav_user.permissions|sort, "routes": {"/jobs": can_route("/jobs"), "/saved": can_route("/saved"), "/applications": can_route("/applications"), "/admin": can_route("/admin")}}|tojson }}</script>
+  {% endif %}
+  {% if not signed_in %}{% block auth_modal %}{% include "auth/_modal.html" %}{% endblock %}{% endif %}
 </body>
 </html>

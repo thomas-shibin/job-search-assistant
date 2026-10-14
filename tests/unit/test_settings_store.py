@@ -40,10 +40,20 @@ def yaml_path(tmp_path):
     return path
 
 
-def test_first_load_imports_yaml_into_db(session, yaml_path):
+def test_first_load_imports_only_platform_settings(session, yaml_path):
+    """A file's personal values never land in whoever happens to load settings first."""
     config = load_app_config(session, yaml_path)
 
     assert has_settings(session)
+    assert config.scheduler.interval_minutes == 15
+    assert config.search_profiles == [] and config.watchlist.watches == []
+    assert session.query(WatchlistEntry).count() == 0
+
+
+def test_explicit_import_brings_in_the_users_own_settings(session, yaml_path):
+    import_yaml_config(session, yaml_path)
+    config = load_app_config(session, yaml_path)
+
     assert config.search_profiles[0].titles == ["Backend"]
     assert [w.name for w in config.watchlist.watches] == ["Dream"]
     assert session.query(WatchlistEntry).count() == 1
@@ -57,9 +67,9 @@ def test_db_wins_over_yaml_after_import(session, yaml_path):
     assert load_app_config(session, yaml_path).scheduler.interval_minutes == 60
 
 
-def test_missing_yaml_and_empty_db_is_a_config_error(session, tmp_path):
-    with pytest.raises(ConfigError):
-        load_app_config(session, tmp_path / "nope.yaml")
+def test_missing_yaml_and_empty_db_uses_the_defaults(session, tmp_path):
+    config = load_app_config(session, tmp_path / "nope.yaml")
+    assert config.scheduler.interval_minutes == 15 and config.search.titles == []
 
 
 def test_invalid_save_is_rejected_and_not_persisted(session, yaml_path):
@@ -72,7 +82,7 @@ def test_invalid_save_is_rejected_and_not_persisted(session, yaml_path):
 
 
 def test_saving_watchlist_settings_keeps_watch_rows(session, yaml_path):
-    load_app_config(session, yaml_path)
+    import_yaml_config(session, yaml_path)
     returned = save_section(session, "watchlist", {"enabled": False, "max_alerts_per_run": 5, "telegram_chat_id": "42"})
     assert [w.name for w in returned.watchlist.watches] == ["Dream"]
 
@@ -82,7 +92,7 @@ def test_saving_watchlist_settings_keeps_watch_rows(session, yaml_path):
 
 
 def test_paused_watches_are_excluded_from_effective_config(session, yaml_path):
-    load_app_config(session, yaml_path)
+    import_yaml_config(session, yaml_path)
     entry = session.query(WatchlistEntry).one()
     entry.enabled = False
     session.commit()

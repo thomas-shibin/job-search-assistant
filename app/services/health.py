@@ -1,5 +1,5 @@
-"""App health report, shared by the HTTP `/health` endpoint and the Telegram
-`/health` command. Everything here is local and free: it reads the database
+"""Platform health report for admins: the /admin/health page and the Telegram
+`/health` command (admins only). Everything here is local and free: it reads the database
 and settings and never calls a billed or rate-limited API (Adzuna, OpenAI), so
 it is safe to ask as often as you like.
 """
@@ -78,9 +78,12 @@ def _check(name: str, fn) -> Check:
 
 def _database(session: Session) -> Check:
     from app.models.job import Job
+    from app.models.user import Role, User
 
     session.execute(text("SELECT 1"))
-    return Check("Database", OK, f"reachable, {session.query(func.count(Job.id)).scalar()} jobs tracked")
+    members = session.query(func.count(User.id)).filter(User.role != Role.GUEST.value).scalar()
+    jobs = session.query(func.count(Job.id)).scalar()
+    return Check("Database", OK, f"reachable, {members} accounts, {jobs} jobs tracked")
 
 
 def _scheduler(session: Session, config) -> Check:
@@ -118,30 +121,40 @@ def _scheduler(session: Session, config) -> Check:
     return Check("Scheduler", last_status, detail)
 
 
-def _resume(session: Session) -> Check:
-    from app.ai.fit import active_candidate
+def _accounts(session: Session) -> Check:
+    from app.models.candidate import CandidateProfile
+    from app.models.user import Role, User
 
-    candidate = active_candidate(session)
-    if candidate is None:
-        return Check("Resume", WARN, "no resume imported -- upload one on My resume")
-    return Check("Resume", OK, f"version {candidate.version} active")
+    members = session.query(func.count(User.id)).filter(User.role != Role.GUEST.value).scalar()
+    unverified = session.query(func.count(User.id)).filter(
+        User.role != Role.GUEST.value, User.email_verified_at.is_(None)).scalar()
+    guests = session.query(func.count(User.id)).filter(User.role == Role.GUEST.value).scalar()
+    with_resume = session.query(func.count(func.distinct(CandidateProfile.user_id))).filter(
+        CandidateProfile.is_active.is_(True)).scalar()
+    return Check("Accounts", OK, f"{members} members ({unverified} unconfirmed), {with_resume} with a resume, "
+                                 f"{guests} recent guests")
 
 
 def _api_keys() -> Check:
     from app.ai.settings import AISettings
+    from app.auth.settings import AuthSettings
     from app.notifications.telegram import TelegramSettings
     from app.sources.settings import AdzunaSettings
 
     adzuna = AdzunaSettings()
+    auth = AuthSettings()
     keys = {
-        "OpenAI": bool(AISettings().openai_api_key),
-        "Adzuna": bool(adzuna.app_id and adzuna.app_key),
-        "Telegram": bool(TelegramSettings().bot_token),
+        "analysis provider": bool(AISettings().openai_api_key),
+        "job listings provider": bool(adzuna.app_id and adzuna.app_key),
+        "Telegram bot": bool(TelegramSettings().bot_token),
+        "outgoing email": bool(auth.smtp_host),
     }
     missing = [name for name, present in keys.items() if not present]
+    social = [p.title() for p in ("google", "facebook") if auth.provider_enabled(p)]
+    detail = f"social sign-in: {', '.join(social) or 'none'}"
     if missing:
-        return Check("API keys", WARN, f"missing in .env: {', '.join(missing)}")
-    return Check("API keys", OK, "OpenAI, Adzuna and Telegram set")
+        return Check("Integrations", WARN, f"not configured: {', '.join(missing)}; {detail}")
+    return Check("Integrations", OK, f"all configured; {detail}")
 
 
 def _pdf() -> Check:
@@ -165,13 +178,24 @@ def _activity(session: Session) -> Check:
         WatchlistAlert.created_at >= since, WatchlistAlert.status == "failed").scalar()
     cost = session.query(func.coalesce(func.sum(AICallLog.estimated_cost), 0)).filter(
         AICallLog.created_at >= since).scalar()
-    detail = f"{new_jobs} new jobs, {alerts} alerts sent, ${float(cost):.4f} AI spend"
+    detail = f"{new_jobs} new jobs, {alerts} alerts sent, ${float(cost):.4f} analysis spend"
     if failed:
         return Check("Last 24h", WARN, f"{detail}, {failed} alerts failed to send")
     return Check("Last 24h", OK, detail)
 
 
+def check_database(session_factory) -> bool:
+    """Liveness for the public /health: can we reach the database at all?"""
+    try:
+        with session_factory() as session:
+            session.execute(text("SELECT 1"))
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def check_health(session: Session, config_path: Path = _DEFAULT_CONFIG_PATH) -> HealthReport:
+    """The admin report. `session` must be a system session (platform-wide counts)."""
     from app.config.store import load_app_config
 
     report = HealthReport(uptime_seconds=int(time.monotonic() - _STARTED))
@@ -190,8 +214,8 @@ def check_health(session: Session, config_path: Path = _DEFAULT_CONFIG_PATH) -> 
 
     report.checks += [
         _check("Scheduler", lambda: _scheduler(session, config)),
-        _check("Resume", lambda: _resume(session)),
-        _check("API keys", _api_keys),
+        _check("Accounts", lambda: _accounts(session)),
+        _check("Integrations", _api_keys),
         _check("PDF export", _pdf),
         _check("Last 24h", lambda: _activity(session)),
     ]

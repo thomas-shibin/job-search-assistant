@@ -6,9 +6,10 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, JSON, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
-class TailoredResume(Base):
+class TailoredResume(TenantOwned, Base):
     __tablename__ = "tailored_resumes"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -25,7 +26,7 @@ class TailoredResume(Base):
     )
 
 
-class TailoredBulletProvenance(Base):
+class TailoredBulletProvenance(TenantOwned, Base):
     """Traces every AI-generated bullet back to the base-resume bullet it was derived from.
     This is the auditable half of the truthfulness guardrail (the other half is the
     deterministic validator in app/resume/validator.py).

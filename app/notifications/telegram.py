@@ -24,7 +24,6 @@ class TelegramSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
-    chat_id: str | None = Field(default=None, alias="TELEGRAM_CHAT_ID")
 
 
 class TelegramError(RuntimeError):
@@ -51,6 +50,9 @@ class TelegramClient:
             "sendMessage",
             {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True},
         )
+
+    def get_me(self) -> dict:
+        return self._call("getMe", {})  # type: ignore[return-value]
 
     def get_updates(self, offset: int | None, poll_seconds: int) -> list[dict]:
         """Long-poll for new messages (the bot command listener): waits up to

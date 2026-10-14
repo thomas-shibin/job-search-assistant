@@ -8,49 +8,9 @@
   <div>
     <p class="eyebrow">Account</p>
     <h1>Settings</h1>
-    <p class="lead">Saved to the database and applied right away, no restart needed. Secrets
-    (API keys, bot token) stay in <code>.env</code>.</p>
+    <p class="lead">Your preferences, saved to your account and applied right away. Only you can see them.</p>
   </div>
 </header>
-
-<div class="stats">
-  <div class="stat">
-    <div class="stat-label">{{ icon("activity") }} Scanner</div>
-    <div class="stat-value" style="font-size: 1.15rem">
-      {% if scheduler_running %}<span class="status-badge ok">Running</span>{% else %}<span class="status-badge missing">Not running</span>{% endif %}
-    </div>
-    <div class="stat-sub">
-      {% if scheduler_running %}
-        {% if next_scan %}Next scan {{ next_scan.strftime("%Y-%m-%d %H:%M") }}{% endif %}
-      {% else %}
-        not running here (start <code>python cli.py serve</code> or Docker)
-      {% endif %}
-      <form method="post" action="/settings/scan-now" hx-boost="false" style="margin: 0.4rem 0 0"><button type="submit" class="small">{{ icon("refresh") }} Scan now</button></form>
-    </div>
-  </div>
-  <div class="stat" id="catalog">
-    <div class="stat-label">{{ icon("search") }} Search catalog</div>
-    <div class="catalog-counts">
-      {% for kind in ("title", "location", "keyword", "company") %}
-        <span class="chip">{{ catalog.counts.get(kind, 0) }} {{ "companies" if kind == "company" else kind ~ "s" }}</span>
-      {% endfor %}
-    </div>
-    <div class="stat-sub">
-      {% if catalog.running %}Scanning: {{ catalog.message }}{% elif catalog.message %}{{ catalog.message }}{% else %}Suggestions for every search box. Refresh to add what's in the market now.{% endif %}
-    </div>
-    <form method="post" action="/settings/catalog-scan" hx-boost="false" style="margin: 0.5rem 0 0">
-      <button type="submit" class="small" {% if catalog.running %}disabled{% endif %} title="About 50 Adzuna requests">{{ icon("refresh") }} {{ "Scanning…" if catalog.running else "Refresh catalog" }}</button>
-    </form>
-  </div>
-  <div class="stat">
-    <div class="stat-label">{{ icon("key") }} .env secrets</div>
-    <div class="stat-sub" style="margin-top: 0.6rem">
-      {% for name, ok in secrets.items() %}
-        <span class="status-badge {{ 'ok' if ok else 'missing' }}">{{ name }}: {{ "set" if ok else "missing" }}</span>
-      {% endfor %}
-    </div>
-  </div>
-</div>
 
 {% if warnings %}
   <div class="warning-box">

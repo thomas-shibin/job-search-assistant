@@ -23,12 +23,42 @@ def _print_config_errors(errors: list[str]) -> None:
         typer.echo(f"  - {err}", err=True)
 
 
+_acting_user_email: str | None = None
+
+
+@app.callback()
+def _global_options(
+    user: str = typer.Option(None, "--user", envvar="JSA_USER", metavar="EMAIL",
+                             help="Account to act as, for commands that work on one user's data."),
+) -> None:
+    global _acting_user_email
+    _acting_user_email = user
+
+
+def _session():
+    """A database session -- bound to `--user`'s account when given, so a
+    command only ever sees and changes that user's data."""
+    from app.database.session import SessionLocal
+    from app.models.user import Role, User
+    from app.tenancy import bind_tenant
+
+    session = SessionLocal()
+    if _acting_user_email:
+        user = session.query(User).filter(
+            User.email == _acting_user_email.strip().lower(), User.role != Role.GUEST.value).one_or_none()
+        if user is None:
+            session.close()
+            typer.echo(f"No account with email {_acting_user_email}.", err=True)
+            raise typer.Exit(code=1)
+        bind_tenant(session, user.id)
+    return session
+
+
 def _load_settings(config_path: Path):
     """Effective settings from the database (importing `config_path` on first use)."""
     from app.config.store import load_app_config
-    from app.database.session import SessionLocal
 
-    session = SessionLocal()
+    session = _session()
     try:
         return load_app_config(session, config_path)
     except ConfigError as exc:
@@ -93,7 +123,7 @@ def import_config_cmd(
     from app.config.store import has_settings, import_yaml_config
     from app.database.session import SessionLocal
 
-    session = SessionLocal()
+    session = _session()
     try:
         if has_settings(session) and not force:
             typer.echo("Settings already exist in the database. Pass --force to overwrite them from the file.", err=True)
@@ -126,7 +156,7 @@ def import_resume_cmd(
     from app.database.session import SessionLocal
     from app.resume.parser import import_resume as run_import_resume
 
-    session = SessionLocal()
+    session = _session()
     try:
         result = run_import_resume(session, resume_path, force=force)
     finally:
@@ -194,7 +224,7 @@ def discover(
         description=description, url=url, company=company, title=title, location=location
     )
 
-    session = SessionLocal()
+    session = _session()
     try:
         result = ingest_raw_job(session, raw_job)
     finally:
@@ -278,7 +308,7 @@ def analyze(
             typer.echo(str(exc), err=True)
             raise typer.Exit(code=1)
 
-    session = SessionLocal()
+    session = _session()
     try:
         if all_jobs:
             jobs = session.query(Job).filter_by(status=JobStatus.DISCOVERED).all()
@@ -333,7 +363,7 @@ def generate_resume(
     from app.resume.pipeline import generate_resume_bundle
     from app.resume.tailor import NoActiveCandidateProfileError
 
-    session = SessionLocal()
+    session = _session()
     try:
         job = session.get(Job, job_id)
         if job is None:
@@ -376,7 +406,7 @@ def _job_action_command(action_name: str, help_text: str):
 
         transition_fn = getattr(state_machine, action_name)
 
-        session = SessionLocal()
+        session = _session()
         try:
             job = session.get(Job, job_id)
             if job is None:
@@ -423,7 +453,7 @@ def open_application(job_id: int) -> None:
     from app.database.session import SessionLocal
     from app.models.job import Job
 
-    session = SessionLocal()
+    session = _session()
     try:
         job = session.get(Job, job_id)
         if job is None:
@@ -446,19 +476,27 @@ def open_application(job_id: int) -> None:
 def run(
     config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
 ) -> None:
-    """Run the full discover -> analyze -> tailor pipeline once (Milestone 11)."""
+    """Run the full discover -> analyze -> tailor pipeline once: for every
+    member, or with --user for just that account."""
     configure_logging()
 
-    config = _load_settings(config_path)
-
     from app.database.session import SessionLocal
-    from app.scheduler.run import run_once
+    from app.scheduler.run import RunSummary, run_once, scan_members
 
-    session = SessionLocal()
-    try:
-        summary = run_once(session, config)
-    finally:
-        session.close()
+    if not _acting_user_email:
+        results = scan_members(SessionLocal, config_path)
+        summary = RunSummary()
+        for one in results.values():
+            for field in ("jobs_discovered", "jobs_new", "jobs_qualified", "jobs_tailored", "source_failures"):
+                setattr(summary, field, getattr(summary, field) + getattr(one, field))
+        typer.echo(f"Scanned {len(results)} member(s).")
+    else:
+        config = _load_settings(config_path)
+        session = _session()
+        try:
+            summary = run_once(session, config)
+        finally:
+            session.close()
 
     typer.echo(
         f"Run complete: {summary.jobs_discovered} discovered, {summary.jobs_new} new, "
@@ -502,46 +540,6 @@ def serve(
 
 
 
-@app.command("telegram-setup")
-def telegram_setup(
-    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
-) -> None:
-    """Detect and save your Telegram chat id (same as the Watchlist page's
-    "Detect chat ID" button): send your bot any message first. Needs
-    TELEGRAM_BOT_TOKEN in .env.
-    """
-    from app.database.session import SessionLocal
-    from app.notifications.telegram import TelegramError
-    from app.services.telegram import detect_and_save_chat_id
-
-    config = _load_settings(config_path)
-    session = SessionLocal()
-    try:
-        chat = detect_and_save_chat_id(session, config)
-    except TelegramError as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(code=1)
-    finally:
-        session.close()
-    typer.echo(f"Saved Telegram chat id {chat['id']}. Run `python cli.py telegram-test` to check it.")
-
-
-@app.command("telegram-test")
-def telegram_test(
-    config_path: Path = typer.Option(DEFAULT_CONFIG_PATH, "--config", help=_CONFIG_HELP),
-) -> None:
-    """Send a test message to your Telegram chat."""
-    from app.notifications.telegram import TelegramError
-    from app.services.telegram import send_test_message
-
-    try:
-        send_test_message(_load_settings(config_path))
-    except TelegramError as exc:
-        typer.echo(str(exc), err=True)
-        raise typer.Exit(code=1)
-    typer.echo("Test message sent.")
-
-
 @app.command("rebuild-resumes")
 def rebuild_resumes(
     job_id: int = typer.Option(None, "--job", help="Only this job (default: every job with a tailored resume)"),
@@ -561,7 +559,7 @@ def rebuild_resumes(
 
     config = _load_settings(config_path)
     rebuilt = skipped = pdf_failed = 0
-    with SessionLocal() as session:
+    with _session() as session:
         latest = session.query(func.max(TailoredResume.id)).group_by(TailoredResume.job_id)
         if job_id is not None:
             latest = latest.filter(TailoredResume.job_id == job_id)
@@ -599,7 +597,7 @@ def cleanup_jobs(
     config = _load_settings(config_path)
     if days is not None:
         config.retention.delete_jobs_after_days = days
-    with SessionLocal() as session:
+    with _session() as session:
         report = purge_old_jobs(session, config, dry_run=dry_run)
     if config.retention.delete_jobs_after_days <= 0:
         typer.echo("Retention is off (delete_jobs_after_days = 0): nothing deleted.")
@@ -632,7 +630,7 @@ def catalog_scan(
         raise typer.Exit(code=1)
     country = (country or _load_settings(config_path).search.country).lower()
     adzuna = AdzunaSource(app_id=settings.app_id, app_key=settings.app_key, country=country)
-    with SessionLocal() as session:
+    with _session() as session:
         seed_catalog(session)
         report = scan_market(session, adzuna, country=country, progress=lambda m: typer.echo(f"  {m}"))
         totals = counts(session)
@@ -644,8 +642,119 @@ def catalog_scan(
         typer.echo(f"  failed: {error}", err=True)
 
 
+@app.command("claim-legacy-data")
+def claim_legacy_data(email: str = typer.Option(..., "--email", help="The account that should own the data")) -> None:
+    """Give the data from before multi-user accounts (the placeholder owner the
+    upgrade created) to EMAIL: an existing account gets everything moved to it;
+    otherwise the placeholder becomes EMAIL (confirmed), so you can sign in with
+    Google/Facebook on that address or use "Forgot password"."""
+    configure_logging()
+    from app.auth.service import _tenant_models, normalize_email
+    from app.auth.tokens import utcnow
+    from app.database.session import SessionLocal
+    from app.models.user import Role, User
+    from app.tenancy import system_session
+
+    address = normalize_email(email)
+    placeholder_email = "owner@legacy.invalid"
+    with system_session(SessionLocal) as session:
+        legacy = session.query(User).filter(User.email == placeholder_email).one_or_none()
+        if legacy is None:
+            typer.echo("Nothing to claim: there's no placeholder owner (the data already has a real owner).")
+            return
+        target = session.query(User).filter(User.email == address, User.role != Role.GUEST.value).one_or_none()
+        if target is None:
+            legacy.email, legacy.email_verified_at = address, utcnow()
+            session.commit()
+            typer.echo(f"The existing data now belongs to {address} (an admin). Sign in with Google/Facebook on "
+                       "that address, or use \"Forgot password\" on the sign-in page to set a password.")
+            return
+        from app.models.settings import UserSetting
+
+        if session.query(UserSetting).filter(UserSetting.user_id == target.id).first():
+            session.query(UserSetting).filter(UserSetting.user_id == legacy.id).delete()  # keep the target's own
+        for model in _tenant_models():
+            session.query(model).filter(model.user_id == legacy.id).update({model.user_id: target.id})
+        session.delete(legacy)
+        session.commit()
+    typer.echo(f"Moved the existing data to {address}.")
+
+
+@app.command("set-password")
+def set_password(email: str = typer.Option(..., "--email")) -> None:
+    """Set an account's password from the server (e.g. your own admin account
+    before outgoing email is set up). Confirms the address too."""
+    from app.auth.passwords import hash_password, password_problems, PASSWORD_RULES
+    from app.auth.service import normalize_email
+    from app.auth.tokens import utcnow
+    from app.database.session import SessionLocal
+    from app.models.user import AuthSession, Role, User
+    from app.tenancy import system_session
+
+    with system_session(SessionLocal) as session:
+        user = session.query(User).filter(User.email == normalize_email(email), User.role != Role.GUEST.value).one_or_none()
+        if user is None:
+            typer.echo(f"No account with email {email}.", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(PASSWORD_RULES)
+        password = typer.prompt("New password", hide_input=True, confirmation_prompt=True)
+        problems = password_problems(password, email=user.email, first_name=user.first_name, last_name=user.last_name)
+        if problems:
+            typer.echo("Choose a stronger password: " + "; ".join(problems), err=True)
+            raise typer.Exit(code=1)
+        user.password_hash = hash_password(password)
+        user.email_verified_at = user.email_verified_at or utcnow()
+        user.failed_logins, user.locked_until = 0, None
+        session.query(AuthSession).filter(AuthSession.user_id == user.id).delete()
+        session.commit()
+    typer.echo(f"Password set for {email}. Sign in at the app's /login page.")
+
+
+@app.command("grant-role")
+def grant_role_cmd(email: str = typer.Option(..., "--email"),
+                   role: str = typer.Option(..., "--role", help="e.g. SUPER_ADMIN, ADMIN, JOB_SEEKER"),
+                   revoke: bool = typer.Option(False, "--revoke", help="Take the role away instead")) -> None:
+    """Give (or take) a role from the server -- the trusted way to create the
+    first Super Admin or recover access. Recorded in the audit log."""
+    from app.admin.access import audit
+    from app.auth import rbac
+    from app.auth.service import normalize_email
+    from app.database.session import SessionLocal
+    from app.models.rbac import UserRole
+    from app.models.user import Role, User
+    from app.tenancy import system_session
+
+    with system_session(SessionLocal) as session:
+        rbac.sync_catalog(session.connection())
+        user = session.query(User).filter(User.email == normalize_email(email), User.role != Role.GUEST.value).one_or_none()
+        role_id = rbac.role_id(session, role.upper())
+        if user is None or role_id is None:
+            typer.echo(f"No account with email {email}." if user is None else f"No role named {role}.", err=True)
+            raise typer.Exit(code=1)
+        before = sorted(rbac.roles_of(user, session))
+        if revoke:
+            if role.upper() == rbac.SUPER_ADMIN and rbac.is_last_super_admin(session, user.id):
+                typer.echo("That is the last active Super Admin; grant the role to someone else first.", err=True)
+                raise typer.Exit(code=1)
+            session.query(UserRole).filter(UserRole.user_id == user.id, UserRole.role_id == role_id).delete()
+        else:
+            rbac.grant_role(session, user, role.upper())
+        rbac.forget(user)
+        after = sorted(rbac.roles_of(user, session))
+        if after != before:
+            audit(session, None, "user.roles.update", "user", user.id, {"roles": before}, {"roles": after})
+        session.commit()
+    typer.echo(f"{email} now has: {', '.join(after) or 'no roles'}.")
+
+
 def main() -> None:
-    app()
+    from app.tenancy import TenantContextError
+
+    try:
+        app()
+    except TenantContextError:
+        typer.echo("This command works on one account's data -- pass --user EMAIL (or set JSA_USER).", err=True)
+        raise SystemExit(2)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,13 @@ before anything is submitted. See `docs/ARCHITECTURE.md` for the full design and
 milestone roadmap. All 13 milestones are implemented — see "Project status" below for
 what each one covers.
 
+**Multi-user.** Everyone signs in -- email and password (with email confirmation),
+Google, Facebook, or as a guest who can search and browse -- and each member's resume,
+jobs, alerts and settings are private to them. Admins (`ADMIN_EMAILS`) manage platform
+settings, usage and health. See [docs/MULTI_TENANCY.md](docs/MULTI_TENANCY.md) for how
+isolation is enforced and how to set up sign-in. Per-user CLI commands take
+`--user EMAIL`, e.g. `python cli.py --user you@example.com import-resume resume.docx`.
+
 ## Requirements
 
 - Windows (PowerShell) or Ubuntu/Linux (bash) — the same code runs on both
@@ -341,17 +348,17 @@ locations or keywords, picked from the same dropdowns as the job search:
 
 Jobs already seen in earlier scans are never re-alerted. To set up Telegram:
 
-1. Create a bot with [@BotFather](https://t.me/BotFather) and put its token in `.env` as
-   `TELEGRAM_BOT_TOKEN` (the only Telegram value kept in `.env`).
-2. Open your bot in Telegram and press **Start** (or send it any message).
-3. On the Watchlist page, click **Detect chat ID**, then **Send test message**.
-4. Tick **Enabled**, save, and add your watches.
+1. (Admin, once) Create a bot with [@BotFather](https://t.me/BotFather) and put its token
+   in `.env` as `TELEGRAM_BOT_TOKEN`.
+2. (Each member) On the Watchlist page, click **Connect Telegram** and press **Start** in
+   the chat that opens -- a single-use link ties that chat to your account only.
+3. Click **Send test message**, tick **Enabled**, save, and add your watches.
 
-Send the bot **/health** while `serve` is running and it replies with a status update:
-database, settings, scheduler (last scan result, next scan), resume, API keys, PDF export,
-and the last 24 hours' new jobs, alerts and AI spend. It only answers your saved chat id, and
-only starts listening once that's set. The same report is at `http://127.0.0.1:8000/health`
-as JSON (503 if the database is down). **/help** lists the commands.
+Admins can send the bot **/health** from their linked chat while `serve` is running for a
+platform status update: database, accounts, scheduler (last scan, next scan), integrations,
+PDF export, and the last 24 hours' new jobs, alerts and spend. It answers admin chats only.
+The same report is on the admin **Health** page; the public `/health` is a bare liveness
+check for Docker.
 
 A watch with only companies has nothing to search Adzuna by; it checks the jobs your other
 searches find (add the company's Greenhouse/Lever board under Settings → Search profiles to

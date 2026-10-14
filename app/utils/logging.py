@@ -34,6 +34,10 @@ def configure_logging(level: int = logging.INFO) -> None:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(StructuredFormatter())
     root.addHandler(handler)
+    # httpx logs every request URL at INFO, and some carry secrets in the URL
+    # (the Telegram bot token, the job-board app key): keep only its warnings.
+    for noisy in ("httpx", "httpcore"):
+        logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def log_event(logger: logging.Logger, event: str, level: int = logging.INFO, **fields) -> None:

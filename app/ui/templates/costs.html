@@ -1,26 +1,34 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}AI usage - Job Assistant{% endblock %}
-{% block crumb %}AI usage{% endblock %}
+{% block title %}Usage &amp; costs - Job Assistant{% endblock %}
+{% block crumb %}Usage &amp; costs{% endblock %}
 {% block content %}
+{% include "admin/_nav.html" %}
 <header class="page-header">
   <div>
-    <p class="eyebrow">Account</p>
-    <h1>AI cost tracking</h1>
-    <p class="lead">Estimated cost is a rough figure from token counts (spec §19), not an invoice.</p>
+    <p class="eyebrow">Platform</p>
+    <h1>Usage &amp; costs</h1>
+    <p class="lead">Analysis usage across every member. Estimated cost is a rough figure from token counts, not an invoice.</p>
   </div>
 </header>
 
 {% set total_cost = summary | sum(attribute="estimated_cost") %}
 {% set total_calls = summary | sum(attribute="call_count") %}
 <div class="stats">
+  {% if accounts %}
+  <div class="stat">
+    <div class="stat-label">{{ icon("user") }} Accounts</div>
+    <div class="stat-value">{{ accounts.members }}</div>
+    <div class="stat-sub">{{ accounts.using_analysis }} have used analysis &middot; {{ accounts.guests }} recent guests</div>
+  </div>
+  {% endif %}
   <div class="stat">
     <div class="stat-label">{{ icon("coins") }} Estimated spend</div>
     <div class="stat-value">${{ "%.4f"|format(total_cost) }}</div>
     <div class="stat-sub">USD, all time</div>
   </div>
   <div class="stat">
-    <div class="stat-label">{{ icon("activity") }} AI calls</div>
+    <div class="stat-label">{{ icon("activity") }} Analysis calls</div>
     <div class="stat-value">{{ total_calls }}</div>
     <div class="stat-sub">{{ summary | sum(attribute="cache_hit_count") }} answered from cache</div>
   </div>
@@ -56,7 +64,7 @@
           <td class="num">{{ "%.4f"|format(row.estimated_cost) }}</td>
         </tr>
         {% else %}
-        <tr><td colspan="6" class="empty">No AI calls logged yet.</td></tr>
+        <tr><td colspan="6" class="empty">No analysis calls logged yet.</td></tr>
         {% endfor %}
       </tbody>
       {% if summary %}

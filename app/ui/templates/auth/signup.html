@@ -1,0 +1,6 @@
+{% extends "auth/base.html" %}
+{% block title %}Sign up - Job Assistant{% endblock %}
+{% block card %}
+{% set flow_mode = "signup" %}{% set flow_next = next %}
+{% include "auth/_flow.html" %}
+{% endblock %}

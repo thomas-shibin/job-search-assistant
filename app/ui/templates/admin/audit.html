@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Audit log - Admin - Job Assistant{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Audit log</h1>
+    <p class="lead">Every change to roles, permissions, user access, features, platform settings and job sources: who made it, when, and what changed. {{ total }} entr{{ "ies" if total != 1 else "y" }}.</p>
+  </div>
+</header>
+<form method="get" action="/admin/audit" class="filters admin-filters">
+  <label class="sr-only" for="a-action">Kind of change</label>
+  <select id="a-action" name="action">
+    <option value="">All changes</option>
+    {% for a in actions %}<option value="{{ a }}" {{ "selected" if a == action }}>{{ a|capitalize }}</option>{% endfor %}
+  </select>
+  <label class="sr-only" for="a-actor">Changed by</label>
+  <input id="a-actor" type="search" name="actor" value="{{ actor }}" placeholder="Changed by (email)">
+  <button type="submit" class="primary pill">{{ icon("filter") }} Filter</button>
+  {% if action or actor %}<a href="/admin/audit" class="button pill ghost">Clear</a>{% endif %}
+</form>
+{% include "admin/_audit_rows.html" %}
+{% if pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page > 1 %}<a class="button pill outline small" href="?action={{ action|urlencode }}&amp;actor={{ actor|urlencode }}&amp;page={{ page - 1 }}">{{ icon("back") }} Newer</a>{% endif %}
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="button pill outline small" href="?action={{ action|urlencode }}&amp;actor={{ actor|urlencode }}&amp;page={{ page + 1 }}">Older {{ icon("forward") }}</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

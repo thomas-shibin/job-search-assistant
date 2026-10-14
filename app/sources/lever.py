@@ -70,5 +70,6 @@ class LeverSource:
             location=categories.get("location"),
             description="\n\n".join(p for p in description_parts if p),
             date_posted=_parse_epoch_millis(posting.get("createdAt")),
+            employment_type=categories.get("commitment"),
             raw_payload=posting,
         )

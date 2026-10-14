@@ -23,8 +23,7 @@ from pydantic import BaseModel
 
 # Help text shown under a field, keyed by dotted path without list indices.
 HELP: dict[str, str] = {
-    "candidate.base_resume": "Path to your base resume (.docx or .pdf), relative to the project folder.",
-    "candidate.override_parsed_name": "Use the name above instead of the one parsed from your resume header.",
+        "candidate.override_parsed_name": "Use the name above instead of the one parsed from your resume header.",
     "search_profiles.locations": "One per line. Jobs from this profile's boards outside these are filtered out.",
     "search_profiles.address_profile": "Key of an address profile below; used on tailored resumes for this search.",
     "search_profiles.titles": "One per line. Used to score title similarity for jobs from this profile's boards.",
@@ -40,24 +39,27 @@ HELP: dict[str, str] = {
     "search.keywords": "Optional. Jobs must mention at least one of these, e.g. Java, Kafka. Empty = no filter.",
     "search.locations": "Cities, regions or provinces. \"Remote\" finds remote jobs anywhere in the country. Empty = anywhere.",
     "search.country": "Two-letter country code, e.g. ca, us, gb.",
-    "search.adzuna_daily_limit": "Requests/day your Adzuna plan allows (free: ~250). Scheduled scans use at most 60%.",
     "search.scan_in_background": "Also fetch new matches on every scheduled scan (feeds Telegram watchlist alerts).",
     "matching.minimum_score": "Jobs scoring at least this are QUALIFIED and get a tailored resume.",
     "matching.negative_keywords": "One per line. Jobs whose title contains any of these are filtered out.",
     "matching.weights": "Must add up to 100.",
-    "ai.enabled": "AI requirement extraction (billed OpenAI calls; needs OPENAI_API_KEY in .env).",
-    "ai.provider": "openai or mock (free, offline).",
-    "notifications.minimum_score": "Desktop notification for qualified jobs scoring at least this.",
-    "scheduler.enabled": "Scan job sources automatically while `serve` / Docker is running.",
+    "ai.enabled": "Extract each new job's requirements during scans (billed per job by the analysis provider).",
+    "platform.job_search_daily_limit": "Listing requests per day across the whole platform. Scheduled scans share at most 60% of it among members.",
+    "platform.member_searches_per_hour": "New job searches a member may run per hour. Paging through a search, or running the same search again within the hour, is free. Admins are unlimited; override per member on the Activity page.",
+    "platform.member_ai_actions_per_hour": "Match analyses and tailored resumes a member may run per hour (answers served from cache don't count).",
+    "platform.guest_searches_per_hour": "New job searches one guest may run per hour.",
+    "platform.pool_refresh_hours": "How often the company careers-site jobs (Job sources page) are refreshed, in hours. 0 turns refreshing off.",
+    "platform.max_search_pages": "How many result pages one search can page through -- each page is a listing request.",
+    "ai.provider": "Provider id; 'mock' is a free offline stand-in for testing.",
+    "notifications.minimum_score": "Notify about qualified jobs scoring at least this.",
+    "scheduler.enabled": "Scan job sources automatically for every member while the server runs.",
     "scheduler.interval_minutes": "Minutes between scans (60 = hourly). Takes effect immediately.",
-    "watchlist.enabled": "Send Telegram alerts for new jobs matching any watch below.",
+    "watchlist.enabled": "Send Telegram alerts for new jobs matching any of your watches.",
     "watchlist.max_alerts_per_run": "Past this many alerts in one scan, the rest come as one summary message.",
-    "watchlist.dashboard_url": "Optional, e.g. http://127.0.0.1:8001 -- adds a dashboard link to alerts.",
-    "watchlist.telegram_chat_id": "Filled in by Detect chat ID.",
-}
+    }
 
 
-_LABELS = {"search": "Job search", "ai": "AI", "dashboard_url": "Dashboard URL", "telegram_chat_id": "Telegram chat ID"}
+_LABELS = {"search": "Job search", "ai": "Analysis provider", "platform": "Limits", "candidate": "Your name"}
 
 
 def _label(name: str) -> str:

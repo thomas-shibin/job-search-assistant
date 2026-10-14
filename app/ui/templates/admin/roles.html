@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Roles & permissions - Admin - Job Assistant{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Roles &amp; permissions</h1>
+    <p class="lead">A role is a set of permissions. Users can hold several roles and get every permission of each.
+      Changes apply from each user's next page.{% if can_route("/admin/permissions") %} <a href="/admin/permissions">See all permissions</a>.{% endif %}</p>
+  </div>
+</header>
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+<div class="role-cards">
+  {% for r in roles %}
+  <a class="panel role-card" href="/admin/roles/{{ r.role.id }}">
+    <div class="role-card-head"><strong>{{ r.role.name }}</strong>
+      {% if r.role.name == "SUPER_ADMIN" %}<span class="chip chip-on">{{ icon("lock") }} protected</span>{% elif r.role.is_system_role %}<span class="chip">built-in</span>{% else %}<span class="chip">custom</span>{% endif %}</div>
+    <p class="muted">{{ r.role.description or "No description." }}</p>
+    <div class="role-card-foot"><span>{{ icon("users") }} {{ r.users }} user{{ "s" if r.users != 1 }}</span>
+      <span>{{ icon("key") }} {{ r.permissions }} permission{{ "s" if r.permissions != 1 }}</span></div>
+  </a>
+  {% endfor %}
+</div>
+
+{% if can("roles.create") %}
+<section class="panel" id="new-role">
+  <div class="panel-head"><div><h2>Create a custom role</h2><p>For example a CONTENT_REVIEWER who can only see job sources. You'll choose its permissions next.</p></div></div>
+  <form method="post" action="/admin/roles" class="form-grid">
+    <div class="field"><label for="r-name">Name</label>
+      <input id="r-name" name="name" required maxlength="40" pattern="[A-Za-z][A-Za-z0-9_ \-]{1,39}" placeholder="CONTENT_REVIEWER">
+      <small class="field-hint">Capital letters, digits and underscores.</small></div>
+    <div class="field"><label for="r-desc">Description</label>
+      <input id="r-desc" name="description" maxlength="300" placeholder="What this role is for"></div>
+    <div class="form-actions"><button type="submit" class="primary pill">{{ icon("plus") }} Create role</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

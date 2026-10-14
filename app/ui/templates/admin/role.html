@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ role.name }} - Roles - Admin - Job Assistant{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow"><a href="/admin/roles">{{ icon("back") }} All roles</a></p>
+    <h1>{{ role.name }}
+      {% if role.name == "SUPER_ADMIN" %}<span class="chip chip-on">{{ icon("lock") }} protected</span>{% elif role.is_system_role %}<span class="chip">built-in</span>{% else %}<span class="chip">custom</span>{% endif %}</h1>
+    <p class="lead">{{ role.description or "No description." }} &middot; {{ holders }} user{{ "s" if holders != 1 }}
+      {% if can_route("/admin/users") and holders %}(<a href="/admin/users?role={{ role.name|urlencode }}">see them</a>){% endif %}</p>
+  </div>
+  <div class="role-switch">
+    <label for="role-pick">Role</label>
+    <select id="role-pick" data-nav-select>
+      {% for r in roles %}<option value="/admin/roles/{{ r.role.id }}" {{ "selected" if r.role.id == role.id }}>{{ r.role.name }}</option>{% endfor %}
+    </select>
+  </div>
+</header>
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+{% if role.name == "SUPER_ADMIN" %}
+<div class="notice">{{ icon("info") }}<div class="alert-body">The Super Admin role always has every permission, including ones added later, and can't be restricted. Only a Super Admin can give it to someone, and the last active Super Admin can't lose it.</div></div>
+{% elif not editable %}
+<div class="notice">{{ icon("info") }}<div class="alert-body">You can view this role's permissions. Changing them needs the <code>permissions.manage</code> permission.</div></div>
+{% endif %}
+
+<form method="post" action="/admin/roles/{{ role.id }}/permissions" class="matrix-form" data-matrix>
+  <section class="panel">
+    <div class="panel-head">
+      <div><h2>Permissions</h2><p><span data-matrix-count>{{ held }}</span> granted.
+        {% if editable %}Locked switches are ones you aren't allowed to grant or remove; {{ icon("lock") }} marks protected permissions only a Super Admin can grant.{% endif %}</p></div>
+    </div>
+    <div class="table-wrap">
+      <table class="matrix">
+        <thead><tr><th scope="col">Resource</th><th scope="col">Permissions</th></tr></thead>
+        <tbody>
+          {% for resource, perms in groups %}
+          <tr>
+            <th scope="row">{{ resource|replace("_", " ")|replace(".", " ")|capitalize }}</th>
+            <td>
+              <div class="perm-toggles">
+                {% for p in perms %}
+                <label class="perm-toggle {{ 'locked' if p.locked }}" title="{{ p.perm.description }}">
+                  <input type="checkbox" name="permissions" value="{{ p.perm.name }}" {{ "checked" if p.on }} {{ "disabled" if p.locked }} data-initial="{{ '1' if p.on else '0' }}">
+                  <span class="switch" aria-hidden="true"></span>
+                  <span class="perm-text"><span class="perm-action">{{ p.perm.action|replace(".", " ")|replace("_", " ") }}{% if p.protected %} {{ icon("lock") }}{% endif %}</span>
+                    <small>{{ p.perm.description }}</small></span>
+                </label>
+                {% endfor %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if editable %}
+    <div class="panel-foot matrix-actions">
+      <span class="muted" data-matrix-status aria-live="polite">No unsaved changes.</span>
+      <button type="reset" class="pill ghost" data-matrix-reset>Reset unsaved changes</button>
+      <a href="/admin/roles" class="button pill outline">Cancel</a>
+      <button type="submit" class="primary pill">{{ icon("check") }} Save changes</button>
+    </div>
+    {% endif %}
+  </section>
+</form>
+
+{% if can_rename or can_delete %}
+<div class="chart-grid">
+  {% if can_rename %}
+  <section class="panel">
+    <div class="panel-head"><div><h2>Role details</h2></div></div>
+    <form method="post" action="/admin/roles/{{ role.id }}" class="form-grid">
+      <div class="field"><label for="r-name">Name</label><input id="r-name" name="name" value="{{ role.name }}" required maxlength="40"></div>
+      <div class="field"><label for="r-desc">Description</label><input id="r-desc" name="description" value="{{ role.description }}" maxlength="300"></div>
+      <div class="form-actions"><button type="submit" class="primary pill">Save details</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% if can_delete %}
+  <section class="panel">
+    <div class="panel-head"><div><h2>Delete role</h2><p>Only possible when no user has it.</p></div></div>
+    <form method="post" action="/admin/roles/{{ role.id }}/delete" data-confirm="Delete the role {{ role.name }}?">
+      <button type="submit" class="danger" {{ "disabled" if holders }}>{{ icon("trash") }} Delete {{ role.name }}</button>
+      {% if holders %}<p class="muted">{{ holders }} user{{ "s" if holders != 1 }} still {{ "have" if holders != 1 else "has" }} this role.</p>{% endif %}
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

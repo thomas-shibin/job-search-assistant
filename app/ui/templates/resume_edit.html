@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Edit resume - Job Assistant{% endblock %}
+{% block crumb %}Edit resume{% endblock %}
+{# Values: what was just submitted (after an error), else the current resume. #}
+{% macro v(name, default) %}{{ form.get(name, "") if form else (default if default is not none else "") }}{% endmacro %}
+{% macro checked(name, default) %}{% if form %}{% if form.get(name) == "1" %}checked{% endif %}{% elif default %}checked{% endif %}{% endmacro %}
+{% macro month(d) %}{{ d.strftime("%Y-%m") if d else "" }}{% endmacro %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Resume</p>
+    <h1>Edit your resume</h1>
+    <p class="lead">Saving creates version {{ current.version + 1 }}; earlier versions are kept.
+      Rewording or removing your summary and bullets is written straight into your Word file, keeping its design.</p>
+  </div>
+  <div class="page-actions"><a class="button" href="/resume">{{ icon("back") }} Cancel</a></div>
+</header>
+
+{% if errors %}<div class="error">{{ icon("alert") }}<div class="alert-body"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div></div>{% endif %}
+
+<form method="post" action="/resume/edit" class="resume-editor" hx-boost="false">
+  {% if layout_reasons %}
+  <div class="warning-box">{{ icon("alert") }}
+    <div class="alert-body">
+      <strong>These changes can't be written into your Word design:</strong> {{ layout_reasons|join(", ") }}.
+      Save them anyway and your resume will use the standard layout from now on (you can always upload your Word file again).
+      <div class="actions" style="margin-top: 0.6rem">
+        <button type="submit" name="allow_layout_change" value="1" class="primary">Save with the standard layout</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>About you</h2></div></div>
+    <div class="auth-form">
+      <label>Name<input name="full_name" value="{{ v('full_name', current.full_name) }}" maxlength="255" required></label>
+      <label>Contact line<input name="contact_line" value="{{ v('contact_line', current.contact_line) }}" maxlength="512" placeholder="Phone · email · city · LinkedIn"></label>
+      <label>Summary<textarea name="summary" rows="5" maxlength="3000">{{ v('summary', current.summary) }}</textarea></label>
+      <label>Skills <span class="optional">(one per line, or separated by commas)</span>
+        <textarea name="skills" rows="4">{{ v('skills', current.skills|map(attribute="name")|join("\n")) }}</textarea></label>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Experience</h2><p>Most recent first.</p></div></div>
+    {% for emp in current.employments %}
+      {% set i = loop.index0 %}{% set p = "role-" ~ i ~ "-" %}
+      <fieldset class="edit-role">
+        <input type="hidden" name="{{ p }}id" value="{{ emp.id }}">
+        <div class="two-inputs">
+          <label>Job title<input name="{{ p }}title" value="{{ v(p ~ 'title', emp.title) }}" maxlength="255"></label>
+          <label>Company<input name="{{ p }}company" value="{{ v(p ~ 'company', emp.company) }}" maxlength="255"></label>
+        </div>
+        <div class="three-inputs">
+          <label>Location<input name="{{ p }}location" value="{{ v(p ~ 'location', emp.location) }}" maxlength="255"></label>
+          <label>Start<input type="month" name="{{ p }}start" value="{{ v(p ~ 'start', month(emp.start_date)) }}"></label>
+          <label>End<input type="month" name="{{ p }}end" value="{{ v(p ~ 'end', month(emp.end_date)) }}"></label>
+        </div>
+        <label class="check-row"><input type="checkbox" name="{{ p }}current" value="1" {{ checked(p ~ 'current', emp.is_current) }}> I currently work here</label>
+        <div class="edit-bullets">
+          {% for b in emp.bullets|sort(attribute="order_index") %}
+            {% set bp = p ~ "bullet-" ~ loop.index0 ~ "-" %}
+            <div class="edit-bullet">
+              <input type="hidden" name="{{ bp }}id" value="{{ b.id }}">
+              <textarea name="{{ bp }}text" rows="2" maxlength="1000">{{ v(bp ~ 'text', b.text) }}</textarea>
+              <label class="check-row small"><input type="checkbox" name="{{ bp }}delete" value="1" {{ checked(bp ~ 'delete', false) }}> Remove</label>
+            </div>
+          {% endfor %}
+          <label>Add bullets <span class="optional">(one per line)</span><textarea name="{{ p }}new-bullets" rows="2">{{ v(p ~ 'new-bullets', '') }}</textarea></label>
+        </div>
+        <label class="check-row danger-text"><input type="checkbox" name="{{ p }}delete" value="1" {{ checked(p ~ 'delete', false) }}> Remove this whole role</label>
+      </fieldset>
+    {% endfor %}
+    {% set p = "role-" ~ current.employments|length ~ "-" %}
+    <details class="edit-role new" {% if form and form.get(p ~ 'title') %}open{% endif %}>
+      <summary>{{ icon("plus") }} Add a role</summary>
+      <div class="two-inputs">
+        <label>Job title<input name="{{ p }}title" value="{{ v(p ~ 'title', '') }}" maxlength="255"></label>
+        <label>Company<input name="{{ p }}company" value="{{ v(p ~ 'company', '') }}" maxlength="255"></label>
+      </div>
+      <div class="three-inputs">
+        <label>Location<input name="{{ p }}location" value="{{ v(p ~ 'location', '') }}" maxlength="255"></label>
+        <label>Start<input type="month" name="{{ p }}start" value="{{ v(p ~ 'start', '') }}"></label>
+        <label>End<input type="month" name="{{ p }}end" value="{{ v(p ~ 'end', '') }}"></label>
+      </div>
+      <label class="check-row"><input type="checkbox" name="{{ p }}current" value="1" {{ checked(p ~ 'current', false) }}> I currently work here</label>
+      <label>Bullets <span class="optional">(one per line)</span><textarea name="{{ p }}new-bullets" rows="3">{{ v(p ~ 'new-bullets', '') }}</textarea></label>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Education</h2></div></div>
+    {% for edu in current.education %}
+      {% set p = "edu-" ~ loop.index0 ~ "-" %}
+      <div class="three-inputs">
+        <label>School<input name="{{ p }}institution" value="{{ v(p ~ 'institution', edu.institution) }}" maxlength="255"></label>
+        <label>Degree<input name="{{ p }}degree" value="{{ v(p ~ 'degree', edu.degree) }}" maxlength="255"></label>
+        <label>Field<input name="{{ p }}field" value="{{ v(p ~ 'field', edu.field_of_study) }}" maxlength="255"></label>
+      </div>
+      <div class="two-inputs">
+        <label>Finished<input type="month" name="{{ p }}end" value="{{ v(p ~ 'end', month(edu.end_date)) }}"></label>
+        <label class="check-row"><input type="checkbox" name="{{ p }}delete" value="1" {{ checked(p ~ 'delete', false) }}> Remove</label>
+      </div>
+    {% endfor %}
+    {% set p = "edu-" ~ current.education|length ~ "-" %}
+    <details class="edit-role new"><summary>{{ icon("plus") }} Add education</summary>
+      <div class="three-inputs">
+        <label>School<input name="{{ p }}institution" value="{{ v(p ~ 'institution', '') }}" maxlength="255"></label>
+        <label>Degree<input name="{{ p }}degree" value="{{ v(p ~ 'degree', '') }}" maxlength="255"></label>
+        <label>Field<input name="{{ p }}field" value="{{ v(p ~ 'field', '') }}" maxlength="255"></label>
+      </div>
+      <label>Finished<input type="month" name="{{ p }}end" value="{{ v(p ~ 'end', '') }}"></label>
+    </details>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Certifications &amp; projects</h2></div></div>
+    <label class="block-label">Certifications <span class="optional">(one per line)</span>
+      <textarea name="certifications" rows="3">{{ v('certifications', current.certifications|map(attribute="name")|join("\n")) }}</textarea></label>
+    {% for project in current.projects %}
+      {% set p = "project-" ~ loop.index0 ~ "-" %}
+      <div class="two-inputs">
+        <label>Project<input name="{{ p }}name" value="{{ v(p ~ 'name', project.name) }}" maxlength="255"></label>
+        <label class="check-row"><input type="checkbox" name="{{ p }}delete" value="1" {{ checked(p ~ 'delete', false) }}> Remove</label>
+      </div>
+      <label class="block-label">Description<textarea name="{{ p }}description" rows="2" maxlength="3000">{{ v(p ~ 'description', project.description) }}</textarea></label>
+    {% endfor %}
+    {% set p = "project-" ~ current.projects|length ~ "-" %}
+    <details class="edit-role new"><summary>{{ icon("plus") }} Add a project</summary>
+      <label>Project<input name="{{ p }}name" value="{{ v(p ~ 'name', '') }}" maxlength="255"></label>
+      <label>Description<textarea name="{{ p }}description" rows="2" maxlength="3000">{{ v(p ~ 'description', '') }}</textarea></label>
+    </details>
+  </section>
+
+  <div class="form-foot sticky-save">
+    <a class="button" href="/resume">Cancel</a>
+    <button type="submit" class="primary">{{ icon("check") }} Save resume</button>
+  </div>
+</form>
+{% endblock %}

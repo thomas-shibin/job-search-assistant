@@ -1,0 +1,14 @@
+{% extends "auth/base.html" %}
+{% block title %}Forgot password - Job Assistant{% endblock %}
+{% block layout %}single{% endblock %}
+{% block aside %}{% endblock %}
+{% block card %}
+<h1 class="flow-title">Forgot password</h1>
+<p class="flow-sub">Enter your account's email and we'll send you a link to choose a new password.</p>
+<form method="post" action="/forgot-password" class="auth-form">
+  <div class="field"><label for="fp-email">Email</label>
+    <input type="email" id="fp-email" name="email" autocomplete="email" required autofocus></div>
+  <button type="submit" class="primary pill large wide">Send reset link</button>
+</form>
+<p class="auth-switch"><a href="/login">Back to sign in</a></p>
+{% endblock %}

@@ -133,12 +133,52 @@ def _build_notification_provider() -> NotificationProvider | None:
 
 
 def run_once(session: Session, config: AppConfig) -> RunSummary:
+    """One scan for the user `session` is bound to (or a single-user database)."""
     try:
         with run_lock():
             return _run(session, config)
     except RunAlreadyInProgressError as exc:
         logger.warning(str(exc))
         return RunSummary(skipped=True)
+
+
+def scan_members(session_factory, config_path) -> dict[int, RunSummary]:
+    """One scheduled scan for every member: each runs in a session bound to that
+    member alone (their searches, watches, jobs and alerts only), and they share
+    the platform's daily listing-request budget equally."""
+    from app.auth import rbac
+    from app.auth.service import purge_expired
+    from app.config.store import load_app_config
+    from app.models.user import Role, User
+    from app.tenancy import system_session, tenant_session
+
+    results: dict[int, RunSummary] = {}
+    try:
+        with run_lock():
+            with system_session(session_factory) as session:
+                # Scheduled scans are job alerts: only while the feature is on, and only
+                # for accounts whose roles currently allow alerts (app/auth/rbac.py).
+                members = [u.id for u in session.query(User).filter(
+                    User.role != Role.GUEST.value, User.is_active.is_(True), User.email_verified_at.is_not(None)
+                ).order_by(User.id) if u.can("alerts.manage")]
+                if not rbac.feature_on(session, "job_alerts"):
+                    logger.info("Job alerts are turned off; skipping the scheduled scans")
+                    members = []
+                daily_limit = load_app_config(session, config_path).platform.job_search_daily_limit
+            share = max(1, daily_limit // max(len(members), 1))
+            for user_id in members:
+                with tenant_session(session_factory, user_id) as session:
+                    try:
+                        config = load_app_config(session, config_path)
+                        config.search.adzuna_daily_limit = share
+                        results[user_id] = _run(session, config, desktop_notifications=False)
+                    except Exception:
+                        session.rollback()
+                        logger.exception("Scheduled scan failed for user_id=%s", user_id)
+            purge_expired(session_factory)
+    except RunAlreadyInProgressError as exc:
+        logger.warning(str(exc))
+    return results
 
 
 def _run_source(
@@ -220,7 +260,7 @@ def _run_source(
     session.commit()
 
 
-def _run(session: Session, config: AppConfig) -> RunSummary:
+def _run(session: Session, config: AppConfig, *, desktop_notifications: bool = True) -> RunSummary:
     summary = RunSummary()
     scheduler_run = SchedulerRun(status="RUNNING")
     session.add(scheduler_run)
@@ -233,7 +273,8 @@ def _run(session: Session, config: AppConfig) -> RunSummary:
         except AIProviderConfigError:
             logger.warning("AI provider misconfigured; continuing this run without AI extraction", exc_info=True)
 
-    notification_provider = _build_notification_provider()
+    # Desktop pop-ups only make sense for a single user on their own machine.
+    notification_provider = _build_notification_provider() if desktop_notifications else None
     # Province of each job's listed location, via the location catalog
     # ("Mississauga, Peel region" -> ON), for watches that name a province.
     watchlist_alerter = build_watchlist_alerter(

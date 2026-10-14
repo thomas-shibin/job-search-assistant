@@ -1,0 +1,25 @@
+{# One table of audit entries; `rows` = [{"entry": AuditLog, "actor": User|None}] #}
+{% macro change(value) -%}
+  {%- if value is mapping -%}
+    {%- for k, v in value.items() -%}<span class="kv-pair"><span class="muted">{{ k }}:</span> {{ v|join(", ") if v is iterable and v is not string and v is not mapping else v }}</span>{%- endfor -%}
+  {%- elif value is not none -%}{{ value }}{%- endif -%}
+{%- endmacro %}
+<div class="table-wrap">
+  <table class="job-table audit-table">
+    <thead><tr><th>When (UTC)</th><th>Who</th><th>Action</th><th>Target</th><th>Before</th><th>After</th></tr></thead>
+    <tbody>
+      {% for r in rows %}{% set e = r.entry %}
+      <tr>
+        <td class="nowrap">{{ e.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+        <td>{% if r.actor %}<a href="/admin/users/{{ r.actor.id }}">{{ r.actor.email }}</a>{% elif e.actor_user_id %}<span class="muted">deleted user</span>{% else %}<span class="muted">system</span>{% endif %}</td>
+        <td><code>{{ e.action }}</code></td>
+        <td>{{ e.resource_type }}{% if e.resource_id %} <span class="muted">#{{ e.resource_id }}</span>{% endif %}</td>
+        <td class="audit-change">{{ change(e.old_value) }}</td>
+        <td class="audit-change">{{ change(e.new_value) }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="empty">Nothing recorded yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

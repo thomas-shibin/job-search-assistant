@@ -20,3 +20,19 @@ data/resumes/*
 !data/resumes/.gitkeep
 data/applications/**
 !data/applications/.gitkeep
+
+# Server logs
+data/logs/
+
+# Files dropped into the project root (downloaded resumes etc.) and packages
+/*.docx
+/*.pdf
+/*.zip
+/tmp/
+
+# Database files of any kind (WAL/SHM journals, backups) and saved emails:
+# they hold users' personal data and must never be committed.
+data/*.db-wal
+data/*.db-shm
+data/backups/
+data/mail_outbox/

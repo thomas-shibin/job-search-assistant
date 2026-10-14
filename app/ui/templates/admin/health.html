@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Health - Job Assistant{% endblock %}
+{% block crumb %}Health{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Health</h1>
+    <p class="lead">{{ {"ok": "All systems OK", "degraded": "Running with warnings", "down": "Down"}[report.status] }}.
+      Also on Telegram: send <code>/health</code> to the bot from your linked chat. JSON: <a href="/admin/health.json">/admin/health.json</a></p>
+  </div>
+</header>
+<section class="panel flush">
+  <div class="table-wrap">
+    <table class="job-table">
+      <thead><tr><th>Check</th><th>Status</th><th>Detail</th></tr></thead>
+      <tbody>
+        {% for c in report.checks %}
+        <tr>
+          <td class="cell-title">{{ c.name }}</td>
+          <td><span class="status-badge {{ 'ok' if c.status == 'ok' else 'missing' }}">{{ c.status }}</span></td>
+          <td>{{ c.detail }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

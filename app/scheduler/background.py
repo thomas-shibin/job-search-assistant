@@ -8,7 +8,7 @@ the timer whenever `scheduler.interval_minutes` changes.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -18,6 +18,7 @@ from app.config.schema import AppConfig
 logger = logging.getLogger(__name__)
 
 JOB_ID = "job_search_run"
+POOL_JOB_ID = "job_pool_refresh"
 _MANUAL_JOB_ID = "job_search_run_now"
 
 # The running scheduler under `serve`, so dashboard routes can reschedule it or
@@ -27,22 +28,37 @@ _config_path: Path | None = None
 
 
 def _run_tick(config_path: Path, *, force: bool = False) -> None:
+    """One scan for every member (see `scan_members`), if scans are on."""
     from app.config.store import load_app_config
     from app.database.session import SessionLocal
-    from app.scheduler.run import run_once
+    from app.scheduler.run import scan_members
+    from app.tenancy import system_session
 
-    session = SessionLocal()
     try:
-        config = load_app_config(session, config_path)
+        with system_session(SessionLocal) as session:
+            config = load_app_config(session, config_path)  # platform settings only
         apply_schedule(config)
         if not (config.scheduler.enabled or force):
             logger.info("Scheduler disabled in settings -- skipping this scan")
             return
-        run_once(session, config)
+        scan_members(SessionLocal, config_path)
     except Exception:
         logger.exception("Scheduled run failed")
-    finally:
-        session.close()
+
+
+def _pool_tick() -> None:
+    """Refresh the job pool's companies older than `platform.pool_refresh_hours`
+    (app/services/pool.py). Runs every half hour; most ticks find nothing stale."""
+    from app.database.session import SessionLocal
+    from app.services import pool, quota
+
+    try:
+        with SessionLocal() as session:
+            hours = quota.platform_limits(session).pool_refresh_hours
+        if hours:
+            pool.sync_all(SessionLocal, max_age_hours=hours)
+    except Exception:
+        logger.exception("Job pool refresh failed")
 
 
 def apply_schedule(config: AppConfig) -> None:
@@ -89,6 +105,10 @@ def start_background_scheduler(config: AppConfig, config_path: Path) -> Backgrou
         id=JOB_ID,
         max_instances=1,
         coalesce=True,
+    )
+    scheduler.add_job(
+        _pool_tick, "interval", minutes=30, id=POOL_JOB_ID, max_instances=1, coalesce=True,
+        next_run_time=datetime.now() + timedelta(minutes=1),
     )
     scheduler.start()
     _scheduler, _config_path = scheduler, config_path

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_job_detail.html" import job_detail with context %}
+{% block title %}{{ p.title }} at {{ p.company }} - Job Assistant{% endblock %}
+{% block content %}
+<a class="back-link" href="/jobs">{{ icon("back") }} Search jobs</a>
+<section class="panel posting-page">
+  {{ job_detail(p, tracked, saved_job_id, has_resume, close=false) }}
+</section>
+{% endblock %}

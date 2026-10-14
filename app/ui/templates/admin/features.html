@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Features - Admin - Job Assistant{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Features</h1>
+    <p class="lead">Turn optional features on or off for everyone. When a feature is on, who can use it is decided by the permissions it needs, which you set per role under <a href="/admin/roles">Roles &amp; permissions</a>.</p>
+  </div>
+</header>
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+<div class="feature-list">
+  {% for r in rows %}{% set f = r.flag %}
+  <section class="panel feature-card {{ 'off' if not f.enabled }}">
+    <div class="feature-main">
+      <h2>{{ f.name }} <span class="status-badge {{ 'ok' if f.enabled else 'missing' }}">{{ "on" if f.enabled else "off" }}</span></h2>
+      <p class="muted">{{ f.description }}</p>
+      <dl class="kv compact">
+        <dt>Key</dt><dd><code>{{ f.feature_key }}</code></dd>
+        <dt>Needs</dt><dd>{% for p in r.required %}<code>{{ p }}</code>{{ ", " if not loop.last }}{% else %}nothing{% endfor %}</dd>
+        <dt>Roles that can use it</dt><dd>{% for name in r.roles %}<span class="chip">{{ name }}</span> {% else %}<span class="muted">none</span>{% endfor %}</dd>
+      </dl>
+    </div>
+    {% if can("features.manage") %}
+    <form method="post" action="/admin/features/{{ f.id }}">
+      <input type="hidden" name="enabled" value="{{ '0' if f.enabled else '1' }}">
+      <button type="submit" class="pill {{ 'outline' if f.enabled else 'primary' }}">{{ "Turn off" if f.enabled else "Turn on" }}</button>
+    </form>
+    {% endif %}
+  </section>
+  {% endfor %}
+</div>
+{% endblock %}

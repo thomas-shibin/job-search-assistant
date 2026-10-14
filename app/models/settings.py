@@ -2,17 +2,18 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
 class AppSetting(Base):
-    """One row per top-level `AppConfig` section (e.g. "matching", "scheduler"),
-    holding that section's JSON. The database is the source of truth for every
-    setting the dashboard can edit -- config.yaml is only a one-time import
-    source (see app/config/store.py). Secrets never land here; they stay in .env.
+    """Platform settings, shared by every user and edited only by admins: one
+    row per platform section (`app.config.store.PLATFORM_SECTIONS`, e.g. "ai",
+    "scheduler") holding that section's JSON. Each user's own sections live in
+    `UserSetting`. Secrets never land here; they stay in .env.
     """
 
     __tablename__ = "app_settings"
@@ -22,7 +23,20 @@ class AppSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
 
 
-class WatchlistEntry(Base):
+class UserSetting(TenantOwned, Base):
+    """One user's value for one of their settings sections (`app.config.store.
+    USER_SECTIONS`, e.g. "search", "matching"), as JSON."""
+
+    __tablename__ = "user_settings"
+    __table_args__ = (UniqueConstraint("user_id", "key", name="uq_user_settings_user_key"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    key: Mapped[str] = mapped_column(String(64))
+    value: Mapped[dict | list] = mapped_column(JSON)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), onupdate=func.now())
+
+
+class WatchlistEntry(TenantOwned, Base):
     """A watchlist watch (`app.config.schema.Watch`) as its own row, so watches
     can be added/edited/paused individually from the dashboard.
     """
@@ -47,7 +61,7 @@ class WatchlistEntry(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
-class WatchlistAlert(Base):
+class WatchlistAlert(TenantOwned, Base):
     """One Telegram watchlist alert decision for a job: the record that makes
     "was I told about this already?" checkable (and enforced). `alert_key` is
     the job's company + title, normalized, so a repost with different punctuation

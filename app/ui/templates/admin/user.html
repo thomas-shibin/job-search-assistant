@@ -1,0 +1,192 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% set u = d.user %}
+{% block title %}{{ u.full_name or u.email }} - Activity - Job Assistant{% endblock %}
+
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow"><a href="/admin/users">{{ icon("back") }} All users</a></p>
+    <h1>{{ u.full_name or u.email }}
+      {% for r in roles if r.held %}<span class="chip {{ 'chip-on' if r.role.name in ('SUPER_ADMIN', 'ADMIN') }}">{{ r.role.name }}</span>{% endfor %}
+      <span class="status-badge {{ 'ok' if d.row.status == 'active' else 'missing' }}">{{ d.row.status }}</span></h1>
+    <p class="lead">{{ u.email }}{% if u.phone %} &middot; {{ u.phone }}{% endif %} &middot; joined {{ u.created_at.strftime("%Y-%m-%d") if u.created_at else "?" }}
+      &middot; signs in with {{ d.providers | join(", ") if d.providers else (u.is_guest and "guest access" or "--") }}</p>
+  </div>
+  <nav class="range-tabs" aria-label="Date range">
+    {% for r in ranges %}
+    <a href="?days={{ r }}{% if d.kind_filter %}&amp;kind={{ d.kind_filter }}{% endif %}" class="{{ 'active' if r == days }}">{{ r }} days</a>
+    {% endfor %}
+  </nav>
+</header>
+
+{% if message %}<div class="flash">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-label">{{ icon("clock") }} Last active</div>
+    <div class="stat-value small">{{ d.row.last_active.strftime("%b %d, %H:%M") if d.row.last_active else "never" }}</div>
+    <div class="stat-sub">{{ d.active_sessions }} signed-in device{{ "s" if d.active_sessions != 1 }}{% if d.last_seen %} &middot; seen {{ d.last_seen.strftime("%b %d %H:%M") }}{% endif %}</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("search") }} Searches</div>
+    <div class="stat-value">{{ d.row.searches }}</div>
+    <div class="stat-sub">{{ d.row.listing_requests }} listing requests &middot; {{ d.row.sign_ins }} sign-ins</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("sparkles") }} Resume actions</div>
+    <div class="stat-value">{{ d.row.ai_actions }}</div>
+    <div class="stat-sub">{{ d.row.ai_calls }} paid analysis calls</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("coins") }} Analysis cost</div>
+    <div class="stat-value">{{ d.row.ai_cost | money }}</div>
+    <div class="stat-sub">{{ d.counts.ai_cost_all_time | money }} all time</div>
+  </div>
+  <div class="stat">
+    <div class="stat-label">{{ icon("alert") }} Limit hits</div>
+    <div class="stat-value">{{ d.row.limit_hits }}</div>
+    <div class="stat-sub">in the last {{ days }} days</div>
+  </div>
+</div>
+
+<div class="chart-grid">
+  <section class="panel">
+    <div class="panel-head"><div><h2>This hour</h2><p>What's left of the hourly limits right now.</p></div></div>
+    {% for key, name in [("search", "New searches"), ("ai", "Resume actions")] %}
+    {% set a = d.allowances[key] %}
+    <div class="meter-row">
+      <div class="meter-label"><strong>{{ name }}</strong>
+        <span class="muted">{% if a.unlimited %}unlimited (admin){% else %}{{ a.used }} of {{ a.limit }} used{% if a.next_free_at %} &middot; next frees up at {{ a.next_free_at.strftime("%H:%M") }} UTC{% endif %}{% endif %}</span></div>
+      {% if not a.unlimited %}
+      <div class="meter"><span style="width: {{ [100, (100 * a.used / a.limit) if a.limit else 100] | min }}%" class="{{ 'full' if a.exhausted }}"></span></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+
+    {% if not u.is_admin and can("users.update") %}
+    <form method="post" action="/admin/users/{{ u.id }}/limits" class="limits-form">
+      <h3>Hourly limits for this user</h3>
+      <p class="muted">Blank uses the platform default; 0 blocks it.</p>
+      <label>New searches per hour
+        <input type="number" name="search_limit" min="0" max="10000" value="{{ u.search_limit_per_hour if u.search_limit_per_hour is not none else '' }}" placeholder="default: {{ d.allowances.defaults.search }}"></label>
+      <label>Resume actions per hour
+        <input type="number" name="ai_limit" min="0" max="10000" value="{{ u.ai_limit_per_hour if u.ai_limit_per_hour is not none else '' }}" placeholder="default: {{ d.allowances.defaults.ai }}"></label>
+      <button type="submit" class="primary">Save limits</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="panel" id="roles">
+    <div class="panel-head"><div><h2>Roles</h2><p>What this account may do. Changes apply from their next page.</p></div>
+      {% if can_route("/admin/roles") %}<a class="button pill outline small" href="/admin/roles">About roles</a>{% endif %}</div>
+    {% set editable = can("users.roles.assign") and not manage_problem %}
+    <form method="post" action="/admin/users/{{ u.id }}/roles" class="role-picker">
+      {% for r in roles %}
+      <label class="check role-option {{ 'locked' if not (editable and r.assignable) }}">
+        <input type="checkbox" name="roles" value="{{ r.role.name }}" {{ "checked" if r.held }} {{ "disabled" if not (editable and r.assignable) }}>
+        <span><strong>{{ r.role.name }}</strong><small class="muted">{{ r.role.description }}</small></span>
+      </label>
+      {% if r.held and not (editable and r.assignable) %}<input type="hidden" name="roles" value="{{ r.role.name }}">{% endif %}
+      {% endfor %}
+      {% if editable %}<div class="form-actions"><button type="submit" class="primary pill">Save roles</button></div>
+      {% else %}<p class="muted">{{ manage_problem or "You can't change roles." }}</p>{% endif %}
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><div><h2>Account</h2><p>Counts only -- an admin can't open a member's resume or jobs.</p></div></div>
+    <dl class="kv">
+      <dt>Tracked jobs</dt><dd>{{ d.counts.jobs }}{% if d.jobs_by_status %} <span class="muted">({% for s, n in d.jobs_by_status %}{{ s }} {{ n }}{{ ", " if not loop.last }}{% endfor %})</span>{% endif %}</dd>
+      <dt>Resume versions</dt><dd>{{ d.counts.resume_versions }}</dd>
+      <dt>Tailored resumes</dt><dd>{{ d.counts.tailored }}</dd>
+      <dt>Watches</dt><dd>{{ d.counts.watches }}</dd>
+      <dt>Background scans</dt><dd>{{ d.counts.scans }}{% if d.counts.last_scan %} <span class="muted">(last {{ d.counts.last_scan.strftime("%Y-%m-%d %H:%M") }})</span>{% endif %}</dd>
+      <dt>Email</dt><dd>{{ "confirmed " ~ u.email_verified_at.strftime("%Y-%m-%d") if u.email_verified_at else "not confirmed" }}</dd>
+      <dt>Last sign-in</dt><dd>{{ u.last_login_at.strftime("%Y-%m-%d %H:%M") if u.last_login_at else "never" }}</dd>
+    </dl>
+    {% if not manage_problem and can("users.suspend") %}
+    <div class="panel-foot">
+      {% if u.is_active %}
+      <form method="post" action="/admin/users/{{ u.id }}/suspend">
+        <button type="submit" class="danger">{{ icon("lock") }} Suspend account</button>
+      </form>
+      <span class="muted">Signs them out everywhere and blocks sign-in. Their data is kept.</span>
+      {% else %}
+      <form method="post" action="/admin/users/{{ u.id }}/reactivate">
+        <button type="submit" class="primary">{{ icon("check") }} Reactivate account</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel chart-panel wide">
+    <div class="panel-head"><div><h2>Activity per day</h2></div></div>
+    {{ d.charts.activity }}
+  </section>
+  <section class="panel chart-panel">
+    <div class="panel-head"><div><h2>Analysis cost per day</h2><p>Estimated, in USD.</p></div></div>
+    {{ d.charts.cost }}
+  </section>
+  <section class="panel chart-panel">
+    <div class="panel-head"><div><h2>Job-listing requests per day</h2></div></div>
+    {{ d.charts.listing }}
+  </section>
+</div>
+
+<section class="panel flush">
+  <div class="panel-head"><div><h2>Analysis usage by operation</h2><p>All time, with the last {{ days }} days alongside.</p></div></div>
+  <div class="table-wrap" style="margin-top: 1rem">
+    <table class="job-table">
+      <thead><tr><th>Operation</th><th class="num">Paid calls</th><th class="num">From cache</th><th class="num">Tokens in</th>
+        <th class="num">Tokens out</th><th class="num">Cost</th><th class="num">Calls ({{ days }}d)</th><th class="num">Cost ({{ days }}d)</th></tr></thead>
+      <tbody>
+        {% for op in d.ai_by_operation %}
+        <tr><td class="cell-title">{{ op.operation }}</td><td class="num">{{ op.calls }}</td><td class="num">{{ op.cache_hits }}</td>
+          <td class="num">{{ "{:,}".format(op.tokens_in) }}</td><td class="num">{{ "{:,}".format(op.tokens_out) }}</td>
+          <td class="num">{{ op.cost | money }}</td><td class="num">{{ op.calls_range }}</td><td class="num">{{ op.cost_range | money }}</td></tr>
+        {% else %}
+        <tr><td colspan="8" class="empty">No analysis usage yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel flush" id="log">
+  <div class="panel-head">
+    <div><h2>Activity log</h2><p>The latest 200 entries.</p></div>
+    <form method="get" action="/admin/users/{{ u.id }}#log" class="filters">
+      <input type="hidden" name="days" value="{{ days }}">
+      <label>Show
+        <select name="kind">
+          <option value="">Everything</option>
+          {% for key, label in labels.items() %}<option value="{{ key }}" {{ "selected" if d.kind_filter == key }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <button type="submit">Filter</button>
+    </form>
+  </div>
+  <div class="table-wrap" style="margin-top: 1rem">
+    <table class="job-table">
+      <thead><tr><th>When (UTC)</th><th>What</th><th>Details</th><th class="num">Listing requests</th><th class="num">Paid calls</th></tr></thead>
+      <tbody>
+        {% for e in d.events %}
+        <tr>
+          <td class="muted">{{ e.created_at.strftime("%Y-%m-%d %H:%M:%S") }}</td>
+          <td><span class="chip kind-{{ e.kind }}">{{ labels.get(e.kind, e.kind) }}</span></td>
+          <td>{{ e.summary or "" }}</td>
+          <td class="num">{{ e.provider_calls or "" }}</td>
+          <td class="num">{{ e.ai_calls or "" }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="empty">No activity recorded.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

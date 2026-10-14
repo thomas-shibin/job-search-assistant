@@ -1,0 +1,13 @@
+{% extends "auth/base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ title }} - Job Assistant{% endblock %}
+{% block layout %}single{% endblock %}
+{% block aside %}{% endblock %}
+{% block card %}
+<div class="auth-notice">
+  <span class="notice-icon">{{ icon("mail") }}</span>
+  <h1 class="flow-title">{{ title }}</h1>
+  <p>{{ body }}</p>
+  {% if link %}<a class="button primary pill large" href="{{ link[0] }}">{{ link[1] }}</a>{% endif %}
+</div>
+{% endblock %}

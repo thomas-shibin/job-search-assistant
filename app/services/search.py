@@ -4,8 +4,9 @@ title x location (one unfiltered query when both lists are empty, i.e.
 Shared by the dashboard's job search and the scheduler's background scans.
 
 Adzuna's free tier allows roughly 250 requests a day, so dashboard searches are
-cached in memory for a few minutes: reloading the Jobs page or paging back
-doesn't spend the quota again.
+cached in memory for an hour: reloading the Jobs page or paging back doesn't
+spend the quota again (and the hourly per-user search limit, app/services/
+quota.py, lets people revisit a search within the hour for free).
 
 Adzuna's `where` only understands places -- "Remote Canada" matches nothing --
 so a location mentioning "remote" is sent as a "remote" keyword plus whatever
@@ -20,7 +21,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timezone
 
 from app.sources.adzuna import AdzunaSource
@@ -30,7 +31,8 @@ from app.utils.terms import normalize_term
 logger = logging.getLogger(__name__)
 
 _MAX_PARALLEL_QUERIES = 4
-_CACHE_TTL_SECONDS = 600
+_CACHE_TTL_SECONDS = 3600
+_CACHE_MAX_ENTRIES = 2000
 SCHEDULED_SHARE_OF_DAILY_LIMIT = 0.6
 
 _cache: dict[tuple, tuple[float, "SearchResults"]] = {}
@@ -42,6 +44,7 @@ class SearchResults:
     jobs: list[RawJob] = field(default_factory=list)
     has_next: bool = False
     failed_queries: list[str] = field(default_factory=list)
+    requests: int = 0  # listing requests this call made (0 when served from cache)
 
 
 _REMOTE = re.compile(r"\bremote\b", re.IGNORECASE)
@@ -105,7 +108,7 @@ def search_jobs(
         with _cache_lock:
             hit = _cache.get(key)
         if hit and time.monotonic() - hit[0] < _CACHE_TTL_SECONDS:
-            return hit[1]
+            return replace(hit[1], requests=0)
 
     def run(pair: tuple[str | None, str | None]) -> list[RawJob]:
         q = queries[pair]
@@ -113,7 +116,7 @@ def search_jobs(
         return source.search_page(what=q.what, where=q.where, area=q.area, what_or=q.what_or,
                                   page=page, per_page=per_page, **extra)
 
-    results = SearchResults()
+    results = SearchResults(requests=len(pairs))
     seen: set[str] = set()
     with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_QUERIES, len(pairs))) as pool:
         futures = [(pair, pool.submit(run, pair)) for pair in pairs]
@@ -135,6 +138,12 @@ def search_jobs(
     results.jobs.sort(key=_newest_first, reverse=True)
     if use_cache and len(results.failed_queries) < len(pairs):
         with _cache_lock:
+            if len(_cache) >= _CACHE_MAX_ENTRIES:
+                now = time.monotonic()
+                for stale in [k for k, (at, _) in _cache.items() if now - at >= _CACHE_TTL_SECONDS]:
+                    del _cache[stale]
+                if len(_cache) >= _CACHE_MAX_ENTRIES:
+                    _cache.clear()
             _cache[key] = (time.monotonic(), results)
     return results
 

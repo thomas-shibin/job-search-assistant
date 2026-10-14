@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Permissions - Admin - Job Assistant{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow"><a href="/admin/roles">{{ icon("back") }} Roles</a></p>
+    <h1>Permissions</h1>
+    <p class="lead">Every permission the platform checks, and which roles hold it. {{ icon("lock") }} Protected permissions can only be granted by a Super Admin. To change a role's permissions, open the role.</p>
+  </div>
+</header>
+<div class="table-wrap">
+  <table class="job-table perm-catalog">
+    <thead><tr><th>Permission</th><th>What it allows</th>{% for r in roles %}<th class="center"><a href="/admin/roles/{{ r.id }}">{{ r.name|replace("_", " ") }}</a></th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for resource, perms in groups %}
+      <tr class="group-row"><th colspan="{{ 2 + roles|length }}">{{ resource|replace("_", " ")|replace(".", " ")|capitalize }}</th></tr>
+      {% for p in perms %}
+      <tr>
+        <td><code>{{ p.name }}</code>{% if p.name in protected %} {{ icon("lock") }}{% endif %}</td>
+        <td>{{ p.description }}</td>
+        {% for r in roles %}<td class="center">{% if p.name in holders[r.name] %}<span class="yes" aria-label="yes">{{ icon("check") }}</span>{% else %}<span class="no" aria-label="no">–</span>{% endif %}</td>{% endfor %}
+      </tr>
+      {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

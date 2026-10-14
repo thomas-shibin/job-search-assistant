@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Users - Admin - Job Assistant{% endblock %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Platform</p>
+    <h1>Users</h1>
+    <p class="lead">{{ total }} account{{ "s" if total != 1 }}{% if q or role or status %} match{{ "es" if total == 1 }} your filters{% endif %}. Open a user to change their roles, limits or status.</p>
+  </div>
+</header>
+
+<form method="get" action="/admin/users" class="filters admin-filters" role="search">
+  <label class="sr-only" for="u-q">Search users</label>
+  <input id="u-q" type="search" name="q" value="{{ q }}" placeholder="Name or email">
+  <label class="sr-only" for="u-role">Role</label>
+  <select id="u-role" name="role">
+    <option value="">All roles</option>
+    {% for name in role_names %}<option value="{{ name }}" {{ "selected" if name == role }}>{{ name }}</option>{% endfor %}
+  </select>
+  <label class="sr-only" for="u-status">Status</label>
+  <select id="u-status" name="status">
+    <option value="">Any status</option>
+    {% for s in ("active", "unconfirmed", "suspended") %}<option value="{{ s }}" {{ "selected" if s == status }}>{{ s|capitalize }}</option>{% endfor %}
+  </select>
+  <button type="submit" class="primary pill">{{ icon("filter") }} Filter</button>
+  {% if q or role or status %}<a href="/admin/users" class="button pill ghost">Clear</a>{% endif %}
+</form>
+
+<div class="table-wrap">
+  <table class="job-table">
+    <thead><tr><th>Name</th><th>Email</th><th>Roles</th><th>Status</th><th>Registered</th></tr></thead>
+    <tbody>
+      {% for r in rows %}{% set u = r.user %}
+      <tr>
+        <td class="cell-title"><a href="/admin/users/{{ u.id }}">{{ u.full_name or "—" }}</a></td>
+        <td>{{ u.email }}</td>
+        <td>{% for name in r.roles %}<span class="chip {{ 'chip-on' if name in ('SUPER_ADMIN', 'ADMIN') }}">{{ name }}</span> {% else %}<span class="muted">none</span>{% endfor %}</td>
+        <td><span class="status-badge {{ 'ok' if r.status == 'active' else 'missing' }}">{{ r.status }}</span></td>
+        <td class="nowrap">{{ u.created_at.strftime("%Y-%m-%d") if u.created_at else "—" }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">No users match.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% if pages > 1 %}
+<nav class="pager" aria-label="Pages">
+  {% if page > 1 %}<a class="button pill outline small" href="?q={{ q|urlencode }}&amp;role={{ role|urlencode }}&amp;status={{ status|urlencode }}&amp;page={{ page - 1 }}">{{ icon("back") }} Previous</a>{% endif %}
+  <span class="muted">Page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="button pill outline small" href="?q={{ q|urlencode }}&amp;role={{ role|urlencode }}&amp;status={{ status|urlencode }}&amp;page={{ page + 1 }}">Next {{ icon("forward") }}</a>{% endif %}
+</nav>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block main_class %}auth-page {% block layout %}split{% endblock %}{% endblock %}
+{% block auth_modal %}{% endblock %}
+{% block content %}
+  {% block aside %}
+  <section class="auth-hero" aria-label="Why Job Assistant">
+    <h1>Find the right job.<br>Apply with a resume made for it.</h1>
+    <ul class="auth-points">
+      <li><span class="auth-point-icon">{{ icon("search") }}</span>
+        <div><strong>Every opening in one search</strong><span>Job boards and company career sites across Canada, updated through the day.</span></div></li>
+      <li><span class="auth-point-icon">{{ icon("target") }}</span>
+        <div><strong>Know where you fit</strong><span>See how each job matches your experience before you apply.</span></div></li>
+      <li><span class="auth-point-icon">{{ icon("file") }}</span>
+        <div><strong>A tailored resume for every application</strong><span>Your own resume, reworded for the role, in your own design.</span></div></li>
+      <li><span class="auth-point-icon">{{ icon("bell") }}</span>
+        <div><strong>Never miss a posting</strong><span>Alerts the moment a job matching your watchlist appears.</span></div></li>
+    </ul>
+  </section>
+  {% endblock %}
+  <section class="auth-card">
+    {% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+    {% block card %}{% endblock %}
+  </section>
+{% endblock %}

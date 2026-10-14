@@ -271,11 +271,10 @@ def build_watchlist_alerter(
     if not watchlist.enabled or not watchlist.watches:
         return None
     settings = settings or TelegramSettings()
-    chat_id = watchlist.telegram_chat_id or settings.chat_id
+    # Only the user's own linked chat (Watchlist -> Connect Telegram) -- never a
+    # shared fallback, which would send one user's alerts to someone else.
+    chat_id = watchlist.telegram_chat_id
     if not (settings.bot_token and chat_id):
-        logger.warning(
-            "watchlist.enabled is true but the Telegram bot token (.env TELEGRAM_BOT_TOKEN) or chat id "
-            "(Watchlist page -> Detect chat ID) is missing -- skipping watchlist alerts this run"
-        )
+        logger.info("Watchlist alerts are on but Telegram isn't connected for this user -- skipping")
         return None
     return WatchlistAlerter(watchlist, TelegramClient(settings.bot_token), chat_id, province_resolver, session)

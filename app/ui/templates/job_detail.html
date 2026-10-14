@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, avatar %}
+{% macro ai_note() -%}
+{%- if ai_allowance and not ai_allowance.unlimited %} &middot; Resume actions left this hour: {{ ai_allowance.remaining }} of {{ ai_allowance.limit }}{% if ai_allowance.exhausted and ai_allowance.next_free_at %} (more in {{ ai_allowance.minutes_until_free() }} min){% endif %}{% endif -%}
+{%- endmacro %}
 {% block title %}{{ detail.job.title }} - Job Assistant{% endblock %}
 {% block crumb %}{{ detail.job.title }}{% endblock %}
 {% block content %}
@@ -32,12 +35,12 @@
     <section id="fit" class="panel fit-panel">
       <div class="panel-head">
         <div>
-          <h2>AI fit analysis</h2>
+          <h2>Match analysis</h2>
           <p>How well your resume matches this job's requirements.</p>
         </div>
       </div>
       {% if description_preview %}
-        <div class="warning-box">{{ icon("alert") }}<div class="alert-body">This job only has Adzuna's 500-character preview, so the analysis can't see the full requirements.
+        <div class="warning-box">{{ icon("alert") }}<div class="alert-body">This job only has the listing's short preview, so the analysis can't see the full requirements.
           <a href="#description">Paste the full description</a> for an accurate result.</div></div>
       {% endif %}
       {% if fit %}
@@ -69,10 +72,11 @@
         </div>
       {% endif %}
       <div class="panel-foot">
-        <span class="muted">{% if fit %}{{ fit.provider }}{% if fit.model %} ({{ fit.model }}){% endif %} · {{ fit.created_at.strftime("%Y-%m-%d %H:%M") }}{% else %}Compares the job with your resume -- to get a tailored copy, use Analyze &amp; tailor below{% endif %}</span>
-        {% if has_resume %}
+        <span class="muted">{% if fit %}Analyzed {{ fit.created_at.strftime("%Y-%m-%d %H:%M") }}{% else %}Compares the job with your resume -- to get a tailored copy, use Analyze &amp; tailor below{% endif %}{{ ai_note() }}</span>
+        {% if not feature("ai_job_matching") %}
+        {% elif has_resume %}
           <form method="post" action="/jobs/{{ job.id }}/assess" hx-boost="false">
-            <button type="submit" class="{{ '' if fit else 'primary' }}">{{ icon("refresh" if fit else "sparkles") }} {{ "Re-run analysis" if fit else "Analyze with AI" }}</button>
+            <button type="submit" class="{{ '' if fit else 'primary' }}">{{ icon("refresh" if fit else "sparkles") }} {{ "Re-run analysis" if fit else "Analyze match" }}</button>
           </form>
         {% else %}
           <form method="post" action="/resume/upload" enctype="multipart/form-data" hx-boost="false" class="inline-form" style="margin: 0">
@@ -121,12 +125,14 @@
           <p>Your own resume, with the wording rewritten for this job. Every change is checked against your original.</p>
         </div>
         <div class="actions">
+          {% if feature("ai_resume_builder") %}
           <form method="post" action="/jobs/{{ job.id }}/retailor" hx-boost="false"
                 onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').lastChild.textContent = ' Tailoring…'">
-            <button type="submit">{{ icon("sparkles") }} Re-tailor with AI</button>
+            <button type="submit">{{ icon("sparkles") }} Re-tailor</button>
           </form>
           {% if tr.docx_path %}<a class="button primary" href="/jobs/{{ job.id }}/resume.docx" hx-boost="false" download>{{ icon("download") }} Download DOCX</a>{% endif %}
           {% if tr.pdf_path %}<a class="button" href="/jobs/{{ job.id }}/resume.pdf" hx-boost="false" download>{{ icon("download") }} Download PDF</a>{% endif %}
+          {% endif %}
         </div>
       </div>
 
@@ -169,7 +175,7 @@
       {% if by_paragraph %}
       <form id="removals" method="post" action="/jobs/{{ job.id }}/removals" hx-boost="false"></form>
       <div class="notice removal-notice">{{ icon("scissors") }}<div class="alert-body">
-        {% if suggested %}The AI thinks <strong>{{ suggested | length }}</strong> paragraph{{ "s" if suggested | length != 1 }} (marked below) don't matter for this job.{% endif %}
+        {% if suggested %}We think <strong>{{ suggested | length }}</strong> paragraph{{ "s" if suggested | length != 1 }} (marked below) don't matter for this job.{% endif %}
         Tick <strong>Remove</strong> on any paragraph you want out of this resume, then apply. Nothing is removed unless you choose it,
         and you can put it back the same way.
         <div style="margin-top: .5rem"><button type="submit" form="removals" class="small">{{ icon("check") }} Apply removals</button></div>
@@ -181,7 +187,7 @@
         <label class="remove-toggle {{ 'suggested' if diff.suggest_remove }}">
           <input type="checkbox" name="remove" value="{{ diff.id }}" form="removals" {{ 'checked' if diff.removed }}>
           {{ "Removed — tick off to put it back" if diff.removed else "Remove from this resume" }}
-          {% if diff.suggest_remove %}<span class="remove-hint">· AI suggests removing: {{ diff.remove_reason }}</span>{% endif %}
+          {% if diff.suggest_remove %}<span class="remove-hint">· Suggested for removal: {{ diff.remove_reason }}</span>{% endif %}
         </label>
         {% endif %}
       {% endmacro %}
@@ -203,7 +209,7 @@
                 <div class="change-row"><span class="change-tag kept">Kept</span><div>{{ diff.source_text }}</div></div>
               {% endif %}
               {% if not diff.validation_passed %}
-                <div class="rejection-note">{{ icon("alert") }} The AI's rewrite was rejected, so your original wording is used: {{ diff.rejection_reason }}</div>
+                <div class="rejection-note">{{ icon("alert") }} The suggested rewrite was rejected, so your original wording is used: {{ diff.rejection_reason }}</div>
               {% endif %}
               {{ remove_toggle(diff) }}
             </div>
@@ -221,7 +227,7 @@
       {% endif %}
 
       {% if not changed and not summary_changed %}
-        <div class="notice" style="margin-top: 1rem">{{ icon("info") }}<div class="alert-body">Nothing was reworded -- this file is your base resume as written{% if resume_address %} with the location updated{% endif %}. Click <strong>Re-tailor with AI</strong> to rewrite it for this job.</div></div>
+        <div class="notice" style="margin-top: 1rem">{{ icon("info") }}<div class="alert-body">Nothing was reworded -- this file is your base resume as written{% if resume_address %} with the location updated{% endif %}. Click <strong>Re-tailor</strong> to rewrite it for this job.</div></div>
       {% endif %}
     </section>
     {% else %}
@@ -240,6 +246,7 @@
           {% endif %}
         </div>
       </div>
+      {% if can_route("/jobs/{job_id}/analyze", "POST") %}
       <form method="post" action="/jobs/{{ job.id }}/analyze" enctype="multipart/form-data" hx-boost="false" class="analyze-form">
         {% if has_resume %}
           <span class="muted">Uses your resume from <a href="/resume">My resume</a>.</span>
@@ -254,6 +261,8 @@
           <button type="submit" name="force" value="true" title="Tailor a resume for this job even if it scores below your minimum">{{ icon("sparkles") }} Tailor anyway</button>
         {% endif %}
       </form>
+      {% endif %}
+      {% if ai_allowance and not ai_allowance.unlimited %}<p class="quota-note">{{ icon("clock") }} {{ ai_note() }}</p>{% endif %}
     </section>
     {% endif %}
 
@@ -261,10 +270,10 @@
       <div class="panel-head">
         <div>
           <h2>Job description</h2>
-          {% if job.source == "adzuna" %}
-            <p>{% if description_preview %}<span class="chip chip-warn">Preview only</span> Adzuna shares just the first 500 characters of a posting.
-               {% else %}From Adzuna, which shares at most 500 characters -- this may or may not be the whole posting.{% endif %}
-               For an accurate AI analysis and tailored resume, paste the full text from the posting below.</p>
+          {% if job.source == "adzuna" %}{# listings provider: previews only #}
+            <p>{% if description_preview %}<span class="chip chip-warn">Preview only</span> Job board listings include just the first 500 characters of a posting.
+               {% else %}From a job board listing, which includes at most 500 characters -- this may or may not be the whole posting.{% endif %}
+               For an accurate analysis and tailored resume, paste the full text from the posting below.</p>
           {% endif %}
         </div>
         <a class="button small" href="{{ job.source_url }}" target="_blank" rel="noopener">Open posting {{ icon("external") }}</a>
@@ -276,7 +285,7 @@
           <label>Copy the whole job description from the posting page and paste it here
             <textarea name="description" rows="12" required placeholder="Paste the full job posting text..."></textarea>
           </label>
-          <small class="muted">Replaces the text above. The keyword score is updated, and the AI analysis is re-run if this job has one.</small>
+          <small class="muted">Replaces the text above. The keyword score is updated, and the match analysis is re-run if this job has one.</small>
           <button type="submit" class="primary">Save full description</button>
         </form>
       </details>
@@ -308,7 +317,7 @@
         {% endif %}
         {% if job.date_posted %}<li><span>Posted</span><span>{{ job.date_posted.strftime("%b %d, %Y") }}</span></li>{% endif %}
         {% if job.date_discovered %}<li><span>Found</span><span>{{ job.date_discovered.strftime("%b %d, %Y") }}</span></li>{% endif %}
-        <li><span>Source</span><span>{{ job.source }}</span></li>
+        <li><span>Source</span><span>{{ job.source|source_label }}</span></li>
         {% if job.search_profile_name %}<li><span>Search profile</span><span>{{ job.search_profile_name }}</span></li>{% endif %}
       </ul>
     </section>

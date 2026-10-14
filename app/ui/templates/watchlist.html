@@ -25,7 +25,7 @@
       <div class="settings-field">
         <input type="hidden" name="search" value="false">
         <label class="check"><input type="checkbox" name="search" value="true" {% if not e or e.search %}checked{% endif %}> Search for these jobs on every scan</label>
-        <small class="muted">Runs this watch's own job search, so it also finds jobs your main job search doesn't cover. Uses some of the daily Adzuna requests.</small>
+        <small class="muted">Runs this watch's own job search, so it also finds jobs your main job search doesn't cover. Counts toward your automatic searches.</small>
       </div>
       <div class="settings-field">
         <label class="check"><input type="checkbox" name="enabled" value="true" {% if not e or e.enabled %}checked{% endif %}> Active</label>
@@ -191,13 +191,18 @@
       <p>Where alerts are delivered.</p>
     </div>
     <div class="actions">
-      <form method="post" action="/watchlist/telegram/detect" hx-boost="false"><button type="submit">{{ icon("refresh") }} Detect chat ID</button></form>
-      <form method="post" action="/watchlist/telegram/test" hx-boost="false"><button type="submit">{{ icon("send") }} Send test message</button></form>
+      {% if token_set %}
+        <form method="post" action="/watchlist/telegram/connect" hx-boost="false" target="_blank"><button type="submit" class="{{ '' if chat_id else 'primary' }}">{{ icon("send") }} {{ "Reconnect" if chat_id else "Connect Telegram" }}</button></form>
+        {% if chat_id %}
+          <form method="post" action="/watchlist/telegram/test" hx-boost="false"><button type="submit">{{ icon("bell") }} Send test message</button></form>
+          <form method="post" action="/watchlist/telegram/disconnect" hx-boost="false"><button type="submit" class="link-button">Disconnect</button></form>
+        {% endif %}
+      {% endif %}
     </div>
   </div>
   <ul class="checklist">
-    <li class="{{ 'ok' if token_set else 'missing' }}">Bot token (<code>TELEGRAM_BOT_TOKEN</code> in .env): {{ "set" if token_set else "missing" }}</li>
-    <li class="{{ 'ok' if chat_id else 'missing' }}">Chat: {{ chat_id or "not connected -- open your bot in Telegram, press Start, then Detect chat ID" }}</li>
+    {% if not token_set %}<li class="missing">Telegram alerts aren't available right now.</li>{% endif %}
+    <li class="{{ 'ok' if chat_id else 'missing' }}">Chat: {{ "connected" if chat_id else "not connected -- tap Connect Telegram, then Start in the chat that opens" }}</li>
     <li class="{{ 'ok' if watchlist_enabled else 'missing' }}">Alerts: {{ "on" if watchlist_enabled else "off -- tick Enabled below" }}</li>
   </ul>
   {{ section_form("/settings/watchlist", settings_form, "Save alert settings") }}

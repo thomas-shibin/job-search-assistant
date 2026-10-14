@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ feature.title }} - Job Assistant{% endblock %}
+{% block crumb %}{{ feature.title }}{% endblock %}
+{% block content %}
+<section class="members-only">
+  <span class="notice-icon">{{ icon("lock") }}</span>
+  <h1>{{ feature.title }}</h1>
+  <p class="lead">{{ feature.pitch }}</p>
+  <ul class="checklist">
+    {% for point in feature.points %}<li>{{ icon("check") }} {{ point }}</li>{% endfor %}
+  </ul>
+  <p class="muted">You're browsing as a guest. A free account unlocks this and keeps everything private to you.</p>
+  <div class="actions">
+    <a class="button primary" href="/signup">Create a free account</a>
+    <a class="button" href="/">Back to job search</a>
+  </div>
+</section>
+{% endblock %}

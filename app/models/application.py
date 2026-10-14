@@ -6,9 +6,10 @@ from sqlalchemy import DateTime, ForeignKey, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database.base import Base
+from app.tenancy import TenantOwned
 
 
-class ApplicationArtifactSet(Base):
+class ApplicationArtifactSet(TenantOwned, Base):
     """Points at the generated file bundle for one job under data/applications/... (see
     docs/ARCHITECTURE.md §File Organization). One row per job.
     """
