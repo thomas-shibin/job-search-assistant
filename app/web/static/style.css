@@ -1087,3 +1087,8 @@ form[data-dirty] [data-matrix-status] { color: var(--warning); font-weight: 600;
 .audit-table td { font-size: 0.85rem; vertical-align: top; }
 .audit-change { max-width: 280px; }
 .kv-pair { display: block; overflow-wrap: anywhere; }
+
+/* Job search filters apply on change on wide screens (app.js), so the button is only for phones. */
+@media (min-width: 821px) {
+  .js .filter-form[data-auto-apply] .filter-apply { display: none; }
+}

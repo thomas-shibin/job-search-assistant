@@ -11,6 +11,7 @@
  */
 (function () {
   "use strict";
+  document.documentElement.classList.add("js");  // CSS can tell scripts are running
 
   var signedIn = function () { return document.body && document.body.dataset.auth === "1"; };
 
@@ -454,6 +455,21 @@
     access: { hasPermission: hasPermission, hasAnyPermission: hasAnyPermission,
               hasAllPermissions: hasAllPermissions, canAccessRoute: canAccessRoute, refresh: refreshAccess,
               get roles() { return access.roles.slice(); }, get permissions() { return access.permissions.slice(); } }
+  });
+
+  // ---------- job search filters: apply on change (desktop) ----------
+  // Filters narrow results already fetched, so applying them is free. On wide
+  // screens they apply as soon as one changes; in the phone drawer the user
+  // picks several and taps "Apply filters" (submitting would close the drawer).
+  var filterTimer = null;
+  var wideScreen = window.matchMedia("(min-width: 821px)");
+  document.addEventListener("change", function (e) {
+    var form = e.target.closest && e.target.closest("form[data-auto-apply]");
+    if (!form || !wideScreen.matches) return;
+    clearTimeout(filterTimer);  // ticking several boxes quickly makes one request
+    filterTimer = setTimeout(function () {
+      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    }, 250);
   });
 
   // ---------- admin: jump selects, confirm prompts, the permission matrix ----------

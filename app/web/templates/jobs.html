@@ -33,7 +33,7 @@
 
 <div class="results-layout{% if request.query_params.get('view') %} show-detail{% endif %}">
   <aside class="filter-panel" aria-label="Filters">
-    <form method="get" action="/jobs" class="filter-form">
+    <form method="get" action="/jobs" class="filter-form" data-auto-apply>
       <input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="l" value="{{ l }}">
       <input type="hidden" name="country" value="{{ country }}">
       {% for k in keywords %}<input type="hidden" name="keywords" value="{{ k }}">{% endfor %}
@@ -59,7 +59,7 @@
         {% for key, label in date_ranges.items() %}<label class="check"><input type="radio" name="days" value="{{ key }}" {{ "checked" if filters.days == key|int }}> {{ label }}</label>{% endfor %}
       </fieldset>
       <div class="filter-actions">
-        <button type="submit" class="primary pill wide">Apply filters</button>
+        <button type="submit" class="primary pill wide filter-apply">Apply filters</button>
         <a class="button pill ghost wide" href="/jobs?{{ {'q': q, 'l': l, 'country': country}|urlencode }}">Clear all</a>
       </div>
     </form>
