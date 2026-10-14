@@ -5,7 +5,7 @@ tailored resumes, alerts and settings are visible only to them.
 
 ## Who can do what
 
-Access is role-based (RBAC, `app/auth/rbac.py`). A user holds one or more
+Access is role-based (RBAC, `app/modules/access/rbac.py`). A user holds one or more
 **roles**; a role grants **permissions** named `resource.action`
 (`jobs.view`, `users.suspend`, ...). Code checks permissions, never role
 names. Roles, permissions and who holds what are stored in the database and
@@ -32,7 +32,7 @@ managed at **Admin dashboard > Roles & permissions** and **Users**.
   off for everyone: job search, saved jobs, application tracking, job alerts,
   resume editor, resume tailoring, job matching. When a feature is on, who may
   use it still depends on its permission.
-- **No privilege escalation** (`app/admin/access.py`):
+- **No privilege escalation** (`app/modules/access/service.py`):
   - Nobody can grant a permission or assign a role beyond their own permissions.
   - Protected permissions (`admin.dashboard.view`, `users.roles.assign`,
     `roles.*`, `permissions.manage`, `settings.manage`), and roles containing
@@ -66,7 +66,7 @@ managed at **Admin dashboard > Roles & permissions** and **Users**.
 ## Hourly limits
 
 These limits protect the job-listing quota and the analysis budget
-(`app/services/quota.py`). They are counted in the database.
+(`app/modules/usage/quota.py`). They are counted in the database.
 
 | Limit | Default | Notes |
 |---|---|---|
@@ -79,7 +79,7 @@ These limits protect the job-listing quota and the analysis budget
 
 ## How isolation is enforced
 
-Isolation is enforced centrally, in `app/tenancy.py`. It doesn't depend on each
+Isolation is enforced centrally, in `app/core/tenancy.py`. It doesn't depend on each
 query remembering to filter.
 
 1. **An owner on every row of user data.** Every user-data model mixes in
@@ -87,7 +87,7 @@ query remembering to filter.
    children, jobs and all their children, analyses, tailored resumes, watches,
    alerts, scan runs, per-user settings and per-user search terms.
 2. **A session belongs to one user.** Routes get their database session from
-   `member_session` / `viewer_session` (`app/auth/deps.py`), which bind it to
+   `member_session` / `viewer_session` (`app/modules/auth/deps.py`), which bind it to
    the signed-in user before the route runs.
 3. **Reads are filtered automatically.** For a bound session, SQLAlchemy adds
    `WHERE user_id = :me` to every ORM SELECT, UPDATE and DELETE on user data.
@@ -109,7 +109,7 @@ query remembering to filter.
    per-user folders (`.../user_<id>/`). Downloads are served only from paths
    stored on rows the session can see.
 7. **Shared vs private data.** The **job pool** is shared (`pool_companies`,
-   `pool_jobs`, see `app/services/pool.py`): public postings from the
+   `pool_jobs`, see `app/modules/jobs/pool/service.py`): public postings from the
    companies listed under Platform → Job sources, refreshed every
    `platform.pool_refresh_hours`. A posting becomes a user's own `Job` only
    when they analyze it. The built-in and market-scan search catalog is
@@ -133,8 +133,8 @@ same rule.
 
 ## Accounts
 
-Everything starts from an email address (`app/auth/api.py`, driven by
-`app/ui/static/app.js` in the sign-in dialog and on `/login` and `/signup`):
+Everything starts from an email address (`app/modules/auth/api.py`, driven by
+`app/web/static/app.js` in the sign-in dialog and on `/login` and `/signup`):
 
 1. **Email.** `POST /api/auth/register/start` emails a six-digit code: a
    sign-in code for an existing account, a verification code for a new
@@ -151,7 +151,7 @@ Everything starts from an email address (`app/auth/api.py`, driven by
 Members can also sign in with their password (`POST /api/auth/login`, or the
 plain `/login` form without JavaScript), or with Google.
 
-- **Email codes** (`app/auth/otp.py`):
+- **Email codes** (`app/modules/auth/otp.py`):
   - random, valid for 60 seconds, stored only as an HMAC keyed by
     `APP_SECRET_KEY`;
   - a new code retires the old one; resending waits 30 seconds;
