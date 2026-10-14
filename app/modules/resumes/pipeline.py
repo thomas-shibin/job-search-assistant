@@ -9,12 +9,12 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.integrations.ai.base import AIProvider
-from app.modules.applications.bundle import build_artifact_set
-from app.modules.applications.state_machine import mark_ready_for_review
 from app.core.config.schema import AppConfig
+from app.integrations.ai.base import AIProvider
 from app.integrations.libreoffice import PdfConversionError, convert_to_pdf
+from app.modules.applications.bundle import build_artifact_set
 from app.modules.applications.models import ApplicationArtifactSet
+from app.modules.applications.state_machine import mark_ready_for_review
 from app.modules.jobs.models import Job
 from app.modules.resumes.tailor import TailorResult, tailor_resume
 

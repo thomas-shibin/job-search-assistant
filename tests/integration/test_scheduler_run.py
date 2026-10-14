@@ -12,13 +12,13 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
 from app.core.database.base import Base
-from app.modules.resumes.models import CandidateProfile, Employment, Skill
-from app.modules.jobs.models import Job, JobStatus
-from app.workers.models import SchedulerRun, SourceRunResult
 from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.resumes.models import CandidateProfile, Employment, Skill
+from app.workers.models import SchedulerRun, SourceRunResult
 
 
 @pytest.fixture()

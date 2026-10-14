@@ -12,16 +12,16 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.modules.auth.tokens import issue_token
 from app.core.config.store import load_app_config
 from app.core.database.base import Base
-from app.modules.jobs.models import Job, JobStatus
-from app.modules.auth.models import TokenPurpose, User
-from app.integrations.telegram import TelegramClient
-from app.modules.alerts.telegram_commands import BotActions, poll_once, reply_for
-from app.modules.admin.health import FAIL, check_health, format_health_message
 from app.core.tenancy import system_session, tenant_session
+from app.integrations.telegram import TelegramClient
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.admin.health import FAIL, check_health, format_health_message
+from app.modules.alerts.telegram_commands import BotActions, poll_once, reply_for
+from app.modules.auth.models import TokenPurpose, User
+from app.modules.auth.tokens import issue_token
+from app.modules.jobs.models import Job, JobStatus
 
 
 @pytest.fixture()

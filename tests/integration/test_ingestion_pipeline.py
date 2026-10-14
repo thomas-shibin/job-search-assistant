@@ -9,11 +9,11 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.jobs.ingestion.manual import import_manual_job
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
 from app.modules.jobs.models import JobStatus, JobStatusHistory
-from app.modules.jobs.ingestion.manual import import_manual_job
 
 
 @pytest.fixture()

@@ -21,11 +21,11 @@ from typing import Iterator
 from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
-from app.modules.access import rbac
-from app.modules.auth.sessions import user_for_request
 from app.core.database.session import get_session
-from app.modules.auth.models import User
 from app.core.tenancy import bind_tenant, is_system, make_strict
+from app.modules.access import rbac
+from app.modules.auth.models import User
+from app.modules.auth.sessions import user_for_request
 
 logger = logging.getLogger(__name__)
 

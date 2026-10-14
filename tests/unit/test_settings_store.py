@@ -8,12 +8,12 @@ import yaml
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.config.loader import ConfigError
+from app.core.config.models import WatchlistEntry
 from app.core.config.schema import AppConfig
 from app.core.config.store import has_settings, import_yaml_config, load_app_config, save_section, save_watch
 from app.core.database.base import Base
-from app.core.config.models import WatchlistEntry
+import app.models  # noqa: F401  register all models on Base.metadata
 from app.web.forms import parse_form, section_form
 
 YAML = {

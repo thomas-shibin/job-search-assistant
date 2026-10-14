@@ -12,13 +12,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.integrations import email as mailer
-from app.modules.auth.service import ProviderProfile
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.modules.auth.models import AuthSession, OAuthIdentity, User
 from app.core.tenancy import system_session
+from app.integrations import email as mailer
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.auth.models import AuthSession, OAuthIdentity, User
+from app.modules.auth.service import ProviderProfile
 
 pytestmark = pytest.mark.real_auth
 

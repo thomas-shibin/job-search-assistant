@@ -9,9 +9,9 @@ import logging
 import shutil
 import subprocess
 
-from app.modules.alerts.base import JobNotification
-from app.integrations.desktop.windows_toast import format_notification
 from app.core.logging import log_event
+from app.integrations.desktop.windows_toast import format_notification
+from app.modules.alerts.base import JobNotification
 
 logger = logging.getLogger(__name__)
 

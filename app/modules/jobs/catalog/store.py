@@ -14,9 +14,9 @@ from typing import Iterable
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.tenancy import sees_user_data
 from app.modules.jobs.catalog import seed_data
 from app.modules.jobs.catalog.models import LocationType, SearchTerm, TermKind, TermSource, UserSearchTerm
-from app.core.tenancy import sees_user_data
 from app.shared.terms import normalize_term
 
 _TRUST = {TermSource.SCAN.value: 0, TermSource.SEED.value: 1, TermSource.USER.value: 2}

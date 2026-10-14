@@ -30,7 +30,6 @@ from app.modules.resumes import uploads
 from app.modules.resumes.editor import parse_edit_form, save_edit
 from app.modules.resumes.models import CandidateProfile
 from app.modules.resumes.pipeline import generate_resume_bundle
-from app.modules.resumes.tailor import NoActiveCandidateProfileError as TailorNoProfileError
 from app.modules.resumes.tailor import (
     BaseResumeMissingError,
     _base_docx,
@@ -38,6 +37,7 @@ from app.modules.resumes.tailor import (
     resume_download_name,
     tailor_resume,
 )
+from app.modules.resumes.tailor import NoActiveCandidateProfileError as TailorNoProfileError
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance
 from app.modules.usage import quota
 from app.modules.usage.models import ActivityKind

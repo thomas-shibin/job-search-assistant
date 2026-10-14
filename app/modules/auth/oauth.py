@@ -18,10 +18,10 @@ from urllib.parse import urlencode
 import httpx
 from sqlalchemy.orm import Session
 
+from app.modules.auth.models import TokenPurpose
 from app.modules.auth.service import AuthError, ProviderProfile
 from app.modules.auth.settings import AuthSettings
 from app.modules.auth.tokens import consume_token, issue_token
-from app.modules.auth.models import TokenPurpose
 
 STATE_COOKIE = "jsa_oauth_state"
 STATE_TTL = timedelta(minutes=10)

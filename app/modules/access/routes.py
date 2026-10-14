@@ -16,10 +16,10 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
-from app.modules.access import service as access
 from app.modules.access import rbac
-from app.modules.auth.deps import admin_session, require_admin
+from app.modules.access import service as access
 from app.modules.access.models import AuditLog, FeatureFlag, RbacRole, UserRole
+from app.modules.auth.deps import admin_session, require_admin
 from app.modules.auth.models import User
 from app.web.templating import templates
 

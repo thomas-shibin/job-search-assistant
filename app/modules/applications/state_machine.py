@@ -12,13 +12,14 @@ import logging
 
 from sqlalchemy.orm import Session
 
-from app.modules.jobs.models import Job, JobStatus, JobStatusHistory
+from app.core.exceptions import AppError
 from app.core.logging import log_event
+from app.modules.jobs.models import Job, JobStatus, JobStatusHistory
 
 logger = logging.getLogger(__name__)
 
 
-class InvalidTransitionError(Exception):
+class InvalidTransitionError(AppError):
     """Raised when a requested status transition isn't allowed from the job's current status."""
 
 

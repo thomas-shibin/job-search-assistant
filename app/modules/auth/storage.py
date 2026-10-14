@@ -5,13 +5,12 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
+from app.modules.applications.folder import user_applications_root
+from app.modules.resumes.tailor import RESTORED_DIR
+from app.modules.resumes.uploads import UPLOAD_DIR
 
 
 def user_file_dirs(user_id: int) -> list[Path]:
-    from app.modules.applications.folder import user_applications_root
-    from app.modules.resumes.tailor import RESTORED_DIR
-    from app.modules.resumes.uploads import UPLOAD_DIR
-
     return [UPLOAD_DIR / f"user_{user_id}", user_applications_root(user_id), RESTORED_DIR / f"user_{user_id}"]
 
 

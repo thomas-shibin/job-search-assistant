@@ -16,13 +16,13 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.modules.auth.deps import current_user, member_session, require_member
 from app.core.database.session import get_session
-from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.auth.deps import current_user, member_session, require_member
 from app.modules.auth.models import User
-from app.modules.profiles import service as profiles
-from app.modules.jobs.pool import service as pool
 from app.modules.jobs import postings
+from app.modules.jobs.pool import service as pool
+from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.profiles import service as profiles
 from app.web.templating import safe_next, templates
 
 router = APIRouter()

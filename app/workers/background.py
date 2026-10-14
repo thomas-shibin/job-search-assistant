@@ -14,6 +14,12 @@ from pathlib import Path
 from apscheduler.schedulers.background import BackgroundScheduler
 
 from app.core.config.schema import AppConfig
+from app.core.config.store import load_app_config
+from app.core.database.session import SessionLocal
+from app.core.tenancy import system_session
+from app.modules.jobs.pool import service as pool
+from app.modules.usage import quota
+from app.workers.run import scan_members
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +35,6 @@ _config_path: Path | None = None
 
 def _run_tick(config_path: Path, *, force: bool = False) -> None:
     """One scan for every member (see `scan_members`), if scans are on."""
-    from app.core.config.store import load_app_config
-    from app.core.database.session import SessionLocal
-    from app.workers.run import scan_members
-    from app.core.tenancy import system_session
-
     try:
         with system_session(SessionLocal) as session:
             config = load_app_config(session, config_path)  # platform settings only
@@ -49,10 +50,6 @@ def _run_tick(config_path: Path, *, force: bool = False) -> None:
 def _pool_tick() -> None:
     """Refresh the job pool's companies older than `platform.pool_refresh_hours`
     (app/services/pool.py). Runs every half hour; most ticks find nothing stale."""
-    from app.core.database.session import SessionLocal
-    from app.modules.jobs.pool import service as pool
-    from app.modules.usage import quota
-
     try:
         with SessionLocal() as session:
             hours = quota.platform_limits(session).pool_refresh_hours

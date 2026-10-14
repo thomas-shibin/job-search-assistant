@@ -18,26 +18,27 @@ from pathlib import Path
 
 from sqlalchemy.orm import Session
 
+from app.core.config.schema import AddressProfile, AppConfig
+from app.core.database.session import PROJECT_ROOT
+from app.core.exceptions import AppError
+from app.core.logging import log_event
 from app.integrations.ai.base import AIProvider, ExtractedJobRequirements
 from app.integrations.ai.factory import build_ai_provider
 from app.integrations.ai.settings import AISettings
 from app.modules.applications.folder import get_application_folder
 from app.modules.jobs.catalog.geo import job_place, province_code
-from app.core.config.schema import AddressProfile, AppConfig
-from app.core.database.session import PROJECT_ROOT
+from app.modules.jobs.models import Job, JobRequirements, JobStatus, JobStatusHistory
 from app.modules.resumes.documents.docx import render_tailored_resume
 from app.modules.resumes.documents.docx_edit import rewritable_passages, tailor_docx
-from app.modules.usage.ai_calls import AICallLog
 from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile
-from app.modules.jobs.models import Job, JobRequirements, JobStatus, JobStatusHistory
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
 from app.modules.resumes.validator import BulletValidationResult, ValidationResult, validate_passage, validate_tailored_resume
-from app.core.logging import log_event
+from app.modules.usage.ai_calls import AICallLog
 
 logger = logging.getLogger(__name__)
 
 
-class NoActiveCandidateProfileError(Exception):
+class NoActiveCandidateProfileError(AppError):
     """Raised when tailoring is attempted before a resume has been imported."""
 
 

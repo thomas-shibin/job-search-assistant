@@ -43,11 +43,11 @@ from pydantic import BaseModel, Field
 
 from app.core.config.schema import MatchingConfig, SearchProfile
 from app.modules.jobs.ingestion.filters import location_matches
-from app.modules.resumes.models import CandidateProfile
 from app.modules.jobs.models import Job
+from app.modules.resumes.models import CandidateProfile
 
 if TYPE_CHECKING:
-    from app.integrations.ai.base import ExtractedJobRequirements
+    from app.integrations.ai.base import ExtractedJobRequirements  # ai.base imports this module
 
 NO_REQUIREMENT_SCORE = 100
 UNKNOWN_FIT_SCORE = 50

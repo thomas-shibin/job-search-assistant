@@ -8,10 +8,10 @@ from urllib.parse import urlencode
 
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.modules.resumes.models import CandidateProfile
-from app.modules.profiles.models import JobSeekerProfile, ProfileEducation, ProfileExperience
-from app.modules.auth.models import User
 from app.core.tenancy import tenant_session
+from app.modules.auth.models import User
+from app.modules.profiles.models import JobSeekerProfile, ProfileEducation, ProfileExperience
+from app.modules.resumes.models import CandidateProfile
 
 PROMPT_BELOW_PERCENT = 60
 

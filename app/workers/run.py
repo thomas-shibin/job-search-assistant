@@ -13,28 +13,35 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.config.schema import AppConfig, SearchProfile
+from app.core.config.store import load_app_config
+from app.core.logging import log_event
+from app.core.tenancy import system_session, tenant_session
 from app.integrations.ai.base import AIProvider
 from app.integrations.ai.factory import AIProviderConfigError, build_ai_provider
 from app.integrations.ai.settings import AISettings
-from app.modules.jobs.catalog.geo import province_of
-from app.modules.jobs.catalog.store import location_paths
-from app.core.config.schema import AppConfig, SearchProfile
-from app.modules.jobs.ingestion.pipeline import ingest_raw_job
-from app.modules.matching.pipeline import NoActiveCandidateProfileError, analyze_job
-from app.workers.models import SchedulerRun, SourceRunResult
-from app.modules.alerts.base import NotificationProvider
-from app.modules.alerts.service import maybe_notify_qualified_job
-from app.modules.alerts.watchlist import WatchlistAlerter, build_watchlist_alerter
-from app.modules.resumes.pipeline import generate_resume_bundle
-from app.workers.lock import RunAlreadyInProgressError, run_lock
+from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
+from app.integrations.desktop.windows_toast import WindowsToastNotificationProvider
 from app.integrations.job_boards.adzuna import AdzunaSource
-from app.modules.applications.retention import purge_old_jobs, was_deleted
-from app.modules.jobs.search import QuerySpec, queries_per_scan, scan_slice, scan_specs, search_jobs
 from app.integrations.job_boards.base import JobSource, RawJob
 from app.integrations.job_boards.greenhouse import GreenhouseSource
 from app.integrations.job_boards.lever import LeverSource
 from app.integrations.job_boards.settings import AdzunaSettings
-from app.core.logging import log_event
+from app.modules.access import rbac
+from app.modules.alerts.base import NotificationProvider
+from app.modules.alerts.service import maybe_notify_qualified_job
+from app.modules.alerts.watchlist import WatchlistAlerter, build_watchlist_alerter
+from app.modules.applications.retention import purge_old_jobs, was_deleted
+from app.modules.auth.models import Role, User
+from app.modules.auth.service import purge_expired
+from app.modules.jobs.catalog.geo import province_of
+from app.modules.jobs.catalog.store import location_paths
+from app.modules.jobs.ingestion.pipeline import ingest_raw_job
+from app.modules.jobs.search import QuerySpec, queries_per_scan, scan_slice, scan_specs, search_jobs
+from app.modules.matching.pipeline import NoActiveCandidateProfileError, analyze_job
+from app.modules.resumes.pipeline import generate_resume_bundle
+from app.workers.lock import RunAlreadyInProgressError, run_lock
+from app.workers.models import SchedulerRun, SourceRunResult
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +71,6 @@ class ScheduledSearchSource:
     (see `scan_specs`): one list of queries sharing the daily request budget.
     When there are more than fit in one scan, each scan takes the next slice.
     """
-
     name = "adzuna"
 
     def __init__(
@@ -121,10 +127,7 @@ def _scheduled_search_source(
 def _build_notification_provider() -> NotificationProvider | None:
     try:
         if sys.platform == "win32":
-            from app.integrations.desktop.windows_toast import WindowsToastNotificationProvider
-
             return WindowsToastNotificationProvider()
-        from app.integrations.desktop.linux_notify import LinuxNotifySendProvider
 
         return LinuxNotifySendProvider()
     except Exception:
@@ -146,12 +149,6 @@ def scan_members(session_factory, config_path) -> dict[int, RunSummary]:
     """One scheduled scan for every member: each runs in a session bound to that
     member alone (their searches, watches, jobs and alerts only), and they share
     the platform's daily listing-request budget equally."""
-    from app.modules.access import rbac
-    from app.modules.auth.service import purge_expired
-    from app.core.config.store import load_app_config
-    from app.modules.auth.models import Role, User
-    from app.core.tenancy import system_session, tenant_session
-
     results: dict[int, RunSummary] = {}
     try:
         with run_lock():

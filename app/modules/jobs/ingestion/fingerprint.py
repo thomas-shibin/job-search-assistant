@@ -26,9 +26,9 @@ from difflib import SequenceMatcher
 
 from sqlalchemy.orm import Session
 
+from app.integrations.job_boards.base import RawJob
 from app.modules.jobs.ingestion.normalize import NormalizedJob
 from app.modules.jobs.models import Job
-from app.integrations.job_boards.base import RawJob
 from app.shared.hashing import content_hash, normalize_text
 
 # Empirically chosen: minor formatting/whitespace edits between reposts of the

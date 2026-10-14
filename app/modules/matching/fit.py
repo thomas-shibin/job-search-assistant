@@ -11,16 +11,16 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.core.config.schema import AppConfig
+from app.core.logging import log_event
 from app.integrations.ai.base import AIProvider
 from app.integrations.ai.factory import build_ai_provider
 from app.integrations.ai.settings import AISettings
-from app.core.config.schema import AppConfig
-from app.modules.matching.pipeline import NoActiveCandidateProfileError
-from app.modules.usage.ai_calls import AICallLog
-from app.modules.resumes.models import CandidateProfile
 from app.modules.jobs.models import Job
 from app.modules.matching.models import JobFitAssessment
-from app.core.logging import log_event
+from app.modules.matching.pipeline import NoActiveCandidateProfileError
+from app.modules.resumes.models import CandidateProfile
+from app.modules.usage.ai_calls import AICallLog
 
 logger = logging.getLogger(__name__)
 

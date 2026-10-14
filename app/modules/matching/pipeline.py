@@ -19,23 +19,24 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core.config.schema import AppConfig, SearchProfile
+from app.core.exceptions import AppError
+from app.core.logging import log_event
 from app.integrations.ai.base import AIProvider
 from app.integrations.ai.factory import build_ai_provider
-from app.modules.matching.requirements import get_or_extract_requirements
 from app.integrations.ai.settings import AISettings
-from app.core.config.schema import AppConfig, SearchProfile
 from app.modules.jobs.ingestion.filters import FilterResult, check_hard_filters
-from app.modules.matching.scorer import MatchScoreBreakdown, score_job
-from app.modules.usage.ai_calls import AICallLog
-from app.modules.resumes.models import CandidateProfile
 from app.modules.jobs.models import Job, JobStatus, JobStatusHistory
 from app.modules.matching.models import MatchAnalysis
-from app.core.logging import log_event
+from app.modules.matching.requirements import get_or_extract_requirements
+from app.modules.matching.scorer import MatchScoreBreakdown, score_job
+from app.modules.resumes.models import CandidateProfile
+from app.modules.usage.ai_calls import AICallLog
 
 logger = logging.getLogger(__name__)
 
 
-class NoActiveCandidateProfileError(Exception):
+class NoActiveCandidateProfileError(AppError):
     """Raised when analysis is attempted before a resume has been imported."""
 
 

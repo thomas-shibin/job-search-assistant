@@ -9,9 +9,9 @@ from __future__ import annotations
 import logging
 
 from app.core.config.schema import AppConfig
-from app.modules.matching.scorer import MatchScoreBreakdown
-from app.modules.jobs.models import Job
 from app.modules.alerts.base import JobNotification, NotificationProvider
+from app.modules.jobs.models import Job
+from app.modules.matching.scorer import MatchScoreBreakdown
 
 logger = logging.getLogger(__name__)
 

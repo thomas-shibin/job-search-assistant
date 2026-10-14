@@ -8,18 +8,18 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.modules.applications.folder import get_application_folder
 from app.core.config.schema import AppConfig, CandidateConfig
 from app.core.database.base import Base
+from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.alerts.models import WatchlistAlert
+from app.modules.applications.folder import get_application_folder
+from app.modules.applications.retention import purge_old_jobs, was_deleted
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
-from app.modules.usage.ai_calls import AICallLog
 from app.modules.jobs.models import Job, JobStatus, JobStatusHistory, JobTombstone
 from app.modules.matching.models import MatchAnalysis
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
-from app.modules.alerts.models import WatchlistAlert
-from app.modules.applications.retention import purge_old_jobs, was_deleted
-from app.integrations.job_boards.base import RawJob
+from app.modules.usage.ai_calls import AICallLog
 
 NOW = datetime.now(timezone.utc).replace(tzinfo=None)
 

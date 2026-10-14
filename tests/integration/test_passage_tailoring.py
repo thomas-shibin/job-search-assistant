@@ -9,17 +9,17 @@ from docx import Document
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig
 from app.core.database.base import Base
-from app.modules.resumes.documents.docx_edit import is_prose, rewritable_passages
+from app.integrations.ai.mock import MockAIProvider
+from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.applications.service import get_job_detail
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
+from app.modules.resumes.documents.docx_edit import is_prose, rewritable_passages
 from app.modules.resumes.models import CandidateProfile
 from app.modules.resumes.tailor import tailor_resume
 from app.modules.resumes.validator import validate_passage
-from app.modules.applications.service import get_job_detail
-from app.integrations.job_boards.base import RawJob
 
 SUMMARY = "Full-stack developer with 5 years of experience delivering web apps in React and Node."
 DUTY = "Built the reporting dashboards in React that operations teams use every day"

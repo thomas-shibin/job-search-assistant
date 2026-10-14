@@ -18,6 +18,8 @@ from pathlib import Path
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.exceptions import IntegrationError
+
 logger = logging.getLogger(__name__)
 
 APP_NAME = "Job Assistant"
@@ -45,7 +47,7 @@ class EmailSettings(BaseSettings):
 outbox: list[EmailMessage] | None = None
 
 
-class EmailDeliveryError(RuntimeError):
+class EmailDeliveryError(IntegrationError, RuntimeError):
     """The mail server refused or couldn't be reached."""
 
 

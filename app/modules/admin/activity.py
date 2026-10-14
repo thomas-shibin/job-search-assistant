@@ -16,16 +16,16 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.modules.admin.charts import Series, bar_chart, money
-from app.modules.usage.models import ActivityEvent, ActivityKind
-from app.modules.usage.ai_calls import AICallLog
-from app.modules.resumes.models import CandidateProfile
-from app.modules.jobs.models import Job
-from app.modules.resumes.tailoring_models import TailoredResume
-from app.workers.models import SchedulerRun
 from app.core.config.models import WatchlistEntry
+from app.modules.admin.charts import Series, bar_chart, money
 from app.modules.auth.models import AuthSession, OAuthIdentity, Role, User
+from app.modules.jobs.models import Job
+from app.modules.resumes.models import CandidateProfile
+from app.modules.resumes.tailoring_models import TailoredResume
 from app.modules.usage import quota
+from app.modules.usage.ai_calls import AICallLog
+from app.modules.usage.models import ActivityEvent, ActivityKind
+from app.workers.models import SchedulerRun
 
 RANGES = (7, 30, 90)
 _SEARCH_KINDS = (ActivityKind.SEARCH,)

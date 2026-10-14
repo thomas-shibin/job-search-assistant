@@ -13,9 +13,9 @@ from typing import Any
 
 import httpx
 
+from app.core.logging import log_event
 from app.integrations.job_boards.base import RawJob
 from app.shared.htmlstrip import strip_html_tags
-from app.core.logging import log_event
 from app.shared.retry import with_retry
 
 logger = logging.getLogger(__name__)

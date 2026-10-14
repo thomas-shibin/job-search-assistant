@@ -10,11 +10,11 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
+from app.core.config.models import WatchlistEntry
 from app.core.config.store import load_app_config
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.core.config.models import WatchlistEntry
+import app.models  # noqa: F401  register all models on Base.metadata
 
 YAML = {
     "candidate": {"name": "Test", "base_resume": "x.docx"},

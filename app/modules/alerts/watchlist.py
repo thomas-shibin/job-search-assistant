@@ -13,12 +13,12 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
-from app.modules.jobs.catalog.geo import province_code, province_of
 from app.core.config.schema import AppConfig, Watch, WatchlistConfig
-from app.modules.jobs.models import Job
-from app.modules.alerts.models import WatchlistAlert
-from app.integrations.telegram import TelegramClient, TelegramSettings
 from app.core.logging import log_event
+from app.integrations.telegram import TelegramClient, TelegramSettings
+from app.modules.alerts.models import WatchlistAlert
+from app.modules.jobs.catalog.geo import province_code, province_of
+from app.modules.jobs.models import Job
 from app.shared.terms import normalize_term
 
 logger = logging.getLogger(__name__)

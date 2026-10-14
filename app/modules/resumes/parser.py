@@ -31,6 +31,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 from sqlalchemy.orm import Session
 
+from app.core.database.session import PROJECT_ROOT
 from app.modules.resumes.models import (
     AccomplishmentBullet,
     CandidateProfile,
@@ -161,7 +162,6 @@ class LineInfo:
     docx and PDF extraction both converge on this shape so that section
     detection, job-entry parsing, and bullet collection are written once.
     """
-
     text: str
     is_heading_hint: bool
     is_bullet_hint: bool
@@ -620,7 +620,6 @@ def parse_resume(path: Path) -> ParsedResume:
 
 def _resume_file_exists(raw_path: str) -> bool:
     path = Path(raw_path)
-    from app.core.database.session import PROJECT_ROOT
 
     return path.is_file() or (PROJECT_ROOT / path).is_file()
 

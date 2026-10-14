@@ -34,11 +34,12 @@ from pydantic import ValidationError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.config.schema import PlatformConfig
-from app.modules.usage.models import ActivityEvent, ActivityKind
-from app.modules.usage.ai_calls import AICallLog
 from app.core.config.models import AppSetting
+from app.core.config.schema import PlatformConfig
+from app.core.exceptions import AppError
 from app.modules.auth.models import User
+from app.modules.usage.ai_calls import AICallLog
+from app.modules.usage.models import ActivityEvent, ActivityKind
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ class Allowance:
         return max(1, math.ceil((self.next_free_at - (now or utcnow())).total_seconds() / 60))
 
 
-class LimitReached(Exception):
+class LimitReached(AppError):
     """An hourly limit stopped this action; `str(exc)` is the message to show."""
 
     def __init__(self, message: str, allowance: Allowance | None = None) -> None:

@@ -18,7 +18,21 @@ OK, WARN, FAIL = "ok", "warn", "fail"
 _ICONS = {OK: "✅", WARN: "⚠️", FAIL: "❌"}
 
 _STARTED = time.monotonic()
+from app.core.config.store import load_app_config
 from app.core.paths import DEFAULT_CONFIG_PATH as _DEFAULT_CONFIG_PATH
+from app.integrations.ai.settings import AISettings
+from app.integrations.email import EmailSettings
+from app.integrations.job_boards.settings import AdzunaSettings
+from app.integrations.libreoffice import _find_soffice
+from app.integrations.telegram import TelegramSettings
+from app.modules.alerts.models import WatchlistAlert
+from app.modules.auth.models import Role, User
+from app.modules.auth.settings import AuthSettings
+from app.modules.jobs.models import Job
+from app.modules.resumes.models import CandidateProfile
+from app.modules.usage.ai_calls import AICallLog
+from app.workers.background import is_running, next_scan_time
+from app.workers.models import SchedulerRun, SourceRunResult
 
 
 @dataclass
@@ -77,9 +91,6 @@ def _check(name: str, fn) -> Check:
 
 
 def _database(session: Session) -> Check:
-    from app.modules.jobs.models import Job
-    from app.modules.auth.models import Role, User
-
     session.execute(text("SELECT 1"))
     members = session.query(func.count(User.id)).filter(User.role != Role.GUEST.value).scalar()
     jobs = session.query(func.count(Job.id)).scalar()
@@ -87,9 +98,6 @@ def _database(session: Session) -> Check:
 
 
 def _scheduler(session: Session, config) -> Check:
-    from app.workers.models import SchedulerRun, SourceRunResult
-    from app.workers.background import is_running, next_scan_time
-
     last = session.query(SchedulerRun).order_by(SchedulerRun.id.desc()).first()
     if last is None:
         last_text, last_status = "no scan has run yet", WARN
@@ -122,9 +130,6 @@ def _scheduler(session: Session, config) -> Check:
 
 
 def _accounts(session: Session) -> Check:
-    from app.modules.resumes.models import CandidateProfile
-    from app.modules.auth.models import Role, User
-
     members = session.query(func.count(User.id)).filter(User.role != Role.GUEST.value).scalar()
     unverified = session.query(func.count(User.id)).filter(
         User.role != Role.GUEST.value, User.email_verified_at.is_(None)).scalar()
@@ -136,12 +141,6 @@ def _accounts(session: Session) -> Check:
 
 
 def _api_keys() -> Check:
-    from app.integrations.ai.settings import AISettings
-    from app.modules.auth.settings import AuthSettings
-    from app.integrations.email import EmailSettings
-    from app.integrations.telegram import TelegramSettings
-    from app.integrations.job_boards.settings import AdzunaSettings
-
     adzuna = AdzunaSettings()
     auth = AuthSettings()
     keys = {
@@ -159,18 +158,12 @@ def _api_keys() -> Check:
 
 
 def _pdf() -> Check:
-    from app.integrations.libreoffice import _find_soffice
-
     if _find_soffice():
         return Check("PDF export", OK, "LibreOffice found")
     return Check("PDF export", WARN, "LibreOffice not found -- tailored resumes are DOCX only")
 
 
 def _activity(session: Session) -> Check:
-    from app.modules.usage.ai_calls import AICallLog
-    from app.modules.jobs.models import Job
-    from app.modules.alerts.models import WatchlistAlert
-
     since = _utcnow() - timedelta(hours=24)
     new_jobs = session.query(func.count(Job.id)).filter(Job.date_discovered >= since).scalar()
     alerts = session.query(func.count(WatchlistAlert.id)).filter(
@@ -197,8 +190,6 @@ def check_database(session_factory) -> bool:
 
 def check_health(session: Session, config_path: Path = _DEFAULT_CONFIG_PATH) -> HealthReport:
     """The admin report. `session` must be a system session (platform-wide counts)."""
-    from app.core.config.store import load_app_config
-
     report = HealthReport(uptime_seconds=int(time.monotonic() - _STARTED))
     database = _check("Database", lambda: _database(session))
     report.checks.append(database)

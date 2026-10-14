@@ -11,6 +11,7 @@ import httpx
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.exceptions import IntegrationError
 from app.shared.retry import with_retry
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ class TelegramSettings(BaseSettings):
     bot_token: str | None = Field(default=None, alias="TELEGRAM_BOT_TOKEN")
 
 
-class TelegramError(RuntimeError):
+class TelegramError(IntegrationError, RuntimeError):
     pass
 
 

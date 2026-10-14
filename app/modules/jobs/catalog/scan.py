@@ -23,11 +23,11 @@ from typing import Callable
 
 from sqlalchemy.orm import Session
 
+from app.core.logging import log_event
+from app.integrations.job_boards.adzuna import AdzunaSource
+from app.modules.jobs.catalog.models import LocationType, SearchTerm, TermKind, TermSource
 from app.modules.jobs.catalog.seed_data import PROVINCE_CODES
 from app.modules.jobs.catalog.store import Term, upsert_terms
-from app.modules.jobs.catalog.models import LocationType, SearchTerm, TermKind, TermSource
-from app.integrations.job_boards.adzuna import AdzunaSource
-from app.core.logging import log_event
 from app.shared.terms import normalize_term
 
 logger = logging.getLogger(__name__)

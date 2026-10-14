@@ -92,6 +92,6 @@ def _seed_access_rules(target, connection, tables=(), **kw) -> None:
     """A database built from the models (rather than migrations) gets the
     built-in roles, permissions and feature switches straight away."""
     if any(t.name == "roles" for t in tables):
-        from app.modules.access.rbac import sync_catalog
+        from app.modules.access.rbac import sync_catalog  # rbac imports these models
 
         sync_catalog(connection)

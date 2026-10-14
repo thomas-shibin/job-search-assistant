@@ -10,17 +10,18 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.database.session import get_session
+from app.modules.access import rbac
 from app.modules.auth import oauth
 from app.modules.auth import service
-from app.modules.access import rbac
 from app.modules.auth.deps import current_user, require_member, require_viewer
+from app.modules.auth.models import AuthSession, User
 from app.modules.auth.passwords import PASSWORD_RULES
 from app.modules.auth.ratelimit import email_limiter, login_limiter
 from app.modules.auth.service import AuthError
 from app.modules.auth.sessions import client_ip, end_other_sessions, end_session, start_session
 from app.modules.auth.settings import AuthSettings
-from app.core.database.session import get_session
-from app.modules.auth.models import AuthSession, User
+from app.modules.profiles.service import after_sign_in
 from app.web.templating import safe_next, templates
 
 router = APIRouter()
@@ -49,8 +50,6 @@ def _signed_in_redirect(session: Session, request: Request, user: User, next_pat
 # ---- sign in / sign up ---------------------------------------------------------
 
 def _signed_in_target(session: Session, user: User, next_path: str) -> str:
-    from app.modules.profiles.service import after_sign_in
-
     return after_sign_in(session, user, safe_next(next_path, "/jobs"))
 
 

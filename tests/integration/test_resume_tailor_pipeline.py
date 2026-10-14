@@ -12,15 +12,15 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.integrations.ai.base import TailoredBulletDraft, TailoredResumeDraft
-from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AddressProfile, AppConfig, CandidateConfig, SearchProfile
 from app.core.database.base import Base
-from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
+from app.integrations.ai.base import TailoredBulletDraft, TailoredResumeDraft
+from app.integrations.ai.mock import MockAIProvider
+import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.jobs.models import Job, JobStatus
-from app.modules.resumes.tailoring_models import TailoredBulletProvenance
+from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
 from app.modules.resumes.tailor import NoActiveCandidateProfileError, tailor_resume
+from app.modules.resumes.tailoring_models import TailoredBulletProvenance
 
 
 @pytest.fixture()

@@ -8,9 +8,10 @@ from datetime import timedelta
 from fastapi import Request, Response
 from sqlalchemy.orm import Session
 
+from app.modules.auth.models import AuthSession, User
 from app.modules.auth.settings import AuthSettings
 from app.modules.auth.tokens import hash_secret, new_secret, utcnow
-from app.modules.auth.models import AuthSession, User
+from app.modules.usage.models import ActivityEvent, ActivityKind
 
 COOKIE = "jsa_session"
 MEMBER_TTL = timedelta(days=14)
@@ -24,8 +25,6 @@ def client_ip(request: Request) -> str:
 
 def start_session(session: Session, request: Request, response: Response, user: User, method: str = "password") -> None:
     """Sign `user` in on this browser (always a fresh token: no session fixation)."""
-    from app.modules.usage.models import ActivityEvent, ActivityKind
-
     session.add(ActivityEvent(user_id=user.id, kind=ActivityKind.SIGN_IN, summary=method.title()))
     end_session(session, request, response)
     raw = new_secret()

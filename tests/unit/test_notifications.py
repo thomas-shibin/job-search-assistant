@@ -5,10 +5,10 @@ minimum-score gate that decides whether a qualified job is worth notifying.
 from __future__ import annotations
 
 from app.core.config.schema import AppConfig, CandidateConfig, NotificationsConfig
-from app.modules.matching.scorer import MatchScoreBreakdown
-from app.modules.jobs.models import Job, JobStatus
-from app.modules.alerts.service import maybe_notify_qualified_job
 from app.integrations.desktop.windows_toast import WindowsToastNotificationProvider
+from app.modules.alerts.service import maybe_notify_qualified_job
+from app.modules.jobs.models import Job, JobStatus
+from app.modules.matching.scorer import MatchScoreBreakdown
 
 
 class _FakeToaster:

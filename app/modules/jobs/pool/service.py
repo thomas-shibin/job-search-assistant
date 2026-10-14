@@ -27,13 +27,13 @@ from urllib.parse import urlparse
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from app.modules.jobs.pool.models import PoolCompany, PoolJob
-from app.modules.jobs import postings
+from app.core.logging import log_event
 from app.integrations.job_boards.ashby import AshbySource
 from app.integrations.job_boards.base import RawJob
 from app.integrations.job_boards.greenhouse import GreenhouseSource
 from app.integrations.job_boards.lever import LeverSource
-from app.core.logging import log_event
+from app.modules.jobs import postings
+from app.modules.jobs.pool.models import PoolCompany, PoolJob
 
 logger = logging.getLogger(__name__)
 

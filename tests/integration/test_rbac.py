@@ -11,13 +11,13 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.modules.access import rbac
 from app.core.database.base import Base
 from app.core.database.session import get_session
+from app.core.tenancy import system_session
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.access import rbac
 from app.modules.access.models import AuditLog, FeatureFlag, Permission, RbacRole, RolePermission, UserRole
 from app.modules.auth.models import AuthSession, User
-from app.core.tenancy import system_session
 
 pytestmark = pytest.mark.rbac_strict
 

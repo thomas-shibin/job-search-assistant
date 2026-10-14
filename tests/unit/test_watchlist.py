@@ -8,9 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config.schema import AppConfig, CandidateConfig, Watch, WatchlistConfig
-from app.modules.jobs.models import Job, JobStatus
 from app.integrations.telegram import TelegramClient, TelegramError, TelegramSettings
 from app.modules.alerts.watchlist import WatchlistAlerter, build_watchlist_alerter, format_alert, watch_matches
+from app.modules.jobs.models import Job, JobStatus
 
 
 def _job(**overrides) -> Job:
@@ -147,8 +147,8 @@ def test_telegram_recent_chats_dedupes_by_chat_id():
 from datetime import datetime, timedelta, timezone
 
 from app.core.config.schema import Watch as _Watch
-from app.modules.jobs.models import Job as _Job
 from app.modules.alerts.watchlist import watch_matches as _matches
+from app.modules.jobs.models import Job as _Job
 
 
 def _lean_job(**overrides):

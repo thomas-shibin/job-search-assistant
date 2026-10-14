@@ -28,6 +28,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from app.modules.access.models import FeatureFlag, Permission, RbacRole, RolePermission, UserRole
+from app.modules.auth.models import User
+from app.modules.auth.settings import AuthSettings
 
 logger = logging.getLogger(__name__)
 
@@ -441,8 +443,6 @@ def grant_role(session: Session, user, name: str) -> bool:
 
 
 def super_admin_ids(session: Session, *, active_only: bool = True) -> list[int]:
-    from app.modules.auth.models import User
-
     query = (select(UserRole.user_id).join(RbacRole, RbacRole.id == UserRole.role_id)
              .where(RbacRole.name == SUPER_ADMIN))
     if active_only:
@@ -462,8 +462,6 @@ def default_role_for(account_type: str | None) -> str:
 def bootstrap_admin(session: Session, user) -> None:
     """Accounts listed in ADMIN_EMAILS (set by whoever runs the server) are
     Super Admins -- the trusted way to create the first one."""
-    from app.modules.auth.settings import AuthSettings
-
     if user.email and user.email.lower() in AuthSettings().admins:
         if grant_role(session, user, SUPER_ADMIN):
             logger.info("Granted SUPER_ADMIN to user_id=%s from ADMIN_EMAILS", user.id)

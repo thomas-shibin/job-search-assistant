@@ -9,15 +9,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.modules.jobs.models import Job
-from app.modules.jobs.pool.models import PoolCompany, PoolJob
-from app.modules.auth.models import User
-from app.modules.jobs.pool import service as pool
-from app.integrations.job_boards.base import RawJob
 from app.core.tenancy import system_session, tenant_session
+from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.auth.models import User
+from app.modules.jobs.models import Job
+from app.modules.jobs.pool import service as pool
+from app.modules.jobs.pool.models import PoolCompany, PoolJob
 
 MEMBER, ADMIN = 1, 2
 FULL = "About the role. " + "You will build data pipelines in Python and SQL. " * 30

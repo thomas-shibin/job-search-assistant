@@ -19,8 +19,8 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.modules.jobs.pool.models import PoolJob
 from app.integrations.job_boards.base import RawJob
+from app.modules.jobs.pool.models import PoolJob
 
 EMPLOYMENT_TYPES = {
     "full_time": "Full-time", "part_time": "Part-time", "contract": "Contract", "temporary": "Temporary",
@@ -192,7 +192,7 @@ def get(session: Session, ref: str) -> Posting | None:
     """The posting `ref` names, or None if unknown (or a board result no longer remembered)."""
     ref = (ref or "").strip()
     if ref.startswith("p") and ref[1:].isdigit():
-        from app.modules.jobs.pool.service import to_raw_job
+        from app.modules.jobs.pool.service import to_raw_job  # the pool service imports this module
 
         job = session.get(PoolJob, int(ref[1:]))
         return from_raw(to_raw_job(job)) if job is not None else None

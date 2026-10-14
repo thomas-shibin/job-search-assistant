@@ -12,30 +12,30 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.integrations.ai.settings import AISettings
-from app.modules.access import service as access
-from app.modules.admin import activity as activity_data
-from app.modules.access import rbac
-from app.modules.auth.deps import admin_session, require_admin
-from app.modules.jobs.catalog.scan import scan_status, start_background_scan
-from app.modules.jobs.catalog.store import counts as catalog_counts
 from app.core.config.loader import ConfigError
 from app.core.config.schema import AppConfig
 from app.core.config.store import PLATFORM_SECTIONS, load_app_config, save_section
 from app.core.database.session import SessionLocal
-from app.modules.usage.ai_calls import AICallLog
-from app.modules.usage.models import ActivityKind
-from app.modules.jobs.pool.models import PoolCompany, PoolJob
-from app.modules.jobs.pool import service as pool
-from app.modules.auth.models import Role, User
-from app.workers import background
-from app.modules.usage.costs import ai_cost_summary
-from app.modules.admin.health import check_health
+from app.core.paths import DEFAULT_CONFIG_PATH
+from app.integrations.ai.settings import AISettings
 from app.integrations.job_boards.adzuna import AdzunaSource
 from app.integrations.job_boards.settings import AdzunaSettings
+from app.modules.access import rbac
+from app.modules.access import service as access
+from app.modules.admin import activity as activity_data
+from app.modules.admin.health import check_health
+from app.modules.auth.deps import admin_session, require_admin
+from app.modules.auth.models import Role, User
+from app.modules.jobs.catalog.scan import scan_status, start_background_scan
+from app.modules.jobs.catalog.store import counts as catalog_counts
+from app.modules.jobs.pool import service as pool
+from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.usage.ai_calls import AICallLog
+from app.modules.usage.costs import ai_cost_summary
+from app.modules.usage.models import ActivityKind
 from app.web.forms import parse_form, section_form
-from app.core.paths import DEFAULT_CONFIG_PATH
 from app.web.templating import templates
+from app.workers import background
 
 router = APIRouter(prefix="/admin")
 

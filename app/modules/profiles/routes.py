@@ -4,19 +4,19 @@ from __future__ import annotations
 
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.modules.auth.deps import member_session, require_member
-from app.modules.auth.service import AuthError, name_problem, normalize_phone
-from app.modules.resumes.models import CandidateProfile
-from app.modules.profiles.models import ProfileEducation, ProfileExperience
 from app.modules.auth.models import User
-from app.modules.profiles import service as profiles
-from app.modules.resumes.uploads import import_upload
+from app.modules.auth.service import AuthError, name_problem, normalize_phone
 from app.modules.jobs.postings import EMPLOYMENT_TYPES, WORKPLACES
+from app.modules.profiles import service as profiles
+from app.modules.profiles.models import ProfileEducation, ProfileExperience
+from app.modules.resumes.models import CandidateProfile
+from app.modules.resumes.uploads import import_upload
 from app.web.templating import templates
 
 router = APIRouter()

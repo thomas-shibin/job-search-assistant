@@ -20,7 +20,17 @@ import time
 from datetime import timedelta
 from pathlib import Path
 
+from app.core.config.models import UserSetting
+from app.core.config.store import load_app_config, save_section
+from app.core.database.session import SessionLocal
+from app.core.tenancy import system_session
+from app.core.tenancy import system_session, tenant_session
+from app.core.tenancy import tenant_session
 from app.integrations.telegram import TelegramClient, TelegramSettings
+from app.modules.admin.health import check_health, format_health_message
+from app.modules.auth.models import TokenPurpose, User
+from app.modules.auth.models import User
+from app.modules.auth.tokens import consume_token
 
 logger = logging.getLogger(__name__)
 
@@ -49,18 +59,12 @@ def _command(text: str) -> tuple[str, str]:
 
 class BotActions:
     """What the bot does with the database -- injectable for tests."""
-
     def __init__(self, session_factory, config_path: Path) -> None:
         self._factory = session_factory
         self._config_path = config_path
 
     def link_chat(self, code: str, chat_id: str) -> str | None:
         """Bind `chat_id` to the account that issued `code`; returns their first name."""
-        from app.modules.auth.tokens import consume_token
-        from app.core.config.store import load_app_config, save_section
-        from app.modules.auth.models import TokenPurpose, User
-        from app.core.tenancy import system_session, tenant_session
-
         with system_session(self._factory) as session:
             token = consume_token(session, TokenPurpose.TELEGRAM_LINK, code)
             session.commit()
@@ -75,17 +79,11 @@ class BotActions:
         return first_name
 
     def _users_for_chat(self, chat_id: str) -> list[int]:
-        from app.core.config.models import UserSetting
-        from app.core.tenancy import system_session
-
         with system_session(self._factory) as session:
             rows = session.query(UserSetting.user_id, UserSetting.value).filter(UserSetting.key == "watchlist").all()
         return [uid for uid, value in rows if str((value or {}).get("telegram_chat_id") or "") == str(chat_id)]
 
     def unlink_chat(self, chat_id: str) -> int:
-        from app.core.config.store import load_app_config, save_section
-        from app.core.tenancy import tenant_session
-
         users = self._users_for_chat(chat_id)
         for user_id in users:
             with tenant_session(self._factory, user_id) as session:
@@ -94,9 +92,6 @@ class BotActions:
         return len(users)
 
     def is_admin_chat(self, chat_id: str) -> bool:
-        from app.modules.auth.models import User
-        from app.core.tenancy import system_session
-
         users = self._users_for_chat(chat_id)
         if not users:
             return False
@@ -104,9 +99,6 @@ class BotActions:
             return any(u.is_member and u.can("settings.view") for u in session.query(User).filter(User.id.in_(users)))
 
     def health_text(self) -> str:
-        from app.modules.admin.health import check_health, format_health_message
-        from app.core.tenancy import system_session
-
         with system_session(self._factory) as session:
             return format_health_message(check_health(session, self._config_path))
 
@@ -169,8 +161,6 @@ def bot_username(settings: TelegramSettings | None = None) -> str | None:
 
 class TelegramCommandListener:
     def __init__(self, config_path: Path, session_factory=None) -> None:
-        from app.core.database.session import SessionLocal
-
         self._actions = BotActions(session_factory or SessionLocal, config_path)
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="telegram-bot", daemon=True)

@@ -14,12 +14,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, GlobalSearchConfig, MatchingConfig
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.modules.jobs.search import clear_cache
 from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.jobs.search import clear_cache
 
 RESULT_1 = RawJob(
     external_id="111",

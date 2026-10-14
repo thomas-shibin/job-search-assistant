@@ -8,11 +8,11 @@ from datetime import date
 
 import pytest
 
-from app.integrations.ai.base import ExtractedJobRequirements
 from app.core.config.schema import MatchingConfig, MatchingWeights, SearchProfile
+from app.integrations.ai.base import ExtractedJobRequirements
+from app.modules.jobs.models import Job, JobStatus
 from app.modules.matching.scorer import NO_REQUIREMENT_SCORE, UNKNOWN_FIT_SCORE, score_job
 from app.modules.resumes.models import AccomplishmentBullet, CandidateProfile, Employment, Skill
-from app.modules.jobs.models import Job, JobStatus
 
 
 def _candidate(skills: list[str], employments: list[Employment] | None = None) -> CandidateProfile:

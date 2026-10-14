@@ -10,14 +10,14 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
-import app.modules.resumes.tailor as tailor_module
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig
 from app.core.database.base import Base
+from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
 from app.modules.resumes.parser import import_resume
 from app.modules.resumes.tailor import BaseResumeMissingError, tailor_resume
-from app.integrations.job_boards.base import RawJob
+import app.modules.resumes.tailor as tailor_module
 
 SAMPLE = Path(__file__).resolve().parents[1] / "fixtures" / "sample_resume.docx"
 

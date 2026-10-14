@@ -11,9 +11,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.core.database.base import Base
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.applications.bundle import build_artifact_set
-from app.core.database.base import Base
 from app.modules.applications.models import ApplicationArtifactSet
 from app.modules.jobs.models import Job, JobStatus
 from app.modules.matching.models import MatchAnalysis

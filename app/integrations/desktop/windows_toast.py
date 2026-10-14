@@ -9,8 +9,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from app.modules.alerts.base import JobNotification
 from app.core.logging import log_event
+from app.modules.alerts.base import JobNotification
 
 logger = logging.getLogger(__name__)
 

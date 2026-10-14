@@ -27,20 +27,21 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.database.session import get_session
+from app.core.logging import log_event
+from app.core.tenancy import tenant_session
+from app.modules.access import rbac
 from app.modules.auth import emails as mailer
 from app.modules.auth import otp, service
-from app.modules.access import rbac
 from app.modules.auth.deps import current_user
+from app.modules.auth.models import User
 from app.modules.auth.passwords import MIN_LENGTH, PASSWORD_RULES
 from app.modules.auth.ratelimit import RateLimiter, email_limiter, login_limiter
 from app.modules.auth.service import AuthError, normalize_email
 from app.modules.auth.sessions import client_ip, end_session, start_session
 from app.modules.auth.settings import AuthSettings
-from app.core.database.session import get_session
-from app.modules.auth.models import User
 from app.modules.profiles import service as profiles
 from app.web.templating import safe_next
-from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +224,6 @@ def me(request: Request, user: User | None = Depends(current_user), session: Ses
     if user.is_member:
         from sqlalchemy.orm import sessionmaker
 
-        from app.core.tenancy import tenant_session
 
         with tenant_session(sessionmaker(bind=session.get_bind()), user.id) as own:
             percent = profiles.completion(own, user).percent

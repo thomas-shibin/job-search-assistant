@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
+from app.core.database.base import Base
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.applications.state_machine import (
     InvalidTransitionError,
@@ -19,7 +20,6 @@ from app.modules.applications.state_machine import (
     skip,
     transition_job,
 )
-from app.core.database.base import Base
 from app.modules.jobs.models import Job, JobStatus
 
 

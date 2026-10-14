@@ -24,6 +24,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.core.paths import PROJECT_ROOT
+from app.core.tenancy import require_tenant
 from app.modules.resumes.documents.docx import render_tailored_resume
 from app.modules.resumes.documents.docx_edit import tailor_docx
 from app.modules.resumes.models import (
@@ -35,7 +36,6 @@ from app.modules.resumes.models import (
     Project,
     Skill,
 )
-from app.core.tenancy import require_tenant
 
 MAX_TEXT = 3000
 MAX_BULLET = 1000

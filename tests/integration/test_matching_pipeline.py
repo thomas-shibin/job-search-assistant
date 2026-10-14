@@ -8,16 +8,16 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.integrations.ai.mock import MockAIProvider
 from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
 from app.core.database.base import Base
-from app.modules.matching.pipeline import analyze_job
-from app.modules.usage.ai_calls import AICallLog
-from app.modules.resumes.models import CandidateProfile, Employment, Skill
+from app.integrations.ai.mock import MockAIProvider
+import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.jobs.models import Job, JobStatus
 from app.modules.jobs.models import JobRequirements
 from app.modules.matching.models import MatchAnalysis
+from app.modules.matching.pipeline import analyze_job
+from app.modules.resumes.models import CandidateProfile, Employment, Skill
+from app.modules.usage.ai_calls import AICallLog
 
 
 @pytest.fixture()

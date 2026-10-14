@@ -6,11 +6,11 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.config.schema import AIConfig
 from app.integrations.ai.factory import AIProviderConfigError, build_ai_provider
 from app.integrations.ai.mock import MockAIProvider
 from app.integrations.ai.openai_provider import OpenAIProvider
 from app.integrations.ai.settings import AISettings
-from app.core.config.schema import AIConfig
 
 
 def test_mock_provider_selected_without_needing_settings():

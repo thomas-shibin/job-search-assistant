@@ -4,12 +4,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
+from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.jobs.ingestion.fingerprint import compute_fingerprint, find_duplicate
 from app.modules.jobs.ingestion.normalize import normalize_raw_job
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
-from app.integrations.job_boards.base import RawJob
 
 
 @pytest.fixture()

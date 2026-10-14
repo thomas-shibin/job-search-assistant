@@ -22,17 +22,18 @@ from fastapi import Request
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import AppError
 from app.modules.access import rbac
-from app.modules.auth.sessions import client_ip
 from app.modules.access.models import AuditLog, FeatureFlag, Permission, RbacRole, RolePermission, UserRole
+from app.modules.auth.models import AuthSession
 from app.modules.auth.models import User
+from app.modules.auth.sessions import client_ip
 
 ROLE_NAME = re.compile(r"^[A-Z][A-Z0-9_]{1,39}$")
 
 
-class AccessError(Exception):
+class AccessError(AppError):
     """A change that isn't allowed; the message is safe to show the admin."""
-
     def __init__(self, message: str, status: int = 403) -> None:
         super().__init__(message)
         self.status = status
@@ -255,8 +256,6 @@ def set_user_active(session: Session, actor: User, target: User, active: bool,
         return
     target.is_active = active
     if not active:
-        from app.modules.auth.models import AuthSession
-
         session.query(AuthSession).filter(AuthSession.user_id == target.id).delete(synchronize_session=False)
     audit(session, actor, "user.reactivate" if active else "user.suspend", "user", target.id,
           {"active": not active}, {"active": active}, request)

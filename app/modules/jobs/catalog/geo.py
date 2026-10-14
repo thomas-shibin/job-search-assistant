@@ -9,8 +9,8 @@ import re
 
 from sqlalchemy.orm import Session
 
-from app.modules.jobs.catalog.seed_data import CANADIAN_PROVINCES
 from app.modules.jobs.catalog.models import SearchTerm, TermKind
+from app.modules.jobs.catalog.seed_data import CANADIAN_PROVINCES
 from app.shared.terms import normalize_term
 
 _CODE_BY_NAME = {normalize_term(name): code for name, code in CANADIAN_PROVINCES}

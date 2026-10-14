@@ -9,6 +9,8 @@ from fastapi.templating import Jinja2Templates
 from jinja2 import pass_context
 from sqlalchemy.orm import object_session
 
+from app.modules.access import rbac
+from app.modules.admin.charts import money
 from app.modules.resumes.diff import inline_word_diff_html, side_by_side_diff
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -16,8 +18,6 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 
 def _money(value) -> str:
-    from app.modules.admin.charts import money
-
     return money(float(value or 0))
 
 
@@ -83,8 +83,6 @@ def can_any(ctx, *permissions: str) -> bool:
 @pass_context
 def can_route(ctx, path: str, method: str = "GET") -> bool:
     """Would the signed-in user get into this route (permission and feature)?"""
-    from app.modules.access import rbac
-
     user = _user(ctx)
     return user is not None and user.is_member and rbac.can_access_route(_session(ctx, user), user, path, method)
 
@@ -92,8 +90,6 @@ def can_route(ctx, path: str, method: str = "GET") -> bool:
 @pass_context
 def feature(ctx, key: str) -> bool:
     """The feature is on and the signed-in user may use it."""
-    from app.modules.access import rbac
-
     user = _user(ctx)
     return user is not None and rbac.can_use(_session(ctx, user), user, key)
 

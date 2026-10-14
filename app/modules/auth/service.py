@@ -18,14 +18,21 @@ from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
-from app.modules.auth import emails as mailer
+from app.core.database.base import Base
+from app.core.exceptions import AppError
+from app.core.logging import log_event
+from app.core.tenancy import TenantOwned, system_session
 from app.modules.access import rbac
+from app.modules.access.models import AuditLog, UserRole
+from app.modules.alerts.models import WatchlistAlert
+from app.modules.auth import emails as mailer
+from app.modules.auth import otp
+from app.modules.auth.models import AuthSession, AuthToken, OAuthIdentity, Role, TokenPurpose, User
 from app.modules.auth.passwords import hash_password, needs_rehash, password_problems, verify_password
 from app.modules.auth.settings import AuthSettings
+from app.modules.auth.storage import delete_user_files
 from app.modules.auth.tokens import consume_token, hash_secret, issue_token, revoke_tokens, utcnow
-from app.modules.auth.models import AuthSession, AuthToken, OAuthIdentity, Role, TokenPurpose, User
-from app.core.tenancy import TenantOwned, system_session
-from app.core.logging import log_event
+from app.modules.usage.models import ActivityEvent
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +46,7 @@ _EMAIL = re.compile(r"^[^@\s]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])
 _NAME = re.compile(r"^[^\x00-\x1f<>\"]{1,100}$")
 
 
-class AuthError(Exception):
+class AuthError(AppError):
     """Something the user can fix; the message is safe to show."""
 
 
@@ -258,15 +265,12 @@ def social_login(session: Session, profile: ProviderProfile) -> User:
 
 def _tenant_models() -> list[type]:
     import app.models  # noqa: F401  every model registered
-    from app.core.database.base import Base
 
     return [m.class_ for m in Base.registry.mappers if issubclass(m.class_, TenantOwned)]
 
 
 def delete_user_data(session: Session, user_id: int) -> None:
     """Every row any user-data table holds for `user_id` (no cascade needed)."""
-    from app.modules.alerts.models import WatchlistAlert
-
     models = _tenant_models()
     # Children before parents: rows with foreign keys into other tenant tables first.
     pending = list(models)
@@ -290,10 +294,6 @@ def delete_user_data(session: Session, user_id: int) -> None:
 
 
 def delete_account(session_factory, user_id: int) -> None:
-    from app.modules.auth.storage import delete_user_files
-
-    from app.modules.access.models import AuditLog, UserRole
-
     with system_session(session_factory) as session:
         if rbac.is_last_super_admin(session, user_id):
             raise AuthError("You're the only Super Admin. Make someone else a Super Admin before deleting "
@@ -319,11 +319,9 @@ def purge_expired(session_factory) -> None:
         now = utcnow()
         session.query(AuthSession).filter(AuthSession.expires_at < now).delete(synchronize_session=False)
         session.query(AuthToken).filter(AuthToken.expires_at < now - timedelta(days=1)).delete(synchronize_session=False)
-        from app.modules.usage.models import ActivityEvent
 
         session.query(ActivityEvent).filter(ActivityEvent.created_at < now - ACTIVITY_RETENTION).delete(
             synchronize_session=False)
-        from app.modules.auth import otp
 
         otp.purge(session)
         old_guests = [uid for (uid,) in session.query(User.id).filter(

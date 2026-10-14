@@ -26,10 +26,10 @@ from sqlalchemy.orm import Session
 import os
 
 from app.core.config.loader import ConfigError, load_config_dict
-from app.core.config.schema import AppConfig, PlatformConfig, Watch
 from app.core.config.models import AppSetting, UserSetting, WatchlistEntry
-from app.core.tenancy import sees_user_data, tenant_of
+from app.core.config.schema import AppConfig, PlatformConfig, Watch
 from app.core.logging import log_event
+from app.core.tenancy import sees_user_data, tenant_of
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +92,7 @@ def _put_user_section(session: Session, key: str, value: Any) -> None:
 
 def _user_defaults(session: Session) -> dict[str, Any]:
     """A new user's settings: the schema defaults, with their own name."""
-    from app.modules.auth.models import User
+    from app.modules.auth.models import User  # core doesn't depend on modules at import time
 
     user_id = tenant_of(session)
     user = session.get(User, user_id) if user_id is not None else None

@@ -14,15 +14,16 @@ from __future__ import annotations
 import hashlib
 import hmac
 import math
-import os
 import secrets
 from datetime import timedelta
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.modules.auth.tokens import utcnow
+from app.core.exceptions import AppError
 from app.modules.auth.models import EmailCode
+from app.modules.auth.settings import AuthSettings
+from app.modules.auth.tokens import utcnow
 
 CODE_TTL = timedelta(seconds=60)
 RESEND_AFTER = timedelta(seconds=30)
@@ -30,10 +31,11 @@ MAX_ATTEMPTS = 5
 MAX_PER_HOUR = 6
 REGISTER, LOGIN = "register", "login"
 
-_KEY = (os.environ.get("APP_SECRET_KEY") or "").encode() or secrets.token_bytes(32)
+# Read once at start-up: every code issued by this process is signed with it.
+_KEY = (AuthSettings().app_secret_key or "").encode() or secrets.token_bytes(32)
 
 
-class CodeError(Exception):
+class CodeError(AppError):
     """Why a code couldn't be issued or accepted. `reason` is one of
     invalid, expired, too_many_attempts, cooldown, rate_limited."""
 

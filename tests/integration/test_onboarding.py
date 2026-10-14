@@ -14,17 +14,17 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
-from app.modules.auth import emails as account_emails
-from app.integrations import email as mailer
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.modules.jobs.models import SavedJob
-from app.modules.profiles.models import ProfileExperience
-from app.modules.auth.models import AuthSession, EmailCode, User
-from app.modules.jobs.pool import service as pool
-from app.integrations.job_boards.base import RawJob
 from app.core.tenancy import system_session, tenant_session
+from app.integrations import email as mailer
+from app.integrations.job_boards.base import RawJob
+import app.models  # noqa: F401  register all models on Base.metadata
+from app.modules.auth import emails as account_emails
+from app.modules.auth.models import AuthSession, EmailCode, User
+from app.modules.jobs.models import SavedJob
+from app.modules.jobs.pool import service as pool
+from app.modules.profiles.models import ProfileExperience
 
 pytestmark = pytest.mark.real_auth
 

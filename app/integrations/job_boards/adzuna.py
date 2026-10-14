@@ -13,9 +13,10 @@ from typing import Any
 
 import httpx
 
+from app.core.exceptions import IntegrationError
+from app.core.logging import log_event
 from app.integrations.job_boards.base import RawJob
 from app.shared.htmlstrip import strip_html_tags
-from app.core.logging import log_event
 from app.shared.retry import with_retry
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,7 @@ _REQUEST_TIMEOUT_SECONDS = 30.0
 _RESULTS_PER_PAGE = 50
 
 
-class AdzunaError(RuntimeError):
+class AdzunaError(IntegrationError, RuntimeError):
     """A failed Adzuna request, with a message that never includes the request
     URL (it carries app_id/app_key as query parameters).
     """

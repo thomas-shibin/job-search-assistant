@@ -66,13 +66,13 @@ class User(Base):
     @property
     def roles(self) -> tuple[str, ...]:
         """RBAC role names (e.g. JOB_SEEKER), read once per request (app/auth/rbac.py)."""
-        from app.modules.access import rbac
+        from app.modules.access import rbac  # rbac imports this module's User
 
         return rbac.roles_of(self)
 
     @property
     def permissions(self) -> frozenset[str]:
-        from app.modules.access import rbac
+        from app.modules.access import rbac  # rbac imports this module's User
 
         return rbac.permissions_of(self)
 

@@ -20,18 +20,18 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.modules.applications.folder import application_folder_path
 from app.core.config.schema import AppConfig
+from app.core.logging import log_event
+from app.integrations.job_boards.base import RawJob
+from app.modules.alerts.models import WatchlistAlert
+from app.modules.applications.folder import application_folder_path
+from app.modules.applications.models import ApplicationArtifactSet
 from app.modules.jobs.ingestion.fingerprint import compute_description_hash, compute_fingerprint
 from app.modules.jobs.ingestion.normalize import normalize_raw_job
-from app.modules.usage.ai_calls import AICallLog
-from app.modules.applications.models import ApplicationArtifactSet
 from app.modules.jobs.models import Job, JobRequirements, JobStatus, JobStatusHistory, JobTombstone
 from app.modules.matching.models import JobFitAssessment, MatchAnalysis
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
-from app.modules.alerts.models import WatchlistAlert
-from app.integrations.job_boards.base import RawJob
-from app.core.logging import log_event
+from app.modules.usage.ai_calls import AICallLog
 
 logger = logging.getLogger(__name__)
 

@@ -10,11 +10,11 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
+from app.core.logging import log_event
+from app.integrations.job_boards.base import RawJob
 from app.modules.jobs.ingestion.fingerprint import compute_description_hash, compute_fingerprint, find_duplicate
 from app.modules.jobs.ingestion.normalize import normalize_raw_job
 from app.modules.jobs.models import Job, JobStatus, JobStatusHistory
-from app.integrations.job_boards.base import RawJob
-from app.core.logging import log_event
 
 logger = logging.getLogger(__name__)
 

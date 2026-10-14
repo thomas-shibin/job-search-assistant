@@ -6,12 +6,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.database.base import Base
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.jobs.catalog import seed_data
+from app.modules.jobs.catalog.models import SearchTerm, TermKind, TermSource
 from app.modules.jobs.catalog.scan import clean_company, clean_title, scan_market
 from app.modules.jobs.catalog.store import Term, location_paths, seed_catalog, suggestions, upsert_terms
-from app.core.database.base import Base
-from app.modules.jobs.catalog.models import SearchTerm, TermKind, TermSource
 
 
 @pytest.fixture()

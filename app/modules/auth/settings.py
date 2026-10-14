@@ -23,6 +23,10 @@ class AuthSettings(BaseSettings):
 
     # (SMTP settings: app/integrations/email.py, EmailSettings.)
 
+    # Signs the six-digit email codes (HMAC; app/modules/auth/otp.py). Unset: a
+    # random key per process, so a restart invalidates codes in flight.
+    app_secret_key: str | None = Field(default=None, alias="APP_SECRET_KEY")
+
     # Cookies only over HTTPS. Defaults to on when PUBLIC_URL is https.
     cookie_secure: bool | None = Field(default=None, alias="COOKIE_SECURE")
 

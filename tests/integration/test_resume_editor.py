@@ -12,9 +12,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-import app.models  # noqa: F401  register all models on Base.metadata
 from app.core.database.base import Base
 from app.core.database.session import get_session
+import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.resumes.models import CandidateProfile
 from app.modules.resumes.parser import import_resume
 

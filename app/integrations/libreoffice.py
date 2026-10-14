@@ -12,6 +12,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from app.core.exceptions import IntegrationError
+
 _CONVERT_TIMEOUT_SECONDS = 120
 
 
@@ -36,7 +38,7 @@ def _find_soffice() -> str | None:
     return None
 
 
-class PdfConversionError(Exception):
+class PdfConversionError(IntegrationError):
     """Raised when LibreOffice isn't available or a conversion attempt fails."""
 
 

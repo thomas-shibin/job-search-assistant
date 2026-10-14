@@ -6,9 +6,10 @@ import yaml
 from pydantic import ValidationError
 
 from app.core.config.schema import AppConfig
+from app.core.exceptions import AppError
 
 
-class ConfigError(Exception):
+class ConfigError(AppError):
     """Raised when config.yaml fails schema validation."""
 
     def __init__(self, errors: list[str]):

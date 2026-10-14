@@ -9,11 +9,13 @@ from dataclasses import dataclass, field
 
 from sqlalchemy.orm import Session
 
-from app.modules.resumes.models import AccomplishmentBullet
+from app.modules.jobs.ingestion.fingerprint import compute_description_hash
 from app.modules.jobs.models import Job, JobStatus, SavedJob
+from app.modules.jobs.models import JobRequirements
 from app.modules.jobs.ranking import best_match_first
 from app.modules.matching.fit import latest_assessment
 from app.modules.matching.models import MatchAnalysis
+from app.modules.resumes.models import AccomplishmentBullet
 from app.modules.resumes.tailoring_models import TailoredBulletProvenance, TailoredResume
 
 
@@ -164,9 +166,6 @@ def replace_job_description(session: Session, job: Job, text: str) -> None:
     pasted by the user) and drop everything derived from the old text, so the
     next scoring / AI analysis / tailoring reads the new one.
     """
-    from app.modules.jobs.ingestion.fingerprint import compute_description_hash
-    from app.modules.jobs.models import JobRequirements
-
     cleaned = "\n".join(line.rstrip() for line in text.strip().splitlines())
     if len(cleaned) < 50:
         raise ValueError("That's too short to be a job description -- paste the full posting text.")
