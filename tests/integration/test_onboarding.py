@@ -378,6 +378,90 @@ def test_sign_out_and_back_in_and_sessions_expire(env):
     assert http.get("/saved", follow_redirects=False).headers["location"].startswith("/login")
 
 
+def _age_session(factory, *, idle: timedelta, age: timedelta | None = None):
+    """Pretend the browser's session was last used `idle` ago (and started `age` ago)."""
+    now = datetime.utcnow()
+    values = {AuthSession.last_seen_at: now - idle}
+    if age is not None:
+        values[AuthSession.created_at] = now - age
+    with system_session(factory) as s:
+        s.query(AuthSession).update(values)
+        s.commit()
+
+
+def _make_admin(factory):
+    from app.modules.access import rbac
+
+    with system_session(factory) as s:
+        rbac.grant_role(s, s.query(User).filter(User.email == "mia@example.com").one(), rbac.SUPER_ADMIN)
+        s.commit()
+
+
+def test_member_session_ends_after_a_week_idle_or_two_weeks(env):
+    http, factory, outbox = env
+    _register(http, outbox)
+    _age_session(factory, idle=timedelta(days=6), age=timedelta(days=13))
+    assert http.get("/saved").status_code == 200  # within both limits (and counts as activity)
+
+    _age_session(factory, idle=timedelta(days=7, minutes=1))
+    page = http.get("/saved", follow_redirects=False)
+    assert page.status_code == 303
+    assert "inactivity" in parse_qs(urlparse(page.headers["location"]).query)["msg"][0]
+    with system_session(factory) as s:
+        assert s.query(AuthSession).count() == 0  # ended for good, not just refused
+
+    http.post("/api/auth/login", json={"email": "mia@example.com", "password": PASSWORD})
+    _age_session(factory, idle=timedelta(minutes=1), age=timedelta(days=14, minutes=1))
+    page = http.get("/saved", follow_redirects=False)
+    assert page.status_code == 303 and "session has ended" in page.headers["location"].replace("+", " ")
+
+
+def test_admin_session_ends_after_30_minutes_idle_or_12_hours(env):
+    http, factory, outbox = env
+    _register(http, outbox)
+    _make_admin(factory)  # applies to the open session at once
+    _age_session(factory, idle=timedelta(minutes=29))
+    assert http.get("/admin/settings").status_code == 200
+
+    _age_session(factory, idle=timedelta(minutes=31))
+    api = http.get("/api/admin/roles")
+    assert api.status_code == 401 and api.json()["error"]["code"] == "session_expired"
+
+    http.post("/api/auth/login", json={"email": "mia@example.com", "password": PASSWORD})
+    with system_session(factory) as s:
+        row = s.query(AuthSession).one()
+        assert row.expires_at - row.created_at == timedelta(hours=12)  # cookie and row sized for an admin
+    _age_session(factory, idle=timedelta(minutes=1), age=timedelta(hours=12, minutes=1))
+    assert http.get("/admin/settings", follow_redirects=False).status_code == 303
+
+
+def test_admins_set_the_session_limits(env):
+    http, factory, outbox = env
+    _register(http, outbox)
+    _make_admin(factory)
+    page = http.get("/admin/settings")
+    assert "Sign-in sessions" in page.text and 'name="sessions.admin_idle_minutes"' in page.text
+    saved = http.post("/admin/settings/sessions", data={
+        "sessions.admin_idle_minutes": "60", "sessions.admin_max_hours": "8",
+        "sessions.member_idle_days": "3", "sessions.member_max_days": "10"}, follow_redirects=False)
+    assert saved.status_code == 303
+    _age_session(factory, idle=timedelta(minutes=45))
+    assert http.get("/admin/settings").status_code == 200  # 60 minutes now
+    assert http.post("/admin/settings/sessions", data={"sessions.admin_idle_minutes": "1"}).status_code == 400
+
+
+def test_theme_choice_is_rendered_from_the_cookie(env):
+    http, _, _ = env
+    page = http.get("/companies")
+    assert "data-theme=" not in page.text.split("<head>")[0]  # no choice: follow the device
+    assert 'data-theme-choice="system"' in page.text and 'aria-checked="true">' in page.text
+    http.cookies.set("theme", "light")
+    page = http.get("/companies")
+    assert '<html lang="en" data-theme="light">' in page.text
+    assert re.search(r'data-theme-choice="light"\s+aria-checked="true"', page.text)
+    http.cookies.set("theme", "<script>")  # anything else is ignored
+    assert "data-theme=" not in http.get("/companies").text.split("<head>")[0]
+
 def test_signed_in_header_and_landing(env):
     http, _, outbox = env
     _register(http, outbox)

@@ -171,7 +171,9 @@ plain `/login` form without JavaScript), or with Google.
 - **Sessions:**
   - a random token in an `HttpOnly`, `SameSite=Lax` cookie (`Secure` under
     https), stored server-side as a SHA-256 hash;
-  - they last 14 days; signing out ends them immediately;
+  - administrators are signed out after 30 minutes idle and 12 hours in all,
+    everyone else after 7 days idle and 14 days in all (admin Settings ->
+    "Sign-in sessions"); signing out ends them immediately;
   - nothing about the session is kept in JavaScript or localStorage.
 - **After the first sign-in:** an optional "Let's build your professional
   profile" step. Either button dismisses it for good. The profile

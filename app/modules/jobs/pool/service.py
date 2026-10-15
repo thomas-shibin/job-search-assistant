@@ -32,7 +32,7 @@ from app.integrations.job_boards.ashby import AshbySource
 from app.integrations.job_boards.base import RawJob
 from app.integrations.job_boards.greenhouse import GreenhouseSource
 from app.integrations.job_boards.lever import LeverSource
-from app.modules.jobs import postings
+from app.modules.jobs import postings, relevance
 from app.modules.jobs.pool.models import PoolCompany, PoolJob
 
 logger = logging.getLogger(__name__)
@@ -329,10 +329,12 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
     country = (country or "").strip().lower()
     if country:
         query = query.filter(PoolJob.country == country)
-    if titles:  # a job title, keyword or company name
-        query = query.filter(or_(*(or_(PoolJob.title.ilike(_like(t.strip()), escape="\\"),
-                                       PoolJob.company.ilike(_like(t.strip()), escape="\\"))
-                                   for t in titles if t.strip())))
+    titles = [t.strip() for t in titles if t.strip()]
+    keywords = [k.strip() for k in keywords if k.strip()]
+    if titles:  # a job title, keyword or company name -- or a synonym (relevance.py)
+        query = query.filter(or_(*(or_(and_(*(PoolJob.title.ilike(_like(w), escape="\\") for w in words)),
+                                       PoolJob.company.ilike(_like(" ".join(words)), escape="\\"))
+                                   for t in titles for words in {*relevance.variants(t), tuple(t.split())})))
     place_filters = []
     for location in locations:
         place, remote = _place(location)
@@ -346,14 +348,26 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
     if place_filters:
         query = query.filter(or_(*place_filters))
     if keywords:
-        words = [w for k in keywords for w in [k.strip()] if w]
         query = query.filter(or_(*(or_(PoolJob.title.ilike(_like(w), escape="\\"),
-                                       PoolJob.description.ilike(_like(w), escape="\\")) for w in words)))
-    total = query.count()
+                                       PoolJob.description.ilike(_like(w), escape="\\")) for w in keywords)))
+    query = query.order_by(PoolJob.date_posted.is_(None), PoolJob.date_posted.desc(), PoolJob.id.desc())
     page = max(page, 1)
-    rows = query.order_by(PoolJob.date_posted.is_(None), PoolJob.date_posted.desc(), PoolJob.id.desc()) \
-        .offset((page - 1) * per_page).limit(per_page).all()
-    return PoolResults(jobs=[to_raw_job(r) for r in rows], has_next=page * per_page < total, total=total)
+    if not (titles or keywords):
+        total = query.count()
+        rows = query.offset((page - 1) * per_page).limit(per_page).all()
+        return PoolResults(jobs=[to_raw_job(r) for r in rows], has_next=page * per_page < total, total=total)
+
+    # The database narrows by substring; whole words and synonyms are checked
+    # here. Best title match first, newest first within it (the sort is stable).
+    rows = query.all()
+    if keywords:
+        rows = [r for r in rows if relevance.mentions(keywords, r.title, r.description)]
+    if titles:
+        ranked = [(relevance.tier(titles, r.title, r.company), r) for r in rows]
+        rows = [r for t, r in sorted(ranked, key=lambda pair: -pair[0]) if t >= relevance.COMPANY]
+    total = len(rows)
+    shown = rows[(page - 1) * per_page: page * per_page]
+    return PoolResults(jobs=[to_raw_job(r) for r in shown], has_next=page * per_page < total, total=total)
 
 
 # ---- full descriptions for job-board results ------------------------------------------------

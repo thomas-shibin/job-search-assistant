@@ -30,6 +30,7 @@ from app.modules.auth import otp
 from app.modules.auth.models import AuthSession, AuthToken, OAuthIdentity, Role, TokenPurpose, User
 from app.modules.auth.passwords import hash_password, needs_rehash, password_problems, verify_password
 from app.modules.auth.settings import AuthSettings
+from app.modules.auth.sessions import session_settings
 from app.modules.auth.storage import delete_user_files
 from app.modules.auth.tokens import consume_token, hash_secret, issue_token, revoke_tokens, utcnow
 from app.modules.usage.models import ActivityEvent
@@ -314,10 +315,12 @@ ACTIVITY_RETENTION = timedelta(days=365)
 
 
 def purge_expired(session_factory) -> None:
-    """Expired sessions and tokens, activity older than a year, and guests older than a week."""
+    """Expired and long-idle sessions, expired tokens, activity older than a year, and guests older than a week."""
     with system_session(session_factory) as session:
         now = utcnow()
         session.query(AuthSession).filter(AuthSession.expires_at < now).delete(synchronize_session=False)
+        idle_cutoff = now - timedelta(days=session_settings(session).member_idle_days)  # the longest idle timeout
+        session.query(AuthSession).filter(AuthSession.last_seen_at < idle_cutoff).delete(synchronize_session=False)
         session.query(AuthToken).filter(AuthToken.expires_at < now - timedelta(days=1)).delete(synchronize_session=False)
 
         session.query(ActivityEvent).filter(ActivityEvent.created_at < now - ACTIVITY_RETENTION).delete(

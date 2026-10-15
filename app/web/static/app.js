@@ -4,6 +4,8 @@
  *    nothing about it lives in JavaScript or localStorage;
  *  - "sign in to continue" for searches and actions that need an account;
  *  - Show/Hide on password fields, account / mobile menus, the job details panel;
+ *  - the theme menu (Light / Dark / Match system), kept in a "theme" cookie so the
+ *    server renders the page in that theme from the first paint;
  *  - window.jobAssistant.access: hasPermission / hasAnyPermission / hasAllPermissions /
  *    canAccessRoute for the signed-in user (UX only -- the server checks every request);
  *  - admin pages: the permission matrix's unsaved-changes state, confirm prompts.
@@ -14,6 +16,28 @@
   document.documentElement.classList.add("js");  // CSS can tell scripts are running
 
   var signedIn = function () { return document.body && document.body.dataset.auth === "1"; };
+
+  // ---------- theme ----------
+  function setTheme(choice) {
+    var root = document.documentElement;
+    if (choice === "light" || choice === "dark") {
+      root.setAttribute("data-theme", choice);
+      document.cookie = "theme=" + choice + "; path=/; max-age=31536000; samesite=lax";
+    } else {
+      root.removeAttribute("data-theme");  // follow the device's setting
+      document.cookie = "theme=; path=/; max-age=0; samesite=lax";
+    }
+    document.querySelectorAll("[data-theme-choice]").forEach(function (button) {
+      button.setAttribute("aria-checked", button.dataset.themeChoice === (choice || "system") ? "true" : "false");
+    });
+  }
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest && event.target.closest("[data-theme-choice]");
+    if (!button) return;
+    setTheme(button.dataset.themeChoice);
+    var menu = button.closest("details");
+    if (menu) menu.open = false;
+  });
 
   // ---------- small helpers ----------
   function $(root, sel) { return root.querySelector(sel); }

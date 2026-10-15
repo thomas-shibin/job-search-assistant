@@ -50,6 +50,10 @@ HELP: dict[str, str] = {
     "platform.guest_searches_per_hour": "New job searches one guest may run per hour.",
     "platform.pool_refresh_hours": "How often the company careers-site jobs (Job sources page) are refreshed, in hours. 0 turns refreshing off.",
     "platform.max_search_pages": "How many result pages one search can page through -- each page is a listing request.",
+    "sessions.admin_idle_minutes": "Anyone who can open the admin dashboard is signed out after this many minutes without using the site.",
+    "sessions.admin_max_hours": "Administrators must sign in again this many hours after signing in, however active.",
+    "sessions.member_idle_days": "Everyone else is signed out after this many days without using the site.",
+    "sessions.member_max_days": "Everyone else must sign in again this many days after signing in. Guests always get 24 hours.",
     "ai.provider": "Provider id; 'mock' is a free offline stand-in for testing.",
     "notifications.minimum_score": "Notify about qualified jobs scoring at least this.",
     "scheduler.enabled": "Scan job sources automatically for every member while the server runs.",
@@ -59,7 +63,7 @@ HELP: dict[str, str] = {
     }
 
 
-_LABELS = {"search": "Job search", "ai": "Analysis provider", "platform": "Limits", "candidate": "Your name"}
+_LABELS = {"search": "Job search", "ai": "Analysis provider", "platform": "Limits", "sessions": "Sign-in sessions", "candidate": "Your name"}
 
 
 def _label(name: str) -> str:

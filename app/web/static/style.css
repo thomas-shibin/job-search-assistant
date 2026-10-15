@@ -35,8 +35,11 @@
   --radius-sm: 7px;
   --topbar-h: 58px;
 }
+/* Dark tokens: for the system preference unless the visitor picked Light, or
+   when they picked Dark (the header's theme menu sets <html data-theme>).
+   The two blocks must stay identical. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     color-scheme: dark;
     --bg: #0c1120;
     --surface: #141b2d;
@@ -61,6 +64,31 @@
     --shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.2);
     --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
   }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0c1120;
+  --surface: #141b2d;
+  --surface-2: #19223a;
+  --border: #253049;
+  --border-strong: #34405c;
+  --text: #e6eaf3;
+  --text-2: #b0b9cc;
+  --text-3: #7f8aa3;
+  --primary: #4c7cf0;
+  --primary-hover: #6990f5;
+  --primary-soft: #1b2a4f;
+  --primary-text: #a9c0ff;
+  --success: #3cc28f;
+  --success-soft: #11342a;
+  --warning: #e9a64b;
+  --warning-soft: #3a2b14;
+  --danger: #f06b75;
+  --danger-soft: #3d1a20;
+  --nav-bg: #080d1a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 6px 16px rgba(0, 0, 0, 0.2);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
 }
 
 /* ---------- Base ---------- */
@@ -194,7 +222,8 @@ button.small, a.button.small { font-size: 0.8rem; padding: 0.38rem 0.7rem; }
 .fit-good { background: #e9f6dc; color: #477a12; border-color: transparent; }
 .fit-partial { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
 .fit-weak { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
-@media (prefers-color-scheme: dark) { .fit-good { background: #22361a; color: #9bd36a; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .fit-good { background: #22361a; color: #9bd36a; } }
+:root[data-theme="dark"] .fit-good { background: #22361a; color: #9bd36a; }
 .fit-badge.large { font-size: 0.85rem; padding: 0.3rem 0.8rem; }
 
 /* Tables */
@@ -595,7 +624,8 @@ button.danger { background: var(--danger); border-color: var(--danger); color: #
 
 /* ---------- Admin activity dashboard ---------- */
 :root { --series-1: var(--primary); --series-2: #7c5cd6; --series-3: var(--success); --series-4: #e08a2c; --series-5: var(--danger); }
-@media (prefers-color-scheme: dark) { :root { --series-2: #a48cf0; --series-4: #f0a95a; } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --series-2: #a48cf0; --series-4: #f0a95a; } }
+:root[data-theme="dark"] { --series-2: #a48cf0; --series-4: #f0a95a; }
 .range-tabs { display: inline-flex; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--surface); }
 .range-tabs a { padding: 0.4rem 0.85rem; font-size: 0.85rem; color: var(--text-2); text-decoration: none; }
 .range-tabs a + a { border-left: 1px solid var(--border); }
@@ -690,6 +720,23 @@ details[data-dropdown] > summary::-webkit-details-marker { display: none; }
 .menu-head small { color: var(--text-3); font-size: 0.8rem; overflow-wrap: anywhere; }
 .menu-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); padding: 0.35rem 0.75rem 0.15rem; }
 .mobile-menu { display: none; }
+/* Theme menu: needs the script, so hidden without it. Its button shows the
+   theme in effect; the menu marks the visitor's choice. */
+.theme-menu { display: none; }
+.js .theme-menu { display: block; }
+.theme-menu > summary { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 50%; color: var(--text-2); }
+.theme-menu > summary:hover { background: var(--surface-2); color: var(--text); }
+.theme-menu > summary .icon { width: 20px; height: 20px; }
+.theme-menu .menu-panel { min-width: 190px; }
+.theme-menu .icon-moon { display: none; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .theme-menu .icon-sun { display: none; }
+  :root:not([data-theme="light"]) .theme-menu .icon-moon { display: inline; }
+}
+:root[data-theme="dark"] .theme-menu .icon-sun { display: none; }
+:root[data-theme="dark"] .theme-menu .icon-moon { display: inline; }
+.theme-menu .menu-button[aria-checked="true"] { color: var(--primary-text); font-weight: 600; }
+.theme-menu .menu-button[aria-checked="true"]::after { content: "\2713"; margin-left: auto; }
 .mobile-menu > summary { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 8px; }
 .mobile-menu > summary:hover { background: var(--surface-2); }
 .mobile-menu .icon { width: 22px; height: 22px; }

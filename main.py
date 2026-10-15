@@ -17,6 +17,7 @@ from app.modules.auth.deps import (
     PermissionDenied,
     VerifyEmailRequired,
 )
+from app.modules.auth.sessions import ENDED_STATE
 
 STATIC_DIR = Path(__file__).resolve().parent / "app" / "web" / "static"
 logger = logging.getLogger(__name__)
@@ -62,6 +63,11 @@ _DENIED_MESSAGES = {
     "forbidden": "You don't have permission to do this.",
     "feature_disabled": "This feature is turned off at the moment.",
 }
+# Why a signed-in session just ended (app/modules/auth/sessions.py), for the sign-in page.
+_SESSION_ENDED = {
+    "idle": "You were signed out after a period of inactivity. Please sign in again.",
+    "expired": "Your session has ended. Please sign in again.",
+}
 
 
 async def _access_denied(request: Request, exc: AccessDenied) -> Response:
@@ -72,6 +78,9 @@ async def _access_denied(request: Request, exc: AccessDenied) -> Response:
         body = {"detail": exc.reason}
         if exc.reason in _DENIED_MESSAGES:
             body["error"] = {"code": exc.reason, "message": _DENIED_MESSAGES[exc.reason]}
+        elif isinstance(exc, LoginRequired) and getattr(request.state, ENDED_STATE, None) in _SESSION_ENDED:
+            body["error"] = {"code": "session_expired",
+                             "message": _SESSION_ENDED[getattr(request.state, ENDED_STATE)]}
         return JSONResponse(body, status_code=status)
     if isinstance(exc, (PermissionDenied, FeatureDisabled)):
         if request.headers.get("hx-request"):  # htmx won't swap a 403 page in; send the browser to it
@@ -81,7 +90,11 @@ async def _access_denied(request: Request, exc: AccessDenied) -> Response:
         return templates.TemplateResponse(request, "access_denied.html", {"reason": exc.reason},
                                           status_code=403)
     if isinstance(exc, LoginRequired):
-        return _go(request, "/login?" + urlencode({"next": exc.next_path}))
+        params = {"next": exc.next_path}
+        ended = getattr(request.state, ENDED_STATE, None)
+        if ended in _SESSION_ENDED:
+            params["msg"] = _SESSION_ENDED[ended]
+        return _go(request, "/login?" + urlencode(params))
     if isinstance(exc, VerifyEmailRequired):
         return _go(request, "/verify-email/pending")
     if isinstance(exc, MembersOnly):

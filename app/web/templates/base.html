@@ -1,6 +1,7 @@
 <!doctype html>
 {% from "_icons.html" import icon %}
-<html lang="en">
+{% set theme = request.cookies.get("theme") if request is defined else none %}
+<html lang="en"{% if theme in ("light", "dark") %} data-theme="{{ theme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -37,6 +38,15 @@
         {{ top_link("/resources", "Career Resources", "/resources") }}
       </nav>
       <div class="site-actions">
+        <details class="theme-menu" data-dropdown>
+          <summary aria-label="Theme" title="Theme">{{ icon("sun", "icon-sun") }}{{ icon("moon", "icon-moon") }}</summary>
+          <div class="menu-panel" role="menu" aria-label="Theme">
+            {% for value, label, ic in [("light", "Light", "sun"), ("dark", "Dark", "moon"), ("system", "Match system", "monitor")] %}
+            <button type="button" class="menu-button" role="menuitemradio" data-theme-choice="{{ value }}"
+                    aria-checked="{{ 'true' if (theme if theme in ('light', 'dark') else 'system') == value else 'false' }}">{{ icon(ic) }} {{ label }}</button>
+            {% endfor %}
+          </div>
+        </details>
         {% if signed_in %}
           {% if can_route("/saved") %}<a class="icon-link" href="/saved" title="Saved jobs" aria-label="Saved jobs">{{ icon("bookmark") }}</a>{% endif %}
           <details class="user-menu" data-dropdown>

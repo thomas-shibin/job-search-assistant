@@ -109,6 +109,7 @@ def test_add_sync_and_search(factory):
         assert titles(titles=["manager"], keywords=["pipelines"]) == ["Office Manager"]
         assert titles(keywords=["kubernetes"]) == []
         assert titles(titles=["100%_"]) == []  # LIKE wildcards are literal
+        assert titles(titles=["at"]) == []  # whole words only: not the "at" in "Data"
 
         # The company stops listing two jobs: they leave the pool. A failed refresh keeps what's there.
         original = FEED[("greenhouse", "acme")]

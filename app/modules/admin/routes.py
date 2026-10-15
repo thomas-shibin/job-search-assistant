@@ -44,6 +44,7 @@ PLATFORM_DESCRIPTIONS = {
     "scheduler": "Automatic scans for every member",
     "retention": "Delete old jobs automatically -- members' settings, searches and watches are never deleted",
     "ai": "Analysis provider",
+    "sessions": "How long people stay signed in -- administrators get a shorter, stricter limit",
 }
 
 
@@ -65,7 +66,7 @@ def _settings_page(request: Request, session: Session, *, message: str | None = 
     sections = [
         {"key": key, "description": PLATFORM_DESCRIPTIONS[key],
          "form": section_form(AppConfig.model_fields[key].annotation, key, dumped[key])}
-        for key in ("platform", "scheduler", "retention", "ai")
+        for key in ("platform", "sessions", "scheduler", "retention", "ai")
     ]
     adzuna = AdzunaSettings()
     integrations = {

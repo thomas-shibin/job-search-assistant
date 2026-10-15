@@ -38,7 +38,7 @@ services. There is no separate repository layer, because the tenant-scoped sessi
 |---|---|
 | `auth` | Accounts, sign-up/sign-in by email code or password, Google sign-in, sessions, password reset, account deletion; the route guards (`deps.py`) every member route uses |
 | `access` | Roles, permissions and which route needs which (`rbac.py`); feature switches; escalation rules and the audit log (`service.py`); admin pages and `/api/admin` |
-| `jobs` | Job search across the job board and the company-careers job pool, postings and filters, saved jobs, the search-term catalog, ingestion of postings into a user's jobs |
+| `jobs` | Job search across the job board and the company-careers job pool, ordered by relevance to the typed title (`relevance.py`: whole words, synonyms such as HR = Human Resources); postings and filters, saved jobs, the search-term catalog, ingestion of postings into a user's jobs |
 | `applications` | Tracked jobs: the list, a job's page, the status workflow (`state_machine.py`), application files, retention |
 | `matching` | Keyword scoring, AI requirement extraction and fit assessment, the analyze/tailor workflows |
 | `resumes` | Resume import and editing, tailoring with a truthfulness check, DOCX/PDF output, Quick Tailor |
@@ -77,6 +77,13 @@ the route's permission from `access/rbac.py`'s `ROUTE_PERMISSIONS`, which is rea
 fresh from the database on each request. A route missing from that table is refused,
 and a test fails. Permission names (`jobs.view`, `users.suspend`) are what code checks,
 never role names. See [MULTI_TENANCY.md](MULTI_TENANCY.md).
+
+Sessions are server-side rows (`auth/sessions.py`); the cookie only carries a random
+token. Each request also checks the session's time limits, a platform setting on the
+admin Settings page ("Sign-in sessions"): administrators are signed out after 30
+minutes without a request and 12 hours after signing in, everyone else after 7 days
+idle and 14 days in all (guests: 24 hours). The limits follow the user's current
+permissions, so granting the admin role tightens an open session at once.
 
 ## Database access
 

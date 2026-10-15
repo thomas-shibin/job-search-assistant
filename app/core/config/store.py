@@ -33,7 +33,7 @@ from app.core.tenancy import sees_user_data, tenant_of
 
 logger = logging.getLogger(__name__)
 
-PLATFORM_SECTIONS = ("ai", "scheduler", "retention", "platform")
+PLATFORM_SECTIONS = ("ai", "scheduler", "retention", "platform", "sessions")
 USER_SECTIONS = (
     "candidate", "search", "address_profiles", "search_profiles", "matching", "resume", "notifications", "watchlist",
 )

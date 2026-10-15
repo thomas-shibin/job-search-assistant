@@ -22,7 +22,7 @@ from app.integrations.job_boards.base import RawJob
 from app.integrations.job_boards.settings import AdzunaSettings
 from app.modules.applications.service import latest_match_analysis
 from app.modules.auth.models import User
-from app.modules.jobs import postings
+from app.modules.jobs import postings, relevance
 from app.modules.jobs.catalog.store import location_paths
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
 from app.modules.jobs.models import Job, SavedJob
@@ -68,7 +68,8 @@ def search_for_page(
     location (app/modules/jobs/search.py) merged with the free job pool of
     companies' careers sites (app/modules/jobs/pool), which carries full
     descriptions -- a board result the pool also has is shown from the pool.
-    Nothing here saves anything: a posting only becomes a tracked `Job` when
+    Results are ordered by how well their title matches the search, then newest
+    first. Nothing here saves anything: a posting only becomes a tracked `Job` when
     the user analyzes or tracks it. An empty page past the last real results
     is the "no more results" signal.
 
@@ -108,7 +109,7 @@ def search_for_page(
         result["error"] = board_error
         return result
 
-    jobs = _merge_results(pooled.jobs, board_jobs)
+    jobs = _by_relevance(_merge_results(pooled.jobs, board_jobs), titles)
     tracked = tracked_by_external_id(session, [j.external_id for j in jobs if j.external_id])
     cards = [{"raw": j, "tracked": tracked.get(j.external_id)} for j in jobs]
     result["cards"] = best_match_first(cards, lambda card: card["tracked"])
@@ -130,6 +131,15 @@ def _merge_results(pool_jobs: list[RawJob], board_jobs: list[RawJob]) -> list[Ra
     merged = list(pool_jobs) + [j for j in board_jobs
                                 if (pool.normalize(j.company, company=True), pool.normalize(j.title)) not in in_pool]
     return sorted(merged, key=_posted_at, reverse=True)
+
+
+def _by_relevance(jobs: list[RawJob], titles: list[str]) -> list[RawJob]:
+    """Best match to the typed titles first (app/modules/jobs/relevance.py),
+    newest first within each tier. The job board searches whole descriptions,
+    so a posting that only mentions the term in passing goes to the end."""
+    if not titles:
+        return jobs
+    return sorted(jobs, key=lambda job: -relevance.tier(titles, job.title, job.company, job.description))
 
 
 def _search_summary(titles: list[str], locations: list[str], keywords: list[str], country: str) -> str:

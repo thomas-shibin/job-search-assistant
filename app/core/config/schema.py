@@ -265,6 +265,22 @@ class PlatformConfig(BaseModel):
     pool_refresh_hours: int = Field(default=6, ge=0, le=168)
 
 
+class SessionsConfig(BaseModel):
+    """How long a sign-in lasts, set by an admin. A session ends at whichever
+    comes first: the inactivity timeout or the maximum length. Administrators
+    (anyone who can open the admin dashboard) get the stricter pair, from their
+    next request after the role is granted."""
+
+    # Administrators: signed out after this many minutes without a request...
+    admin_idle_minutes: int = Field(default=30, ge=5, le=1440)
+    # ...and at most this many hours after signing in.
+    admin_max_hours: int = Field(default=12, ge=1, le=336)
+    # Everyone else: signed out after this many days without a request...
+    member_idle_days: int = Field(default=7, ge=1, le=90)
+    # ...and at most this many days after signing in.
+    member_max_days: int = Field(default=14, ge=1, le=90)
+
+
 class AppConfig(BaseModel):
     candidate: CandidateConfig
     search: GlobalSearchConfig = Field(default_factory=GlobalSearchConfig)
@@ -278,3 +294,4 @@ class AppConfig(BaseModel):
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     platform: PlatformConfig = Field(default_factory=PlatformConfig)
+    sessions: SessionsConfig = Field(default_factory=SessionsConfig)
