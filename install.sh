@@ -51,6 +51,11 @@ ask_key() {  # ask_key VAR "description" -- only if not already set
   fi
 }
 
+# The app runs as whoever installs it (APP_UID/APP_GID below), so never as root.
+[ "$(id -u)" -ne 0 ] || die "Don't run the installer as root or with sudo -- run it as your own user:
+  ./install.sh
+For Docker, your user needs to be in the docker group: sudo usermod -aG docker \$USER (then log out and in)."
+
 bold "Job Assistant -- installing ($MODE)"
 
 # 1. Folders and settings ------------------------------------------------------

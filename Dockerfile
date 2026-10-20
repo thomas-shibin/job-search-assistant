@@ -21,11 +21,20 @@ COPY app ./app
 COPY alembic ./alembic
 RUN pip install --no-cache-dir .
 
-# data/ and config/ are bind-mounted from the host (see docker-compose.yml) so the
-# container shares the native install's database, resumes and config.yaml.
-RUN useradd --uid 1000 --create-home app && mkdir -p data config && chown app:app data config
-USER app
+# Least privilege: the app runs as an unprivileged system user with no shell and
+# no home folder. The code stays owned by root, so the app can read it but not
+# change it; it can only write to data/ and config/ (bind-mounted from the host,
+# see docker-compose.yml) and /tmp. Programs that switch user (setuid/setgid,
+# e.g. su, passwd) lose that ability, so nothing in the image can become root.
+RUN groupadd --system --gid 1000 app \
+    && useradd --system --uid 1000 --gid app --no-create-home --home-dir /nonexistent \
+       --shell /usr/sbin/nologin app \
+    && mkdir -p data config && chown app:app data config && chmod 750 data config \
+    && { find / -xdev -type f -perm /6000 -exec chmod a-s {} + 2>/dev/null || true; }
+USER 1000:1000
 
 EXPOSE 8000
-# Migrations are idempotent, so applying them on every start keeps the DB current.
-CMD ["sh", "-c", "alembic upgrade head && python cli.py serve --host 0.0.0.0 --port 8000"]
+# Refuses to run as root (e.g. `user: "0:0"` or APP_UID=0 from an installer run
+# with sudo). Migrations are idempotent, so applying them on every start keeps
+# the DB current.
+CMD ["sh", "-c", "if [ \"$(id -u)\" = 0 ]; then echo 'Refusing to run as root: set APP_UID/APP_GID in .env to your own user (id -u / id -g).' >&2; exit 1; fi; alembic upgrade head && exec python cli.py serve --host 0.0.0.0 --port 8000"]

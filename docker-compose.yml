@@ -8,6 +8,16 @@ services:
     env_file: .env
     # Run as the owner of data/ (set by install.sh) so files it writes stay yours.
     user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    # Least privilege: no Linux capabilities (it only listens on port 8000, which
+    # needs none), no way to gain privileges (setuid, sudo), and a read-only
+    # filesystem except the data/ and config/ folders and a scratch /tmp.
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      # LibreOffice's profile and conversion scratch files (HOME=/tmp).
+      - /tmp:size=512m,mode=1777
     environment:
       # The host .env's relative sqlite URL resolves against /app inside the container.
       DATABASE_URL: sqlite:////app/data/job_assistant.db
