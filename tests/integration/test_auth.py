@@ -206,10 +206,14 @@ def test_admin_emails_become_admins(env):
     assert http.get("/admin/health").status_code == 200
 
 
-def _social(monkeypatch, profile: ProviderProfile):
+def _social(monkeypatch, profile: ProviderProfile, *, any_address: bool = True):
+    """Fake providers. `any_address`: skip the https-and-a-domain rule, since the
+    test client's address is http://testserver."""
     import app.modules.auth.oauth as oauth
 
     monkeypatch.setattr(oauth.AuthSettings, "provider_enabled", lambda self, p: True)
+    if any_address:
+        monkeypatch.setattr(oauth.AuthSettings, "social_redirect_allowed", property(lambda self: True))
     monkeypatch.setattr(oauth, "_google_profile", lambda http, code, verifier: profile)
     monkeypatch.setattr(oauth, "_facebook_profile", lambda http, code: profile)
 
@@ -243,6 +247,61 @@ def test_social_callback_from_another_browser_is_rejected(env, monkeypatch):
     response = _social_login(http, tamper=True)
     assert "/login?error=" in response.headers["location"]
     assert _user(factory, "gina@example.com") is None
+
+
+def test_social_sign_in_starts_on_the_public_address(env, monkeypatch):
+    """Opened as localhost while PUBLIC_URL says 127.0.0.1 (or the reverse): the
+    state cookie must be set where the provider will send the browser back."""
+    http, factory, _ = env
+    _social(monkeypatch, ProviderProfile("google", "g-1", "gina@example.com", True, "Gina", "Gee"))
+    other = http.get("http://localhost/auth/google/start?next=%2Fjobs", follow_redirects=False)
+    assert other.status_code == 303 and other.headers["location"] == f"{BASE}/auth/google/start?next=%2Fjobs"
+    assert "jsa_oauth_state" not in other.headers.get("set-cookie", "")
+    assert _social_login(http).headers["location"].startswith("/welcome")
+
+
+def test_social_sign_in_isnt_offered_when_public_url_is_this_computer(env, monkeypatch):
+    """PUBLIC_URL left at 127.0.0.1 while people reach the site by its public
+    address: Google would send them back to their own device, so it's hidden and
+    the start link explains instead of bouncing to 127.0.0.1."""
+    http, _, _ = env
+    monkeypatch.setenv("PUBLIC_URL", "http://127.0.0.1:8001")
+    _social(monkeypatch, ProviderProfile("google", "g-1", "gina@example.com", True, "Gina", "Gee"), any_address=False)
+
+    public = "http://75.0.0.10:8001"
+    assert "/auth/google/start" not in http.get(f"{public}/login").text
+    start = http.get(f"{public}/auth/google/start?next=%2Fjobs", follow_redirects=False)
+    assert start.status_code == 303 and start.headers["location"].startswith("/login?error=")
+    assert "127.0.0.1" not in start.headers["location"]
+
+    # On the computer itself it still works (localhost goes to 127.0.0.1 to start).
+    assert "/auth/google/start" in http.get("http://127.0.0.1:8001/login").text
+    local = http.get("http://localhost:8001/auth/google/start", follow_redirects=False)
+    assert local.headers["location"] == "http://127.0.0.1:8001/auth/google/start"
+
+
+@pytest.mark.parametrize("public_url, offered", [
+    ("http://75.0.0.10:8001", False),  # Google refuses IP addresses
+    ("https://75.0.0.10", False),
+    ("http://jobs.example.com", False),  # and plain http on a domain
+    ("https://jobs.example.com", True),
+])
+def test_social_sign_in_needs_https_on_a_domain(env, monkeypatch, public_url, offered):
+    http, _, _ = env
+    monkeypatch.setenv("PUBLIC_URL", public_url)
+    _social(monkeypatch, ProviderProfile("google", "g-1", "gina@example.com", True, "Gina", "Gee"), any_address=False)
+    assert ("/auth/google/start" in http.get(f"{public_url}/login").text) is offered
+
+
+def test_reset_link_uses_public_url_not_the_request_address(env, monkeypatch):
+    """A forged Host header must not put someone else's site into the email."""
+    http, factory, outbox = env
+    _signup(http)
+    http.post("/logout")
+    monkeypatch.setenv("PUBLIC_URL", "http://75.0.0.10:8001")
+    http.post("http://evil.example/forgot-password", data={"email": "ann@example.com"})
+    body = str(outbox[-1])
+    assert "http://75.0.0.10:8001/reset-password?token=" in body and "evil.example" not in body
 
 
 def test_unverified_provider_email_cant_join_an_existing_account(env, monkeypatch):

@@ -185,11 +185,16 @@ def _ai_message(a: Allowance) -> str:
 
 # ---- searches --------------------------------------------------------------------
 
-def search_fingerprint(titles: list[str], locations: list[str], keywords: list[str], country: str) -> str:
+def search_fingerprint(titles: list[str], locations: list[str], keywords: list[str], country: str, *,
+                       radius_km: int | None = None) -> str:
+    """Identifies a search for the hourly limit: the same terms again are free."""
     def norm(values: list[str]) -> list[str]:
         return sorted({v.strip().lower() for v in values if v and v.strip()})
 
-    payload = json.dumps([norm(titles), norm(locations), norm(keywords), (country or "").strip().lower()])
+    parts = [norm(titles), norm(locations), norm(keywords), (country or "").strip().lower()]
+    if radius_km:  # added only when set, so searches without one keep their old fingerprints
+        parts.append(int(radius_km))
+    payload = json.dumps(parts)
     return hashlib.sha256(payload.encode()).hexdigest()[:32]
 
 

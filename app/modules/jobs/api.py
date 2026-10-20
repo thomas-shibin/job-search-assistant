@@ -21,7 +21,7 @@ from app.modules.applications.schemas import JobDetailResponse
 from app.modules.applications.service import get_job_detail
 from app.modules.auth.deps import member_session, require_member, require_permission
 from app.modules.auth.models import User
-from app.modules.jobs import postings
+from app.modules.jobs import places, postings
 from app.modules.jobs import service as jobs
 from app.modules.jobs.catalog.models import TermKind
 from app.modules.jobs.catalog.store import suggestions
@@ -47,13 +47,18 @@ def api_search_jobs(
     q: str | None = None, l: str | None = None, country: str | None = None, page: int = 1,
     workplace: list[str] | None = Query(None), job_type: list[str] | None = Query(None, alias="type"),
     level: list[str] | None = Query(None), salary: str | None = None, days: str | None = None,
+    radius: str | None = None,
     session: Session = Depends(member_session), user: User = Depends(require_member),
 ):
-    """Search jobs. A new q / l / country counts toward the hourly search limit;
-    pages and filters of the same search don't."""
+    """Search jobs. A new q / l / radius / country counts toward the hourly
+    search limit; pages and filters of the same search don't. `radius` (km,
+    1-200) widens each town or city in `l` to everything within that distance."""
     titles, locations, keywords, country, _ = jobs.search_terms(session, q, l, None, None, None, country)
-    query_string = urlencode({"q": ", ".join(titles), "l": ", ".join(locations), "country": country})
-    search = jobs.limited_search(session, user, titles, locations, keywords, country, page, query_string)
+    radius_km = places.parse_radius(radius) if locations else None
+    query_string = urlencode({k: v for k, v in {"q": ", ".join(titles), "l": ", ".join(locations),
+                                                "radius": radius_km, "country": country}.items() if v is not None})
+    search = jobs.limited_search(session, user, titles, locations, keywords, country, page, query_string,
+                                 radius_km=radius_km)
     if search.get("limited"):
         return JSONResponse({"error": {"code": "search_limit", "message": search["error"]}}, status_code=429)
     if search.get("error"):

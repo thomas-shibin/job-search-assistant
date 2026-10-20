@@ -1,0 +1,13 @@
+{# The "where" box of a job search, with how far around the place to search
+   (app/modules/jobs/places.py). `radius` is the current distance in km, if any. #}
+{% from "_icons.html" import icon %}
+{% macro place_field(l="", radius=none, choices=(10, 25, 50, 75, 100)) -%}
+<div class="hero-field hero-field-place">
+  <label class="hero-field-input">{{ icon("pin") }}<span class="visually-hidden">City, province, or location</span>
+    <input type="text" name="l" value="{{ l }}" placeholder="City or province" autocomplete="off"></label>
+  <select name="radius" class="radius-select" aria-label="How far from this place">
+    <option value="">Exact location</option>
+    {% for km in choices %}<option value="{{ km }}"{% if radius == km %} selected{% endif %}>Within {{ km }} km</option>{% endfor %}
+  </select>
+</div>
+{%- endmacro %}

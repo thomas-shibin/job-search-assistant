@@ -2,6 +2,7 @@
 globals its templates use (dates, money, sources, resume diffs, permissions)."""
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -52,6 +53,27 @@ templates.env.filters["ago"] = _ago
 templates.env.filters["source_label"] = _source_label
 templates.env.filters["worddiff"] = inline_word_diff_html
 templates.env.globals["sidediff"] = side_by_side_diff
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+_static_versions: dict[str, tuple[float, str]] = {}
+
+
+def static_url(name: str) -> str:
+    """/static/<name>?v=<content hash>: a new deploy changes the URL, so browsers
+    fetch the new file instead of running a cached old one."""
+    path = STATIC_DIR / name
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        return f"/static/{name}"
+    cached = _static_versions.get(name)
+    if cached is None or cached[0] != mtime:
+        cached = (mtime, hashlib.sha256(path.read_bytes()).hexdigest()[:12])
+        _static_versions[name] = cached
+    return f"/static/{name}?v={cached[1]}"
+
+
+templates.env.globals["static_url"] = static_url
 
 
 # ---- permissions in templates (the server-side half of hasPermission & co.) ----------------

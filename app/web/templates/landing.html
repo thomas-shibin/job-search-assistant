@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, avatar %}
+{% from "_place_field.html" import place_field %}
 {% block title %}Job Assistant - Find your next career opportunity in Canada{% endblock %}
 {% block main_class %}landing{% endblock %}
 {% block content %}
@@ -11,14 +12,10 @@
       <label class="hero-field">
         {{ icon("search") }}
         <span class="visually-hidden">Job title, keywords, or company</span>
-        <input type="text" name="q" placeholder="Job title, keywords, or company" autocomplete="off">
+        <input type="text" name="q" placeholder="{{ 'Job title, or describe the job you want' if smart_search else 'Job title, keywords, or company' }}" autocomplete="off">
       </label>
       <span class="hero-divider" aria-hidden="true"></span>
-      <label class="hero-field">
-        {{ icon("pin") }}
-        <span class="visually-hidden">City, province, or location</span>
-        <input type="text" name="l" placeholder="City, province, or location" autocomplete="off">
-      </label>
+      {{ place_field("", none, radius_choices) }}
       <button type="submit" class="primary pill">Find Jobs</button>
     </form>
     <p class="hero-hint">Popular:

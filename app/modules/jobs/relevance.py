@@ -9,8 +9,12 @@ be filtered and ordered by relevance rather than only by date.
   direction and inside longer titles ("HR Manager" = "Human Resources Manager").
 - Pay rates aren't words: "$45/hr" in a title doesn't match "hr".
 - Tiers: the phrase in the title (4) > all its words in the title (3) > the
-  company's name (2; a staffing agency called "X HR Solutions" lists all kinds
-  of jobs) > the phrase in the description (1) > none of these (0).
+  company's name (2) > the phrase in the description (1) > none of these (0).
+  The company tier needs the search to *be* the company's name ("Shopify" for
+  "Shopify Inc."); a word inside one doesn't count, because a staffing agency
+  called "X HR Solutions" lists all kinds of jobs.
+- Only RELEVANT (company tier) and above is shown: a job that just mentions
+  the term in its description ("send your resume to our HR team") is left out.
 
 Pure functions; text is compared after `normalize_term` (case, accents and
 punctuation ignored).
@@ -23,15 +27,17 @@ from functools import lru_cache
 from app.shared.terms import normalize_term
 
 TITLE_PHRASE, TITLE_WORDS, COMPANY, DESCRIPTION, NONE = 4, 3, 2, 1, 0
+RELEVANT = COMPANY  # the lowest tier search results show
 
 # Each group is one meaning, written in normalized form (lowercase, "&" and
 # punctuation dropped). Keep groups to unambiguous names: "PM" is left out
 # because it means both product and project manager.
 SYNONYMS: tuple[tuple[str, ...], ...] = (
-    ("hr", "human resources", "people operations", "people ops", "rh", "ressources humaines"),
-    ("hrbp", "hr business partner", "human resources business partner", "people partner"),
+    ("hr", "human resources", "human resource", "people and culture", "people culture", "people operations",
+     "people ops", "rh", "ressources humaines"),
+    ("hrbp", "hr business partner", "human resources business partner", "human resource business partner",
+     "people partner"),
     ("hris", "hr information systems", "human resources information systems"),
-    ("people and culture", "people culture"),
     ("ta", "talent acquisition"),
     ("qa", "quality assurance"),
     ("ux", "user experience"),
@@ -60,6 +66,9 @@ SYNONYMS: tuple[tuple[str, ...], ...] = (
 _ENDINGS = "(?:s|es|er|ers|ing|ed)?"
 _PAY_RATE = re.compile(r"(?<=[\d$])\s*(?:/|per\b)\s*(?:hr|hrs|hour|h)\b", re.IGNORECASE)  # "$45/hr", "20$/hr"
 _MAX_VARIANTS = 12
+# Left off a company's name before comparing it with a search ("Shopify Inc." = "Shopify").
+_COMPANY_WORDS = frozenset(
+    "inc incorporated ltd ltee llc llp corp corporation co company limited group technologies canada".split())
 
 
 def _word(word: str) -> str:
@@ -103,7 +112,8 @@ def _word_patterns(words: tuple[str, ...]) -> tuple[re.Pattern, ...]:
 def tier(terms: list[str] | tuple[str, ...], title: str | None, company: str | None = None,
          description: str | None = None) -> int:
     """The best tier any search term reaches on this posting."""
-    title_n, company_n = normalize_term(_PAY_RATE.sub(" ", title or "")), normalize_term(company or "")
+    title_n = normalize_term(_PAY_RATE.sub(" ", title or ""))
+    company_n = " ".join(w for w in normalize_term(company or "").split() if w not in _COMPANY_WORDS)
     description_n = None  # normalized only when needed: descriptions are long
     best = NONE
     for term in terms:
@@ -113,7 +123,7 @@ def tier(terms: list[str] | tuple[str, ...], title: str | None, company: str | N
                 return TITLE_PHRASE
             if best < TITLE_WORDS and all(p.search(title_n) for p in _word_patterns(words)):
                 best = TITLE_WORDS
-            if best < COMPANY and phrase.search(company_n):
+            if best < COMPANY and company_n and phrase.fullmatch(company_n):
                 best = COMPANY
             if best < DESCRIPTION and description:
                 if description_n is None:

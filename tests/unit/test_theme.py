@@ -28,3 +28,20 @@ def test_every_dark_override_also_applies_to_the_dark_choice():
     for rule in system_rules:
         assert f':root[data-theme="dark"] {rule}' in CSS
     assert "@media (prefers-color-scheme: dark) { :root {" not in CSS  # nothing left that ignores the choice
+
+
+def test_static_files_are_versioned_by_content(tmp_path, monkeypatch):
+    """A changed app.js or style.css gets a new URL, so browsers don't keep running
+    a cached old copy after a deploy (which once hid the theme menu's script)."""
+    from app.web import templating
+
+    monkeypatch.setattr(templating, "STATIC_DIR", tmp_path)
+    monkeypatch.setattr(templating, "_static_versions", {})
+    (tmp_path / "app.js").write_text("one")
+    first = templating.static_url("app.js")
+    assert first.startswith("/static/app.js?v=") and templating.static_url("app.js") == first
+    (tmp_path / "app.js").write_text("two -- a new deploy")
+    import os
+    os.utime(tmp_path / "app.js", (1, 1))
+    assert templating.static_url("app.js") != first
+    assert templating.static_url("missing.js") == "/static/missing.js"

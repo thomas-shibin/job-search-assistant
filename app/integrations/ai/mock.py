@@ -13,7 +13,9 @@ from __future__ import annotations
 
 import re
 
-from app.integrations.ai.base import ExtractedJobRequirements, FitAssessmentResult, TailoredBulletDraft, TailoredResumeDraft
+from app.integrations.ai.base import (
+    ExtractedJobRequirements, FitAssessmentResult, SearchInterpretation, TailoredBulletDraft, TailoredResumeDraft,
+)
 from app.integrations.ai.usage import AIUsage
 from app.modules.matching.scorer import MatchScoreBreakdown
 
@@ -197,6 +199,15 @@ class MockAIProvider:
             summary=f"Mock assessment: you list {len(matched)} of the {len(wanted)} skills detected in this posting.",
             recommendation="This is a quick keyword-based assessment; a detailed one isn't available right now.",
         )
+
+    def interpret_search(self, text: str) -> SearchInterpretation | None:
+        """No language model here: the search box's own rules read the search."""
+        return None
+
+    def canadian_titles(self, roles: list[dict]) -> dict[int, str]:
+        """No language model here: the member types any equivalents themselves."""
+        self.last_usage = AIUsage()
+        return {}
 
     def generate_match_explanation(self, score: MatchScoreBreakdown) -> str:
         self.last_usage = AIUsage()

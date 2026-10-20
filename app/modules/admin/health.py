@@ -152,8 +152,15 @@ def _api_keys() -> Check:
     missing = [name for name, present in keys.items() if not present]
     social = [p.title() for p in ("google", "facebook") if auth.provider_enabled(p)]
     detail = f"social sign-in: {', '.join(social) or 'none'}"
+    social_limited = social and (auth.public_url_is_local or not auth.social_redirect_allowed)
+    if social and auth.public_url_is_local:
+        detail += " (PUBLIC_URL is a local address, so it only works on this computer)"
+    elif social_limited:
+        detail += " (off: PUBLIC_URL needs https and a domain name, not an IP address)"
     if missing:
         return Check("Integrations", WARN, f"not configured: {', '.join(missing)}; {detail}")
+    if social_limited:
+        return Check("Integrations", WARN, f"all configured; {detail}")
     return Check("Integrations", OK, f"all configured; {detail}")
 
 

@@ -1,24 +1,36 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, avatar %}
 {% from "_job_detail.html" import job_detail with context %}
+{% from "_place_field.html" import place_field %}
 {% block title %}{{ (q ~ " jobs") if q else "Find jobs" }}{% if l %} in {{ l }}{% endif %} - Job Assistant{% endblock %}
 {% block main_class %}app-main wide{% endblock %}
 {% block content %}
 <form class="results-search" action="/jobs" method="get" role="search">
   <label class="hero-field">{{ icon("search") }}<span class="visually-hidden">Job title, keywords, or company</span>
-    <input type="text" name="q" value="{{ q }}" placeholder="Job title, keywords, or company"></label>
+    <input type="text" name="q" value="{{ q }}" placeholder="{{ 'Job title, or describe the job you want' if smart_search else 'Job title, keywords, or company' }}"></label>
   <span class="hero-divider" aria-hidden="true"></span>
-  <label class="hero-field">{{ icon("pin") }}<span class="visually-hidden">City, province, or location</span>
-    <input type="text" name="l" value="{{ l }}" placeholder="City, province, or location"></label>
+  {{ place_field(l, radius, radius_choices) }}
   <input type="hidden" name="country" value="{{ country }}">
   <button type="submit" class="primary pill">Find Jobs</button>
 </form>
 
+{% if typed %}
+<p class="search-read">{{ icon("search") }}<span>Showing results for &ldquo;{{ typed }}&rdquo;{% if corrections %}, with spelling corrected: {% for wrong, right in corrections %}<s>{{ wrong }}</s> &rarr; <strong>{{ right }}</strong>{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}. <a href="{{ exact_url }}">Search for the exact words instead</a></span></p>
+{% endif %}
+{% if search.whole_places and not search.limited %}
+<p class="search-read">{{ icon("pin") }}<span>Distance is measured from a town or city, so {{ search.whole_places|join(", ") }} {{ "was" if search.whole_places|length == 1 else "were" }} searched as a whole.</span></p>
+{% endif %}
 {% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
 {% if search.limited %}
 <div class="warning-box">{{ icon("clock") }}<div class="alert-body">{{ search.error }}
   {% if search.last_search %}<div><a href="{{ search.last_search.url }}">Back to your last search: {{ search.last_search.summary }}</a></div>{% endif %}</div></div>
-{% elif search.error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ search.error }}</div></div>{% endif %}
+{% elif search.error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ search.error }}</div></div>
+{% elif search.failed %}
+<div class="warning-box">{{ icon("alert") }}<div class="alert-body">
+  {% if search.failed|length >= search.queries %}The job board isn't responding right now, so {% if search.cards %}these results are only from company career sites{% else %}we couldn't search it{% endif %}. Please try again in a minute{% if search.allowance and not search.allowance.unlimited %}; this search wasn't counted{% endif %}.
+  {% else %}Part of this search couldn't reach the job board ({{ search.failed|join(", ") }}), so results may be incomplete. Please try again in a minute.{% endif %}
+</div></div>
+{% endif %}
 {% if not has_resume %}
 <div class="notice">{{ icon("file") }}<div class="alert-body"><strong>Add your resume</strong> to see how well each job fits you. <a href="/resume">Upload it</a> or <a href="/profile">complete your profile</a>.</div></div>
 {% endif %}
@@ -26,16 +38,22 @@
 <input type="checkbox" id="filters-toggle" class="filters-toggle" hidden>
 <div class="results-bar">
   <p class="result-count">
-    {% if search.limited %}&nbsp;{% else %}<strong>{{ postings|length }}</strong> job{{ "s" if postings|length != 1 }}{% if q %} for <strong>{{ q }}</strong>{% endif %}{% if l %} in <strong>{{ l }}</strong>{% endif %}{% if search.page > 1 %} &middot; page {{ search.page }}{% endif %}{% if filters.active and found_count != postings|length %} <span class="muted">({{ found_count }} before filters)</span>{% endif %}{% endif %}
+    {% if search.limited %}&nbsp;{% else %}<strong>{{ postings|length }}</strong> job{{ "s" if postings|length != 1 }}{% if not chips %}{% if q %} for <strong>{{ q }}</strong>{% endif %}{% if l %} in <strong>{{ l }}</strong>{% endif %}{% endif %}{% if search.page > 1 %} &middot; page {{ search.page }}{% endif %}{% if filters.active and found_count != postings|length %} <span class="muted">({{ found_count }} before filters)</span>{% endif %}{% if search.hidden %} <span class="muted">&middot; {{ search.hidden }} less relevant hidden</span>{% endif %}{% endif %}
   </p>
   <label for="filters-toggle" class="button pill outline filters-button">{{ icon("filter") }} Filters{% if filters.active %} ({{ filters.active }}){% endif %}</label>
+  {% if chips and not search.limited %}
+  <ul class="search-chips" aria-label="Your search">
+    {% for chip in chips %}<li><a class="search-chip{% if chip.kind %} search-chip-{{ chip.kind }}{% endif %}" href="{{ chip.url }}" title="Remove {{ chip.label }}"><span>{{ chip.label }}</span>{{ icon("x") }}<span class="visually-hidden"> (remove)</span></a></li>{% endfor %}
+  </ul>
+  {% endif %}
 </div>
 
 <div class="results-layout{% if request.query_params.get('view') %} show-detail{% endif %}">
   <aside class="filter-panel" aria-label="Filters">
     <form method="get" action="/jobs" class="filter-form" data-auto-apply>
       <input type="hidden" name="q" value="{{ q }}"><input type="hidden" name="l" value="{{ l }}">
-      <input type="hidden" name="country" value="{{ country }}">
+      <input type="hidden" name="country" value="{{ country }}"><input type="hidden" name="exact" value="1">
+      {% if radius and l %}<input type="hidden" name="radius" value="{{ radius }}">{% endif %}
       {% for k in keywords %}<input type="hidden" name="keywords" value="{{ k }}">{% endfor %}
       <div class="filter-head"><h2>Filters</h2><label for="filters-toggle" class="filter-close" aria-label="Close filters">{{ icon("x") }}</label></div>
       <fieldset><legend>Workplace</legend>
@@ -95,11 +113,16 @@
       <template id="detail-{{ p.ref }}">{{ job_detail(p, track, saved.get(p.ref), has_resume) }}</template>
     </article>
     {% else %}
-      {% if not search.limited and not search.error %}
+      {% if not search.limited and not search.error and not (search.failed and search.failed|length >= search.queries) %}
       <div class="empty-state">{{ icon("search") }}
+        {% if search.hidden and not found_count %}
+        <p><strong>No jobs match {{ "\u201c" ~ q ~ "\u201d" if q else "your search" }} closely{% if search.page > 1 %} on this page{% endif %}.</strong></p>
+        <p class="muted">We only show jobs whose title matches what you searched. Try a broader or different title, or a nearby city.</p>
+        {% else %}
         <p><strong>No jobs found. Try adjusting your search filters.</strong></p>
         <p class="muted">Use fewer filters, a broader title, or a nearby city.</p>
-        {% if filters.active %}<a class="button pill outline" href="/jobs?{{ {'q': q, 'l': l, 'country': country}|urlencode }}">Clear filters</a>{% endif %}
+        {% endif %}
+        {% if filters.active %}<a class="button pill outline" href="/jobs?{{ {'q': q, 'l': l, 'radius': radius or '', 'country': country, 'exact': 1}|urlencode }}">Clear filters</a>{% endif %}
       </div>
       {% endif %}
     {% endfor %}

@@ -32,7 +32,7 @@ from app.integrations.job_boards.ashby import AshbySource
 from app.integrations.job_boards.base import RawJob
 from app.integrations.job_boards.greenhouse import GreenhouseSource
 from app.integrations.job_boards.lever import LeverSource
-from app.modules.jobs import postings, relevance
+from app.modules.jobs import places, postings, relevance
 from app.modules.jobs.pool.models import PoolCompany, PoolJob
 
 logger = logging.getLogger(__name__)
@@ -323,7 +323,13 @@ def to_raw_job(job: PoolJob) -> RawJob:
 
 
 def search_pool(session: Session, titles: list[str], locations: list[str], keywords: list[str], country: str, *,
-                page: int = 1, per_page: int = 20) -> PoolResults:
+                page: int = 1, per_page: int = 20, radius_km: int | None = None) -> PoolResults:
+    """Postings matching the titles (best match first), keywords and places.
+
+    With `radius_km`, a place that is a town or city (app/modules/jobs/places.py)
+    matches jobs within that distance of it, measured from the places named in
+    each job's location; other places (a province, "Remote") match by name.
+    """
     query = session.query(PoolJob).join(PoolCompany, PoolJob.company_id == PoolCompany.id).filter(
         PoolCompany.enabled.is_(True))
     country = (country or "").strip().lower()
@@ -336,7 +342,13 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
                                        PoolJob.company.ilike(_like(" ".join(words)), escape="\\"))
                                    for t in titles for words in {*relevance.variants(t), tuple(t.split())})))
     place_filters = []
+    origins = []  # places searched by distance: checked below, row by row
+    named: set[int] = set()  # rows matching a place searched by name, when others are by distance
     for location in locations:
+        origin = places.center(location) if radius_km and not _REMOTE.search(location) else None
+        if origin is not None:
+            origins.append(origin)
+            continue
         place, remote = _place(location)
         conditions = []
         if remote:
@@ -345,14 +357,16 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
             conditions.append(PoolJob.location.ilike(_like(place), escape="\\"))
         if conditions:
             place_filters.append(and_(*conditions))
-    if place_filters:
+    if place_filters and not origins:
         query = query.filter(or_(*place_filters))
+    elif place_filters:  # some places by name, others by distance: a row may match either
+        named = {row_id for (row_id,) in query.filter(or_(*place_filters)).with_entities(PoolJob.id)}
     if keywords:
         query = query.filter(or_(*(or_(PoolJob.title.ilike(_like(w), escape="\\"),
                                        PoolJob.description.ilike(_like(w), escape="\\")) for w in keywords)))
     query = query.order_by(PoolJob.date_posted.is_(None), PoolJob.date_posted.desc(), PoolJob.id.desc())
     page = max(page, 1)
-    if not (titles or keywords):
+    if not (titles or keywords or origins):
         total = query.count()
         rows = query.offset((page - 1) * per_page).limit(per_page).all()
         return PoolResults(jobs=[to_raw_job(r) for r in rows], has_next=page * per_page < total, total=total)
@@ -360,11 +374,14 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
     # The database narrows by substring; whole words and synonyms are checked
     # here. Best title match first, newest first within it (the sort is stable).
     rows = query.all()
+    if origins:
+        rows = [r for r in rows if r.id in named
+                or any(places.within(r.location, r.remote, origin, radius_km) for origin in origins)]
     if keywords:
         rows = [r for r in rows if relevance.mentions(keywords, r.title, r.description)]
     if titles:
         ranked = [(relevance.tier(titles, r.title, r.company), r) for r in rows]
-        rows = [r for t, r in sorted(ranked, key=lambda pair: -pair[0]) if t >= relevance.COMPANY]
+        rows = [r for t, r in sorted(ranked, key=lambda pair: -pair[0]) if t >= relevance.RELEVANT]
     total = len(rows)
     shown = rows[(page - 1) * per_page: page * per_page]
     return PoolResults(jobs=[to_raw_job(r) for r in shown], has_next=page * per_page < total, total=total)

@@ -7,7 +7,7 @@ import pytest
 
 from app.integrations.job_boards.base import RawJob
 from app.modules.jobs import relevance
-from app.modules.jobs.service import _by_relevance
+from app.modules.jobs.service import relevant_only
 
 
 @pytest.mark.parametrize("term, title, expected", [
@@ -37,9 +37,21 @@ def test_title_tiers(term, title, expected):
     assert relevance.tier([term], title) == expected
 
 
+@pytest.mark.parametrize("title", ["Jr Human Resource Generalist", "*People & Culture Generalist",
+                                   "Human Resources Generalist-Corporate", "Intermediate Generalist, Human Resources"])
+def test_other_names_for_hr_count(title):
+    assert relevance.tier(["hr generalist"], title) >= relevance.TITLE_WORDS
+
+
+@pytest.mark.parametrize("title", ["HR Manager", "Plumber", "Corporate Recruiter", "Intern, Disability Management"])
+def test_other_jobs_are_not_hr_generalist(title):
+    assert relevance.tier(["hr generalist"], title) < relevance.RELEVANT
+
+
 def test_company_and_description_tiers():
     assert relevance.tier(["shopify"], "Backend Developer", "Shopify Inc.") == relevance.COMPANY
-    assert relevance.tier(["hr"], "CNC Machinist", "Fuze HR Solutions") < relevance.tier(["hr"], "HR Lead", "Acme")
+    assert relevance.tier(["hr"], "CNC Machinist", "Fuze HR Solutions") < relevance.RELEVANT  # a word in a name
+    assert relevance.tier(["hr generalist"], "Plumber", "Acme", "Apply to our HR generalist.") < relevance.RELEVANT
     assert relevance.tier(["hr"], "Software Engineer", "Acme", "You'll partner with our HR team.") == relevance.DESCRIPTION
     assert relevance.tier(["hr", "recruiter"], "Recruiter") == relevance.TITLE_PHRASE  # the best of several terms
 
@@ -49,7 +61,7 @@ def test_keywords_need_whole_words():
     assert not relevance.mentions(["java"], "Frontend Developer", "We use JavaScript.")
 
 
-def test_results_are_ordered_by_relevance_then_newest():
+def test_only_relevant_results_are_shown_best_first_then_newest():
     def job(title, day, description=""):
         return RawJob(external_id=title, source="adzuna", source_url="https://x", company="Acme", title=title,
                       location="Toronto", description=description, date_posted=datetime(2026, 10, day))
@@ -59,6 +71,7 @@ def test_results_are_ordered_by_relevance_then_newest():
         job("HR Generalist", 7),
         job("Human Resources Manager", 6),
     ]
-    ordered = [j.title for j in _by_relevance(newest_first, ["hr"])]
-    assert ordered == ["HR Generalist", "Human Resources Manager", "Security Engineer", "Payroll Specialist"]
-    assert _by_relevance(newest_first, []) == newest_first  # no title typed: newest first, unchanged
+    kept, hidden = relevant_only(newest_first, ["hr"])
+    assert [j.title for j in kept] == ["HR Generalist", "Human Resources Manager"]
+    assert hidden == 2  # the passing mention and the posting without one
+    assert relevant_only(newest_first, []) == (newest_first, 0)  # no title typed: everything, newest first

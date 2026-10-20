@@ -3,6 +3,7 @@
  *    talking JSON to /api/auth/*; the session itself is an HttpOnly cookie, so
  *    nothing about it lives in JavaScript or localStorage;
  *  - "sign in to continue" for searches and actions that need an account;
+ *  - success messages that fade after a few seconds (with a close button);
  *  - Show/Hide on password fields, account / mobile menus, the job details panel;
  *  - the theme menu (Light / Dark / Match system), kept in a "theme" cookie so the
  *    server renders the page in that theme from the first paint;
@@ -530,8 +531,56 @@
     if (document.querySelector("form[data-matrix][data-dirty]")) { e.preventDefault(); e.returnValue = ""; }
   });
 
+  // ---------- success messages ----------
+  // A green ".flash" confirmation ("You've signed out.") fades after a few seconds,
+  // waits while the pointer or keyboard focus is on it, and has a close button.
+  // One marked data-persist (why you were signed out, on /login) stays. Either
+  // way "?msg=" leaves the address bar, so a refresh doesn't show it again.
+  var FLASH_MS = 5000;
+  function dismissFlash(el) {
+    if (el._gone) return;
+    el._gone = true;
+    el.classList.add("is-leaving");
+    var reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setTimeout(function () { el.remove(); }, reduce ? 0 : 300);
+  }
+  function setupFlash(el) {
+    if (el._flash) return;
+    el._flash = true;
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "flash-close";
+    close.setAttribute("aria-label", "Dismiss");
+    close.textContent = "×";
+    close.addEventListener("click", function () { dismissFlash(el); });
+    el.appendChild(close);
+    if (el.hasAttribute("data-persist")) return;
+    var timer = null, left = FLASH_MS, started = 0;
+    function run() { started = Date.now(); timer = setTimeout(function () { dismissFlash(el); }, left); }
+    function hold() { if (timer) { clearTimeout(timer); timer = null; left = Math.max(left - (Date.now() - started), 1500); } }
+    el.addEventListener("mouseenter", hold);
+    el.addEventListener("focusin", hold);
+    el.addEventListener("mouseleave", function () { if (!timer && !el.contains(document.activeElement)) run(); });
+    el.addEventListener("focusout", function () { if (!timer && !el.matches(":hover")) run(); });
+    run();
+  }
+  function initFlashes() {
+    var flashes = $all(document, ".flash");
+    flashes.forEach(setupFlash);
+    if (flashes.length && window.URLSearchParams && window.history.replaceState) {
+      var params = new URLSearchParams(window.location.search);
+      if (params.has("msg")) {
+        params.delete("msg");
+        var query = params.toString();
+        window.history.replaceState(window.history.state, "",
+          window.location.pathname + (query ? "?" + query : "") + window.location.hash);
+      }
+    }
+  }
+
   // ---------- init flows on the page (login / signup pages) ----------
   function init() {
+    initFlashes();
     loadAccess();
     applyAccess(document);
     $all(document, "[data-auth-flow]").forEach(function (root) {

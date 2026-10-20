@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Job alert emails - Job Assistant{% endblock %}
+{% block content %}
+<section class="members-only">
+  <span class="notice-icon">{{ icon("mail") }}</span>
+  {% if state == "confirm" %}
+  <h1>Stop job alert emails?</h1>
+  <p class="lead">We'll stop emailing job alerts to {{ address }}. Your watches stay saved, and you can turn emails back on at any time from your Watchlist.</p>
+  <form method="post" action="/alerts/unsubscribe/{{ token }}" hx-boost="false">
+    <div class="actions"><button type="submit" class="primary">Unsubscribe</button><a class="button" href="/watchlist">Keep getting them</a></div>
+  </form>
+  {% elif state == "done" %}
+  <h1>You're unsubscribed</h1>
+  <p class="lead">You won't get job alert emails at {{ address }} any more. Your watches are still saved; to get emails again, choose how often on your Watchlist.</p>
+  <div class="actions"><a class="button primary" href="/watchlist">Go to your Watchlist</a></div>
+  {% else %}
+  <h1>This link isn't valid</h1>
+  <p class="lead">It may be incomplete or out of date. Sign in and choose how often you get alert emails on your Watchlist.</p>
+  <div class="actions"><a class="button primary" href="/watchlist">Go to your Watchlist</a></div>
+  {% endif %}
+</section>
+{% endblock %}

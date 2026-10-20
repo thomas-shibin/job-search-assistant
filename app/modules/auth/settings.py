@@ -1,6 +1,9 @@
 """Sign-in configuration, from the environment (.env). Nothing here is shown to users."""
 from __future__ import annotations
 
+import ipaddress
+from urllib.parse import urlsplit
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -42,9 +45,34 @@ class AuthSettings(BaseSettings):
     def base_url(self) -> str:
         return self.public_url.rstrip("/")
 
+    @property
+    def public_url_is_local(self) -> bool:
+        """PUBLIC_URL points at this computer (127.0.0.1, localhost) -- fine for
+        trying the app, but nobody else can reach it."""
+        return is_local_host(urlsplit(self.base_url).hostname)
+
+    @property
+    def social_redirect_allowed(self) -> bool:
+        """Whether Google/Facebook will send people back to PUBLIC_URL: they
+        accept https on a domain name, or this computer -- never a bare IP
+        address like http://75.0.0.10:8001."""
+        if self.public_url_is_local:
+            return True
+        parts = urlsplit(self.base_url)
+        try:
+            ipaddress.ip_address((parts.hostname or "").strip("[]"))
+            return False
+        except ValueError:
+            return parts.scheme == "https"
+
     def provider_enabled(self, provider: str) -> bool:
         if provider == "google":
             return bool(self.google_client_id and self.google_client_secret)
         if provider == "facebook":
             return bool(self.facebook_client_id and self.facebook_client_secret)
         return False
+
+
+def is_local_host(host: str | None) -> bool:
+    host = (host or "").lower().strip("[]")
+    return host in ("localhost", "::1") or host.endswith(".localhost") or host.startswith("127.")

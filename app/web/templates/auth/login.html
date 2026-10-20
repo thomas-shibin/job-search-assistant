@@ -1,7 +1,7 @@
 {% extends "auth/base.html" %}
 {% block title %}Log in - Job Assistant{% endblock %}
 {% block card %}
-{% if msg %}<div class="flash"><div class="alert-body">{{ msg }}</div></div>{% endif %}
+{% if msg %}<div class="flash" role="status" data-persist><div class="alert-body">{{ msg }}</div></div>{% endif %}
 {% set flow_mode = "login" %}{% set flow_next = next %}
 {% include "auth/_flow.html" %}
 {% endblock %}

@@ -17,9 +17,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database.session import get_session
+from app.modules.access import rbac
 from app.modules.auth.deps import current_user, member_session, require_member
 from app.modules.auth.models import User
-from app.modules.jobs import postings
+from app.modules.jobs import places, postings
 from app.modules.jobs.pool import service as pool
 from app.modules.jobs.pool.models import PoolCompany, PoolJob
 from app.modules.profiles import service as profiles
@@ -78,7 +79,9 @@ def landing(request: Request, msg: str | None = None, user: User | None = Depend
             session: Session = Depends(get_session)):
     if user is not None and not user.is_guest:
         return RedirectResponse(url="/jobs" + (f"?{urlencode({'msg': msg})}" if msg else ""), status_code=303)
-    return templates.TemplateResponse(request, "landing.html", {**_landing_data(session), "message": msg})
+    return templates.TemplateResponse(request, "landing.html", {**_landing_data(session), "message": msg,
+                                                                "smart_search": rbac.feature_on(session, "smart_search"),
+                                                                "radius_choices": places.RADIUS_CHOICES})
 
 
 @router.get("/companies")

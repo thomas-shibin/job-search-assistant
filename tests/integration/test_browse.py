@@ -46,7 +46,7 @@ _TRACK_PAYLOAD = {
 
 
 class _FakeAdzunaSource:
-    def __init__(self, app_id, app_key, country):
+    def __init__(self, app_id, app_key, country, **_):
         self.app_id = app_id
         self.app_key = app_key
         self._country = country

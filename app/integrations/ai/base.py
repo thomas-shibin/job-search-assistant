@@ -1,5 +1,6 @@
 """The analysis provider interface (`AIProvider`) and the shapes it returns:
-extracted requirements, tailored resume drafts, fit assessments."""
+extracted requirements, tailored resume drafts, fit assessments, a typed
+job search read into its parts, and Canadian equivalents of job titles."""
 from __future__ import annotations
 
 from typing import Any, Protocol
@@ -51,6 +52,21 @@ class FitAssessmentResult(BaseModel):
     recommendation: str = ""
 
 
+class SearchInterpretation(BaseModel):
+    """A job search typed in plain words, read into the parts the results page
+    searches and filters by (app/modules/jobs/interpret.py checks every value)."""
+
+    is_job_search: bool = True
+    titles: list[str] = Field(default_factory=list)
+    locations: list[str] = Field(default_factory=list)
+    workplace: str | None = None  # "remote" | "hybrid" | "onsite"
+    employment_type: str | None = None  # "full_time" | "part_time" | "contract" | "temporary" | "internship"
+    level: str | None = None  # "entry" | "mid"
+    min_salary: int | None = None  # a year, in dollars
+    days: int | None = None  # posted within this many days
+    radius_km: int | None = None  # jobs within this distance of the places
+
+
 class AIProvider(Protocol):
     """Business logic depends only on this interface, never on a specific vendor SDK."""
 
@@ -78,6 +94,18 @@ class AIProvider(Protocol):
 
     def assess_fit(self, candidate: dict, job: Any) -> FitAssessmentResult:
         """Judge the resume (`candidate`, see app/modules/matching/fit.py) against `job`."""
+        ...
+
+    def interpret_search(self, text: str) -> SearchInterpretation | None:
+        """Read a job search typed in plain words, or None when this provider
+        can't (the free mock: the search box's own rules are used alone)."""
+        ...
+
+    def canadian_titles(self, roles: list[dict]) -> dict[int, str]:
+        """For job titles a Canadian employer may not understand (roles: {"id",
+        "title", "company", "location"}), the closest Canadian title at the same
+        level: {id: title}. Titles that are already clear are left out.
+        app/modules/resumes/canadian_convert.py checks every answer."""
         ...
 
     def generate_match_explanation(self, score: MatchScoreBreakdown) -> str:

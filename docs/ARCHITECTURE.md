@@ -38,12 +38,12 @@ services. There is no separate repository layer, because the tenant-scoped sessi
 |---|---|
 | `auth` | Accounts, sign-up/sign-in by email code or password, Google sign-in, sessions, password reset, account deletion; the route guards (`deps.py`) every member route uses |
 | `access` | Roles, permissions and which route needs which (`rbac.py`); feature switches; escalation rules and the audit log (`service.py`); admin pages and `/api/admin` |
-| `jobs` | Job search across the job board and the company-careers job pool, ordered by relevance to the typed title (`relevance.py`: whole words, synonyms such as HR = Human Resources); postings and filters, saved jobs, the search-term catalog, ingestion of postings into a user's jobs |
+| `jobs` | Job search across the job board and the company-careers job pool, showing only postings whose title matches the typed title, best match first (`relevance.py`: whole words, synonyms such as HR = Human Resources; a job that only mentions the term in its description is left out); smart search, which reads a typed sentence into titles, places and filters and fixes spelling (`query.py` rules, `interpret.py` asking the AI provider only when the rules can't); radius search ("within 25 km of Victoria", `places.py`: distances between Canadian towns from a bundled GeoNames list, the job board's own `distance` for its results); postings and filters, saved jobs, the search-term catalog, ingestion of postings into a user's jobs |
 | `applications` | Tracked jobs: the list, a job's page, the status workflow (`state_machine.py`), application files, retention |
 | `matching` | Keyword scoring, AI requirement extraction and fit assessment, the analyze/tailor workflows |
-| `resumes` | Resume import and editing, tailoring with a truthfulness check, DOCX/PDF output, Quick Tailor |
+| `resumes` | Resume import and editing, the Canadian resume check and converter, tailoring with a truthfulness check, DOCX/PDF output, Quick Tailor |
 | `profiles` | Job seeker profile (experience, education, preferences) and the personal Settings page |
-| `alerts` | Watches, alert matching and sending, Telegram chat linking and bot commands |
+| `alerts` | Watches, alert matching, and sending by email (`email_alerts.py`: after every scan, or a daily or weekly summary, with one-click unsubscribe) and Telegram; Telegram chat linking and bot commands |
 | `usage` | Activity log, hourly limits on searches and AI actions, AI call costs |
 | `admin` | Activity and usage dashboards, per-user limits and suspension, job sources, platform settings, health |
 
@@ -108,9 +108,14 @@ permissions, so granting the admin role tightens an open session at once.
 | Adzuna job search | `integrations/job_boards/adzuna.py` | Key-authenticated; descriptions are previews (about 500 characters), so the job pool supplies full text when it has the job |
 | Greenhouse, Lever, Ashby | `integrations/job_boards/*.py` | Public careers-site feeds, read into the shared job pool (`modules/jobs/pool`) |
 | AI provider | `integrations/ai/` | `AIProvider` interface; OpenAI or a free deterministic mock; every call logged with cost (`usage/ai_calls.py`) |
-| Email | `integrations/email.py` | SMTP; without `SMTP_HOST`, messages are saved to `MAIL_OUTBOX_DIR`. Message texts live with their feature (`auth/emails.py`) |
+| Email | `integrations/email.py` | SMTP, plain text plus optional HTML; without `SMTP_HOST`, messages are saved to `MAIL_OUTBOX_DIR`. Message texts live with their feature (`auth/emails.py`, `alerts/email_alerts.py`) |
 | Telegram | `integrations/telegram.py` | Bot API client; linking and commands are in `modules/alerts` |
 | LibreOffice | `integrations/libreoffice.py` | DOCX -> PDF; failure degrades to DOCX only |
+
+Bundled data: `app/modules/jobs/data/ca_places.tsv` lists Canadian towns and cities of
+500+ people with their coordinates, from GeoNames (CC BY 4.0, credited on the Terms page).
+`scripts/build_places.py` rebuilds it from a GeoNames download. Nothing about places is
+looked up online at search time.
 
 Each integration has its own settings class read from `.env`, its own timeouts and
 retries (`shared/retry.py`), and raises `IntegrationError` subclasses. Business code
@@ -136,6 +141,7 @@ request, behind hourly limits.
 
 | Step | Deterministic | AI |
 |---|---|---|
+| Reading a typed search ("remote HR jobs in Toronto over 80k") | Yes; rules and spelling correction against the job-title vocabulary | Only for searches the rules can't read; at most 20 an hour per member, answers kept for a day |
 | Duplicate detection, hard filters | Yes | |
 | Requirement extraction from a job description | | Yes; one call per description, cached by content hash |
 | Match score (weighted formula) | Yes; pure function, reproducible | |
@@ -143,6 +149,8 @@ request, behind hourly limits.
 | Resume tailoring | | Yes; every bullet must cite its source bullet |
 | Truthfulness validation | Yes; a bullet that invents numbers or cites nothing falls back to the original text | |
 | DOCX/PDF generation, address swap | Yes | |
+| Canadian resume check (photo, personal details, dates, spelling, length...) and its fixes | Yes; `resumes/canadian.py`, fixes written into the member's own Word file | |
+| Canadian equivalents of job titles | | Optional, one call per request; added in brackets after the original title, never more senior |
 
 ## Job source policy
 

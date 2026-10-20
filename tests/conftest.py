@@ -38,6 +38,8 @@ def _no_real_job_board(monkeypatch):
     be read from .env); tests that need it stub the search."""
     monkeypatch.setenv("ADZUNA_APP_ID", "")
     monkeypatch.setenv("ADZUNA_APP_KEY", "")
+    # ...nor the analysis provider for search (smart search falls back to its rules).
+    monkeypatch.setenv("OPENAI_API_KEY", "")
 
 
 @pytest.fixture(autouse=True)
@@ -48,8 +50,11 @@ def _rate_limits_reset():
     from app.modules.auth.api import code_limiter
     from app.modules.jobs import postings
 
+    from app.modules.jobs import interpret
+
     code_limiter.reset()
     postings.clear()
+    interpret.clear_cache()
     yield
 
 

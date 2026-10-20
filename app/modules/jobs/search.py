@@ -11,7 +11,9 @@ quota.py, lets people revisit a search within the hour for free).
 Adzuna's `where` only understands places -- "Remote Canada" matches nothing --
 so a location mentioning "remote" is sent as a "remote" keyword plus whatever
 place is left (none = the whole country); and a location the catalog knows
-(app/catalog) is searched by its exact path. See `adzuna_query`.
+(app/catalog) is searched by its exact path. With a radius ("within 60 km"),
+a place the radius search knows (app/modules/jobs/places.py) is sent by name
+with Adzuna's `distance` instead. See `adzuna_query`.
 """
 from __future__ import annotations
 
@@ -21,11 +23,13 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from dataclasses import dataclass, field, replace
 from datetime import timezone
 
 from app.integrations.job_boards.adzuna import AdzunaSource
 from app.integrations.job_boards.base import RawJob
+from app.modules.jobs import places
 from app.shared.terms import normalize_term
 
 logger = logging.getLogger(__name__)
@@ -66,10 +70,13 @@ class AdzunaQuery:
 def adzuna_query(
     title: str | None, location: str | None, *, areas: dict[str, list[str]] | None = None,
     keywords: list[str] | tuple[str, ...] = (), filters: dict[str, str] | None = None,
+    radius_km: int | None = None,
 ) -> AdzunaQuery:
     """What Adzuna is actually asked for one title x location:
     - a catalog location with a known path is pinned exactly (`area`), anything
       else is free text (`where`);
+    - with `radius_km`, a town or city is sent by name with `distance` (Adzuna
+      measures from its centre); a province or unknown place ignores the radius;
     - "Remote Canada" -> what="<title> remote", anywhere; "Remote BC" -> where="BC";
     - `keywords` narrow every query: a job must mention at least one of them.
     """
@@ -78,6 +85,11 @@ def adzuna_query(
         place = _PLACE_FILLER.sub(" ", _REMOTE.sub(" ", location))
         location = " ".join(_EDGE_PUNCTUATION.sub("", place).split()) or None
         what = f"{title} remote" if title else "remote"
+    elif location and radius_km and (origin := places.center(location)) is not None:
+        filters = {**(filters or {}), "distance": str(radius_km)}
+        what_or = " ".join(dict.fromkeys(word for keyword in keywords for word in keyword.split())) or None
+        return AdzunaQuery(what=what, where=origin.label, area=(), what_or=what_or,
+                           filters=tuple(sorted(filters.items())))
     area = tuple((areas or {}).get(normalize_term(location), ())) if location else ()
     what_or = " ".join(dict.fromkeys(word for keyword in keywords for word in keyword.split())) or None
     return AdzunaQuery(what=what, where=None if area else location, area=area, what_or=what_or,
@@ -99,10 +111,14 @@ def search_jobs(
     source: AdzunaSource, titles: list[str], locations: list[str], *, page: int = 1, per_page: int = 20,
     use_cache: bool = True, pairs: list[tuple[str | None, str | None]] | None = None,
     keywords: list[str] | tuple[str, ...] = (), areas: dict[str, list[str]] | None = None,
-    filters: dict[str, str] | None = None,
+    filters: dict[str, str] | None = None, radius_km: int | None = None, deadline_seconds: float | None = None,
 ) -> SearchResults:
+    """`deadline_seconds`: stop waiting after this long; queries still running
+    then are reported in `failed_queries`, and the results aren't cached, so
+    the next visit asks again."""
     pairs = pairs if pairs is not None else query_pairs(titles, locations)
-    queries = {pair: adzuna_query(*pair, areas=areas, keywords=keywords, filters=filters) for pair in pairs}
+    queries = {pair: adzuna_query(*pair, areas=areas, keywords=keywords, filters=filters, radius_km=radius_km)
+               for pair in pairs}
     key = (id(type(source)), getattr(source, "_country", None), tuple(queries.values()), page, per_page)
     if use_cache:
         with _cache_lock:
@@ -118,11 +134,21 @@ def search_jobs(
 
     results = SearchResults(requests=len(pairs))
     seen: set[str] = set()
-    with ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_QUERIES, len(pairs))) as pool:
+    deadline = time.monotonic() + deadline_seconds if deadline_seconds is not None else None
+    timed_out = False
+    pool = ThreadPoolExecutor(max_workers=min(_MAX_PARALLEL_QUERIES, len(pairs)))
+    try:
         futures = [(pair, pool.submit(run, pair)) for pair in pairs]
         for (what, where), future in futures:
             try:
-                batch = future.result()
+                wait = None if deadline is None else max(0.0, deadline - time.monotonic())
+                batch = future.result(timeout=wait)
+            except FutureTimeout:
+                timed_out = True
+                logger.warning("Adzuna query too slow (what=%r, where=%r): gave up after %gs",
+                               what, where, deadline_seconds)
+                results.failed_queries.append(" in ".join(p for p in (what, where) if p) or "all jobs")
+                continue
             except Exception as exc:
                 logger.warning("Adzuna query failed (what=%r, where=%r): %s", what, where, exc)
                 results.failed_queries.append(" in ".join(p for p in (what, where) if p) or "all jobs")
@@ -134,9 +160,12 @@ def search_jobs(
                     continue
                 seen.add(dedupe_key)
                 results.jobs.append(job)
+    finally:
+        # Don't wait for queries past the deadline: they finish (or fail) on their own.
+        pool.shutdown(wait=deadline is None, cancel_futures=True)
 
     results.jobs.sort(key=_newest_first, reverse=True)
-    if use_cache and len(results.failed_queries) < len(pairs):
+    if use_cache and not timed_out and len(results.failed_queries) < len(pairs):
         with _cache_lock:
             if len(_cache) >= _CACHE_MAX_ENTRIES:
                 now = time.monotonic()

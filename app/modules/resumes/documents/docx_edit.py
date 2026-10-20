@@ -45,18 +45,62 @@ def _key(text: str) -> str:
     return " ".join(_BULLET_PREFIX.sub("", text).split()).casefold()
 
 
-def _all_paragraphs(doc) -> Iterator[Paragraph]:
-    """Every paragraph in reading order: body, tables, text boxes, then headers/footers."""
-    parts = [doc.element.body]
+def _parts(doc) -> Iterator[tuple[object, bool]]:
+    """The body, then each page header/footer (flagged True)."""
+    yield doc.element.body, False
     for section in doc.sections:
         for part in (section.header, section.footer, section.first_page_header, section.first_page_footer):
             if not part.is_linked_to_previous:
-                parts.append(part._element)
-    for part in parts:
+                yield part._element, True
+
+
+def iter_paragraphs(doc) -> Iterator[tuple[Paragraph, bool]]:
+    """Every paragraph in reading order (body, tables, text boxes, then headers/
+    footers), flagged True when it sits in a page header or footer."""
+    for part, in_header in _parts(doc):
         for p in part.iter(qn("w:p")):
             # A text box is stored twice (modern + legacy fallback copy); edit the one Word shows.
             if not any(ancestor.tag == _MC_FALLBACK for ancestor in p.iterancestors()):
-                yield Paragraph(p, None)
+                yield Paragraph(p, None), in_header
+
+
+def _all_paragraphs(doc) -> Iterator[Paragraph]:
+    return (paragraph for paragraph, _ in iter_paragraphs(doc))
+
+
+_EMU_PER_INCH = 914_400
+PHOTO_MIN_INCHES = 0.6  # smaller pictures are icons (phone, email, LinkedIn), not a photo
+
+
+def _photo_runs(doc, min_inches: float) -> list:
+    """The runs holding a picture at least `min_inches` on both sides: a photo
+    of the candidate (or a large logo), never the small contact icons."""
+    found = []
+    for part, _ in _parts(doc):
+        for drawing in part.iter(qn("w:drawing")):
+            extent = next(drawing.iter(qn("wp:extent")), None)
+            if extent is None or not any(el.tag.endswith("}pic") for el in drawing.iter()):
+                continue
+            size = min(int(extent.get("cx", 0)), int(extent.get("cy", 0))) / _EMU_PER_INCH
+            run = next((a for a in drawing.iterancestors() if a.tag == qn("w:r")), None)
+            if size >= min_inches and run is not None and run not in found:
+                found.append(run)
+    return found
+
+
+def count_photos(path: Path, min_inches: float = PHOTO_MIN_INCHES) -> int:
+    return len(_photo_runs(Document(str(path)), min_inches))
+
+
+def remove_photos(path: Path, min_inches: float = PHOTO_MIN_INCHES) -> int:
+    """Take any photo out of the Word file at `path` (in place); returns how many."""
+    doc = Document(str(path))
+    runs = _photo_runs(doc, min_inches)
+    for run in runs:
+        run.getparent().remove(run)
+    if runs:
+        doc.save(str(path))
+    return len(runs)
 
 
 def _text_runs(paragraph: Paragraph) -> list:

@@ -1,9 +1,12 @@
-"""Resume pages: My resume (upload, view, download, edit), Quick Tailor, and a
-tracked job's tailored resume (re-tailor, remove paragraphs, download DOCX/PDF).
-Uploads are handled by app/modules/resumes/uploads.py; tailoring by tailor.py."""
+"""Resume pages: My resume (upload, view, download, edit), the Canadian resume
+check, Quick Tailor, and a tracked job's tailored resume (re-tailor, remove
+paragraphs, download DOCX/PDF). Uploads are handled by
+app/modules/resumes/uploads.py; tailoring by tailor.py; the Canadian check by
+canadian.py and canadian_convert.py."""
 from __future__ import annotations
 
 import logging
+import re
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -26,7 +29,7 @@ from app.modules.jobs.models import Job
 from app.modules.matching.fit import active_candidate
 from app.modules.matching.pipeline import NoActiveCandidateProfileError, analyze_job
 from app.modules.matching.workflows import ANALYSIS_UNAVAILABLE
-from app.modules.resumes import uploads
+from app.modules.resumes import canadian, canadian_convert, uploads
 from app.modules.resumes.editor import parse_edit_form, save_edit
 from app.modules.resumes.models import CandidateProfile
 from app.modules.resumes.pipeline import generate_resume_bundle
@@ -140,6 +143,89 @@ def download_base_resume(session: Session = Depends(member_session)):
     if path is None:
         raise HTTPException(status_code=404, detail="No base resume file on disk")
     return FileResponse(path, filename=f"base_resume{path.suffix}")
+
+
+# ---- Canadian resume check -------------------------------------------------------------------
+
+def _canadian_page(request: Request, session: Session, *, message: str | None = None, error: str | None = None,
+                   suggestions: dict[int, str] | None = None, converted: bool = False, status_code: int = 200):
+    current = active_candidate(session)
+    if current is None:
+        return RedirectResponse(url="/resume?" + urlencode({"error": "Upload your resume first, then check it here."}),
+                                status_code=303)
+    try:
+        result = canadian_convert.review(current)
+    except BaseResumeMissingError as exc:
+        result, error = None, error or str(exc)
+    if result is None and not error:
+        error = "Couldn't read your resume file. Upload it again on the My resume page."
+    return templates.TemplateResponse(request, "resume_canadian.html", {
+        "current": current, "review": result, "suggestions": suggestions or {}, "converted": converted,
+        "titles_available": canadian_convert.titles_available(session), "message": message, "error": error,
+        "ai_allowance": quota.ai_allowance_for(session, getattr(request.state, "user", None)),
+        "roles": current.employments[:canadian_convert.MAX_ROLES],
+    }, status_code=status_code)
+
+
+@router.get("/resume/canadian")
+def canadian_check_page(request: Request, msg: str | None = None, error: str | None = None, converted: int = 0,
+                        session: Session = Depends(member_session)):
+    """What to change in your resume for Canadian employers, and the fixes to apply."""
+    return _canadian_page(request, session, message=msg, error=error, converted=bool(converted))
+
+
+def _typed_titles(form) -> dict[int, str]:
+    """{employment id: equivalent} from the page's title boxes (filled ones only)."""
+    return {int(m.group(1)): str(value) for key, value in form.items()
+            if (m := re.fullmatch(r"title-(\d+)", key)) and str(value).strip()}
+
+
+@router.post("/resume/canadian/titles")
+async def canadian_title_suggestions(request: Request, session: Session = Depends(member_session),
+                                     user: User = Depends(require_member)):
+    """Suggest Canadian equivalents for the resume's job titles (one resume action).
+    Titles the member already typed are kept."""
+    current = active_candidate(session)
+    if current is None:
+        return RedirectResponse(url="/resume", status_code=303)
+    typed = _typed_titles(await request.form())
+    try:
+        with quota.ai_action(session, user, ActivityKind.CANADIAN_TITLES, "Canadian job titles"):
+            suggestions = canadian_convert.suggest_titles(session, current)
+    except quota.LimitReached as exc:
+        return _canadian_page(request, session, error=str(exc), suggestions=typed, status_code=429)
+    except AIProviderConfigError:
+        logger.exception("Analysis provider is not configured")
+        return _canadian_page(request, session, error=ANALYSIS_UNAVAILABLE, suggestions=typed, status_code=503)
+    except canadian_convert.TitleSuggestionError as exc:
+        return _canadian_page(request, session, error=str(exc), suggestions=typed, status_code=503)
+    count = len(suggestions)
+    message = (f"Suggested a Canadian equivalent for {count} job title{'s' if count != 1 else ''}. Check each one "
+               "below: change or clear it if it doesn't describe your work, then convert.") if count else \
+        "Your job titles are already clear to Canadian employers -- no equivalents needed."
+    return _canadian_page(request, session, message=message, suggestions={**suggestions, **typed})
+
+
+@router.post("/resume/canadian")
+async def canadian_convert_resume(request: Request, session: Session = Depends(member_session)):
+    """Apply the chosen fixes as a new resume version."""
+    current = active_candidate(session)
+    if current is None:
+        return RedirectResponse(url="/resume", status_code=303)
+    form = await request.form()
+    chosen = {str(v) for v in form.getlist("fix")} & set(canadian.FIXES)
+    try:
+        result = canadian_convert.convert(session, current, chosen, _typed_titles(form))
+    except BaseResumeMissingError as exc:
+        return RedirectResponse(url="/resume/canadian?" + urlencode({"error": str(exc)}), status_code=303)
+    if result.profile is None:
+        error = " ".join(result.problems) or "Nothing to change: tick at least one fix or add a job title equivalent."
+        return RedirectResponse(url="/resume/canadian?" + urlencode({"error": error}), status_code=303)
+    done = "; ".join(result.done)
+    message = f"Converted and saved as version {result.profile.version}: {done[:1].upper() + done[1:]}."
+    if result.problems:
+        message += " " + " ".join(result.problems)
+    return RedirectResponse(url="/resume/canadian?" + urlencode({"msg": message, "converted": 1}), status_code=303)
 
 
 # ---- a tracked job's tailored resume -------------------------------------------------------

@@ -18,7 +18,7 @@
   </form>
 </header>
 
-{% if message %}<div class="flash">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
+{% if message %}<div class="flash" role="status">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
 {% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
 {% if status.running %}<div class="notice">{{ icon("refresh") }}<div class="alert-body">Refreshing: {{ status.done }} of {{ status.total }} companies done.</div></div>{% endif %}
 
@@ -51,7 +51,7 @@
         {% for key, label in providers.items() %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
       </select>
     </label>
-    <label>Board name or careers-page URL <input type="text" name="board" required placeholder="acme" style="width: 320px"></label>
+    <label>Board name or careers-page URL <input type="text" name="board" required placeholder="acme" style="width: 320px; max-width: 100%"></label>
     <button type="submit" class="primary">{{ icon("plus") }} Add company</button>
   </form>
 </section>

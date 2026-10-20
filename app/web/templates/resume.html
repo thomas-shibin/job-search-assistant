@@ -11,6 +11,7 @@
   </div>
   {% if current %}
   <div class="page-actions">
+    {% if can_route("/resume/canadian") %}<a class="button" href="/resume/canadian">{{ icon("check") }} Canadian check</a>{% endif %}
     <a class="button primary" href="/resume/edit">{{ icon("pen") }} Edit resume</a>
     {% if file_available %}<a class="button" href="/resume/file" hx-boost="false" download>{{ icon("download") }} Download current</a>{% endif %}
   </div>
@@ -107,6 +108,14 @@
         <li><div><strong>Private to your account</strong>Only you can see your resume. Its text is used only to analyze jobs and tailor resumes for you.</div></li>
       </ul>
     </section>
+
+    {% if current and can_route("/resume/canadian") %}
+    <section class="panel">
+      <div class="panel-head" style="margin-bottom: 0.5rem"><div><h2>Ready for Canadian employers?</h2></div></div>
+      <p class="muted">Check your resume against what Canadian employers expect: no photo or personal details, dates, spelling, length and job titles. Fix it in one step, in your own design.</p>
+      <a class="button" href="/resume/canadian">{{ icon("check") }} Check my resume</a>
+    </section>
+    {% endif %}
 
     {% if versions | length > 1 %}
     <section class="panel">

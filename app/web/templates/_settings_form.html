@@ -10,6 +10,13 @@
       {{ node.label }}
     </label>
     {{ help(node) }}
+  {% elif node.kind == "choice" %}
+    <label>{{ node.label }}
+      <select name="{{ node.name }}">
+        {% for value, label in node.options %}<option value="{{ value }}"{% if node.value == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    {{ help(node) }}
   {% elif node.kind == "int" %}
     <label>{{ node.label }}<input type="number" name="{{ node.name }}" value="{{ node.value if node.value is not none else '' }}" required></label>
     {{ help(node) }}

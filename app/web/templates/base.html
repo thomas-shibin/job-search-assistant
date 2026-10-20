@@ -10,11 +10,11 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="{{ static_url("style.css") }}">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232453d4'/%3E%3Cpath d='M9 12h14v10H9z M13 12V9h6v3' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-  <script src="/static/tagpicker.js" defer></script>
-  <script src="/static/app.js" defer></script>
+  <script src="{{ static_url("tagpicker.js") }}" defer></script>
+  <script src="{{ static_url("app.js") }}" defer></script>
 </head>
 {% set path = request.url.path if request is defined else "" %}
 {% set nav_user = request.state.user if request is defined and request.state.user is defined else none %}
@@ -83,6 +83,14 @@
             <a href="/companies">Companies</a>
             <a href="/resources">Career Resources</a>
             {% if not signed_in %}<hr><a href="/login">Log In</a><a href="/signup">Sign Up</a>{% endif %}
+            {# Small phones: the theme button leaves the header to make room, so it's here. #}
+            <div class="mobile-theme" role="group" aria-label="Theme">
+              <hr><p class="menu-label">Theme</p>
+              {% for value, label, ic in [("light", "Light", "sun"), ("dark", "Dark", "moon"), ("system", "Match system", "monitor")] %}
+              <button type="button" class="menu-button" role="menuitemradio" data-theme-choice="{{ value }}"
+                      aria-checked="{{ 'true' if (theme if theme in ('light', 'dark') else 'system') == value else 'false' }}">{{ icon(ic) }} {{ label }}</button>
+              {% endfor %}
+            </div>
           </div>
         </details>
       </div>
@@ -91,7 +99,7 @@
 
   <main id="main" class="{% block main_class %}app-main{% endblock %}">
     {% if signed_in and not nav_user.email_verified %}<div class="warning-box">{{ icon("mail") }}<div class="alert-body">Confirm your email to unlock every feature. <a href="/verify-email/pending">Resend the link</a></div></div>{% endif %}
-    {% if message %}<div class="flash">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
+    {% if message %}<div class="flash" role="status">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
     {% block content %}{% endblock %}
   </main>
 

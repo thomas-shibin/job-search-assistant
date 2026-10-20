@@ -4,7 +4,8 @@ sign-in, email verification for an email change, password reset, and the
 account (security) page."""
 from __future__ import annotations
 
-from urllib.parse import urlencode
+import logging
+from urllib.parse import urlencode, urlsplit
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
@@ -20,11 +21,12 @@ from app.modules.auth.passwords import PASSWORD_RULES
 from app.modules.auth.ratelimit import email_limiter, login_limiter
 from app.modules.auth.service import AuthError
 from app.modules.auth.sessions import client_ip, end_other_sessions, end_session, start_session
-from app.modules.auth.settings import AuthSettings
+from app.modules.auth.settings import AuthSettings, is_local_host
 from app.modules.profiles.service import after_sign_in
 from app.web.templating import safe_next, templates
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _TOO_MANY = "Too many attempts from your network. Please wait a few minutes and try again."
 
@@ -33,10 +35,24 @@ def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=303)
 
 
+def _social_reachable(request: Request) -> bool:
+    """Google/Facebook send people back to PUBLIC_URL. When that's this computer
+    (127.0.0.1) but the visitor came from elsewhere -- the site opened by its
+    public address or from a phone -- they'd land on their own device; and the
+    providers refuse a plain-http or bare-IP address. Either way the buttons
+    aren't offered."""
+    settings = AuthSettings()
+    if settings.public_url_is_local:
+        return is_local_host(request.url.hostname)
+    return settings.social_redirect_allowed
+
+
 def _page(request: Request, name: str, context: dict | None = None, status_code: int = 200):
     settings = AuthSettings()
-    base = {"google": settings.provider_enabled("google"), "facebook": settings.provider_enabled("facebook"),
-            "auth_providers": {"google": settings.provider_enabled("google")}, "password_rules": PASSWORD_RULES}
+    social = _social_reachable(request)
+    google, facebook = social and settings.provider_enabled("google"), social and settings.provider_enabled("facebook")
+    base = {"google": google, "facebook": facebook, "auth_providers": {"google": google},
+            "password_rules": PASSWORD_RULES}
     return templates.TemplateResponse(request, name, {**base, **(context or {})}, status_code=status_code)
 
 
@@ -161,6 +177,18 @@ def reset(request: Request, token: str = Form(""), password: str = Form(""), con
 
 @router.get("/auth/{provider}/start")
 def oauth_start(request: Request, provider: str, next: str = "/", session: Session = Depends(get_session)):
+    # The provider always returns to PUBLIC_URL, and the state cookie only
+    # comes back to the address it was set on -- so start there. Otherwise
+    # opening the site as http://localhost:8001 with PUBLIC_URL=http://127.0.0.1:8001
+    # fails as "started in another browser".
+    base_url = AuthSettings().base_url
+    if not _social_reachable(request):
+        logger.warning("Social sign-in refused for a visit to %s: PUBLIC_URL must be the address people use, "
+                       "on https with a domain name (Google and Facebook refuse IP addresses).", request.url.hostname)
+        return _redirect("/login?" + urlencode({"error": "Google sign-in isn't available at this address yet. "
+                                                         "Please sign in with your email instead."}))
+    if request.url.netloc.lower() != urlsplit(base_url).netloc.lower():
+        return _redirect(base_url + request.url.path + (f"?{request.url.query}" if request.url.query else ""))
     try:
         url, state = oauth.authorization_url(session, provider, safe_next(next))
     except AuthError as exc:

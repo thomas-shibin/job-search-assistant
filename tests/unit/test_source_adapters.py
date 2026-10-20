@@ -243,6 +243,30 @@ def test_adzuna_source_retries_when_rate_limited(monkeypatch):
     assert len(calls) == 3
 
 
+def test_adzuna_source_retries_when_briefly_unavailable_then_says_so(monkeypatch):
+    import app.integrations.job_boards.adzuna as adzuna_module
+    from app.integrations.job_boards.adzuna import AdzunaError
+    from app.shared.retry import with_retry
+
+    monkeypatch.setattr(adzuna_module, "with_retry", lambda fn, **kw: with_retry(fn, **kw, sleep=lambda s: None))
+    calls = []
+
+    def recovers(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503) if len(calls) < 2 else httpx.Response(200, json={"results": []})
+
+    source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(recovers))
+    assert source.search_page(what="Human resource", where=None) == []
+    assert len(calls) == 2
+
+    down = AdzunaSource(app_id="id", app_key="SECRET-KEY", country="ca",
+                        client=_adzuna_client(lambda request: httpx.Response(503)))
+    with pytest.raises(AdzunaError) as exc_info:
+        down.search_page(what="Human resource", where=None)
+    assert "temporarily unavailable (HTTP 503)" in str(exc_info.value)
+    assert "SECRET-KEY" not in str(exc_info.value)
+
+
 def test_adzuna_keeps_salary_and_job_type():
     from app.integrations.job_boards.adzuna import AdzunaSource
 
@@ -252,3 +276,47 @@ def test_adzuna_keeps_salary_and_job_type():
         "contract_time": "full_time", "contract_type": "permanent",
     })
     assert (raw.salary_min, raw.salary_max, raw.currency, raw.employment_type) == (95000, 120000, "CAD", "full_time permanent")
+
+
+def test_adzuna_gives_up_quickly_when_someone_is_waiting(monkeypatch):
+    import app.integrations.job_boards.adzuna as adzuna_module
+    from app.integrations.job_boards.adzuna import AdzunaError
+    from app.shared.retry import with_retry
+
+    slept: list[float] = []
+    monkeypatch.setattr(adzuna_module, "with_retry", lambda fn, **kw: with_retry(fn, **kw, sleep=slept.append))
+    calls = []
+
+    def down(request: httpx.Request) -> httpx.Response:
+        calls.append(1)
+        return httpx.Response(503)
+
+    source = AdzunaSource(app_id="id", app_key="key", country="ca", client=_adzuna_client(down), interactive=True)
+    with pytest.raises(AdzunaError):
+        source.search_page(what="Java", where=None)
+    assert len(calls) == 2 and slept == [1.0]  # one quick retry, not 2 + 4 + 8 seconds
+
+
+def test_page_search_stops_waiting_at_the_deadline():
+    import threading
+    import time
+
+    from app.integrations.job_boards.base import RawJob
+    from app.modules.jobs.search import search_jobs
+
+    release = threading.Event()
+
+    class _Board:
+        def search_page(self, *, what, **_):
+            if what == "Slow":
+                release.wait(5)
+                return []
+            return [RawJob(external_id="1", source="adzuna", source_url="https://x", company="Acme", title="Fast",
+                           location=None, description="")]
+
+    started = time.monotonic()
+    found = search_jobs(_Board(), ["Fast", "Slow"], [], deadline_seconds=0.3)
+    release.set()
+    assert time.monotonic() - started < 2
+    assert [job.title for job in found.jobs] == ["Fast"]
+    assert found.failed_queries == ["Slow"]

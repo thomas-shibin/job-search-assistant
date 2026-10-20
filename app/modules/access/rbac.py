@@ -117,6 +117,8 @@ SYSTEM_ROLES: dict[str, tuple[str, list[str]]] = {
 # key -> (name, description, permissions needed to use it)
 FEATURES: dict[str, tuple[str, str, list[str]]] = {
     "job_search": ("Job search", "Searching jobs and viewing postings.", ["jobs.view"]),
+    "smart_search": ("Smart search", "Understands searches typed as sentences (\"remote HR jobs in Toronto over 80k\") "
+                     "and fixes spelling.", ["jobs.view"]),
     "saved_jobs": ("Saved jobs", "Saving jobs to come back to later.", ["jobs.save"]),
     "application_tracking": ("Application tracking", "Tracking jobs through applied, interview and offer.",
                              ["applications.view.own"]),
@@ -125,6 +127,8 @@ FEATURES: dict[str, tuple[str, str, list[str]]] = {
                        ["resumes.upload"]),
     "ai_resume_builder": ("Resume tailoring", "Quick Tailor and tailored resumes for each job.",
                           ["resumes.ai.generate"]),
+    "canadian_resume": ("Canadian resume check", "Checking the resume against Canadian conventions and converting it "
+                        "(suggesting Canadian job titles also needs resume tailoring access).", ["resumes.upload"]),
     "ai_job_matching": ("Job matching", "Match scores and gap analysis against the user's resume.",
                         ["jobs.ai.match"]),
 }
@@ -151,10 +155,10 @@ ROUTE_PERMISSIONS: dict[str | None, list[str]] = {
     ],
     "resumes.ai.generate": ["GET /quick", "POST /quick", "POST /jobs/{job_id}/retailor",
                             "POST /jobs/{job_id}/removals", "GET /jobs/{job_id}/resume.docx",
-                            "GET /jobs/{job_id}/resume.pdf"],
-    "resumes.view.own": ["GET /resume", "GET /resume/file"],
+                            "GET /jobs/{job_id}/resume.pdf", "POST /resume/canadian/titles"],
+    "resumes.view.own": ["GET /resume", "GET /resume/file", "GET /resume/canadian"],
     "resumes.upload": ["POST /resume", "POST /resume/upload", "GET /resume/edit", "POST /resume/edit",
-                       "POST /api/profile/resume", "POST /profile/import-resume"],
+                       "POST /api/profile/resume", "POST /profile/import-resume", "POST /resume/canadian"],
     "profiles.view.own": ["GET /profile", "GET /api/profile", "GET /welcome", "GET /settings"],
     "profiles.update.own": [
         "POST /welcome", "POST /profile/personal", "POST /profile/professional", "POST /profile/preferences",
@@ -207,6 +211,7 @@ FEATURE_ROUTES: dict[str, list[str]] = {
     "ai_resume_builder": ["/quick", "/jobs/{job_id}/retailor", "/jobs/{job_id}/removals",
                           "/jobs/{job_id}/resume.docx", "/jobs/{job_id}/resume.pdf"],
     "ai_job_matching": ["/jobs/{job_id}/analyze", "/jobs/{job_id}/assess", "/browse/analyze"],
+    "canadian_resume": ["/resume/canadian", "/resume/canadian/titles"],
 }
 _FEATURE_FOR_PATH: dict[str, str] = {path: key for key, paths in FEATURE_ROUTES.items() for path in paths}
 

@@ -19,7 +19,7 @@ services:
       - ./config:/app/config
     # Dashboard on http://127.0.0.1:${APP_PORT} (localhost only); set APP_PORT in .env.
     ports:
-      - "127.0.0.1:${APP_PORT:-8000}:8000"
+      - "192.168.1.80:${APP_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s

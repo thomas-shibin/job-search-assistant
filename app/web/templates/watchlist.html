@@ -83,7 +83,7 @@
   <div>
     <p class="eyebrow">Search</p>
     <h1>Watchlist</h1>
-    <p class="lead">Saved searches that message you on Telegram the moment a scan finds a new matching job.
+    <p class="lead">Saved searches that tell you when a scan finds a new matching job, by email and, if you connect it, Telegram.
     Set a few locations, titles or keywords -- each watch runs its own search, and a minimum match score keeps alerts to the jobs worth your time.</p>
   </div>
   <div class="page-actions">
@@ -136,17 +136,18 @@
   <div class="panel-head">
     <div>
       <h2>Recent alerts</h2>
-      <p>Every watchlist decision from the scans: what was sent to Telegram, and what was skipped as a repeat of a role you'd already been told about (same company and title within 30 days).</p>
+      <p>Every watchlist decision from the scans: what was sent by email or Telegram, what's waiting for your next email, and what was skipped as a repeat of a role you'd already been told about (same company and title within 30 days).</p>
     </div>
     <div class="watch-chips">
       <span class="chip chip-on">{{ alert_counts.get("sent", 0) + alert_counts.get("summarized", 0) }} sent this week</span>
+      {% if alert_counts.get("pending") %}<span class="chip">{{ alert_counts.get("pending") }} waiting for your next email</span>{% endif %}
       <span class="chip">{{ alert_counts.get("duplicate", 0) }} duplicates skipped</span>
       {% if alert_counts.get("failed") %}<span class="chip chip-warn">{{ alert_counts.get("failed") }} failed -- retried next scan</span>{% endif %}
     </div>
   </div>
   <div class="table-wrap" style="margin-top: 1rem">
     <table class="job-table">
-      <thead><tr><th>When</th><th>Job</th><th>Watch</th><th class="num">Score</th><th>Result</th></tr></thead>
+      <thead><tr><th>When</th><th>Job</th><th>Watch</th><th class="num">Score</th><th>By</th><th>Result</th></tr></thead>
       <tbody>
         {% for row in alerts %}
         {% set a = row.alert %}
@@ -156,16 +157,20 @@
               {% else %}<span class="cell-title">{{ a.job_title or "Deleted job" }}</span><div class="cell-sub">{{ a.job_company or "" }} · job cleaned up</div>{% endif %}</td>
           <td class="cell-sub">{{ a.watches | join(", ") }}</td>
           <td class="num">{{ a.score if a.score is not none else "–" }}</td>
+          <td class="cell-sub">{{ "Email" if a.channel == "email" else "Telegram" }}</td>
           <td>
-            {% if a.status == "sent" %}<span class="status-badge ok">Sent</span>
+            {% if a.status == "sent" %}<span class="status-badge ok">Sent</span>{% if a.sent_at and a.channel == "email" %}<div class="cell-sub">{{ a.sent_at.strftime("%b %d, %H:%M") }} UTC</div>{% endif %}
             {% elif a.status == "summarized" %}<span class="status-badge ok">Sent in summary</span>
+            {% elif a.status == "pending" %}<span class="status-badge">In your next email</span>
             {% elif a.status == "duplicate" %}<span class="status-badge">Skipped: duplicate</span>
+            {% elif a.status == "expired" %}<span class="status-badge">Not sent</span>
+            {% elif a.status == "cancelled" %}<span class="status-badge">Not sent: unsubscribed</span>
             {% else %}<span class="status-badge missing">Failed</span>{% endif %}
             {% if a.detail and a.status != "summarized" %}<div class="cell-sub">{{ a.detail }}</div>{% endif %}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="empty">No alerts yet. They appear here as scans find new jobs matching your watches.</td></tr>
+        <tr><td colspan="6" class="empty">No alerts yet. They appear here as scans find new jobs matching your watches.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -184,11 +189,11 @@
 </section>
 {% endif %}
 
-<section class="panel">
+<section class="panel" id="delivery">
   <div class="panel-head">
     <div>
-      <h2>Telegram</h2>
-      <p>Where alerts are delivered.</p>
+      <h2>How you get alerts</h2>
+      <p>By email to your account's address, and by Telegram if you connect it.</p>
     </div>
     <div class="actions">
       {% if token_set %}
@@ -201,9 +206,9 @@
     </div>
   </div>
   <ul class="checklist">
-    {% if not token_set %}<li class="missing">Telegram alerts aren't available right now.</li>{% endif %}
-    <li class="{{ 'ok' if chat_id else 'missing' }}">Chat: {{ "connected" if chat_id else "not connected -- tap Connect Telegram, then Start in the chat that opens" }}</li>
     <li class="{{ 'ok' if watchlist_enabled else 'missing' }}">Alerts: {{ "on" if watchlist_enabled else "off -- tick Enabled below" }}</li>
+    <li class="{{ 'ok' if email_alerts != 'off' else 'missing' }}">Email: {% if email_alerts == "off" %}off -- choose how often below{% else %}{{ email_alerts_label|lower }}{% if alert_email %} to {{ alert_email }}{% endif %}{% endif %}</li>
+    {% if token_set %}<li class="{{ 'ok' if chat_id else 'missing' }}">Telegram: {{ "connected" if chat_id else "optional -- tap Connect Telegram, then Start in the chat that opens" }}</li>{% endif %}
   </ul>
   {{ section_form("/settings/watchlist", settings_form, "Save alert settings") }}
 </section>

@@ -22,7 +22,7 @@ from app.integrations.job_boards.base import RawJob
 from app.integrations.job_boards.settings import AdzunaSettings
 from app.modules.applications.service import latest_match_analysis
 from app.modules.auth.models import User
-from app.modules.jobs import postings, relevance
+from app.modules.jobs import places, postings, relevance
 from app.modules.jobs.catalog.store import location_paths
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
 from app.modules.jobs.models import Job, SavedJob
@@ -39,6 +39,9 @@ logger = logging.getLogger(__name__)
 
 CARDS_PER_PAGE = 40
 POOL_PER_PAGE = 20
+# The longest the Jobs page waits on the job board; queries still running then
+# count as failed, and the page shows what came back (plus the job pool).
+PAGE_SEARCH_DEADLINE_SECONDS = 10.0
 
 
 def tracked_by_external_id(session: Session, external_ids: list[str]) -> dict[str, dict]:
@@ -62,7 +65,8 @@ def tracked_by_external_id(session: Session, external_ids: list[str]) -> dict[st
 
 
 def search_for_page(
-    session: Session, *, titles: list[str], locations: list[str], keywords: list[str], country: str, page: int
+    session: Session, *, titles: list[str], locations: list[str], keywords: list[str], country: str, page: int,
+    radius_km: int | None = None,
 ) -> dict:
     """One page of results: the live job-board search across every title x
     location (app/modules/jobs/search.py) merged with the free job pool of
@@ -71,15 +75,19 @@ def search_for_page(
     Results are ordered by how well their title matches the search, then newest
     first. Nothing here saves anything: a posting only becomes a tracked `Job` when
     the user analyzes or tracks it. An empty page past the last real results
-    is the "no more results" signal.
+    is the "no more results" signal. With `radius_km`, each place that is a town
+    or city covers everything within that distance (app/modules/jobs/places.py).
 
     Returns:
-        ``{"error", "cards", "page", "has_next", "failed", "queries", "requests"}``;
-        ``error`` is set only when neither source produced anything.
+        ``{"error", "cards", "page", "has_next", "failed", "queries", "requests",
+        "hidden", "whole_places"}``; ``error`` is set only when neither source
+        produced anything; ``whole_places`` are searched places a radius can't
+        apply to (a province, or a place the list doesn't know).
     """
     page = max(page, 1)
     result = {"error": None, "cards": [], "page": page, "has_next": False, "failed": [],
-              "queries": len(query_pairs(titles, locations)), "requests": 0}
+              "queries": len(query_pairs(titles, locations)), "requests": 0, "hidden": 0,
+              "whole_places": [loc for loc in locations if radius_km and places.center(loc) is None]}
 
     board_jobs: list[RawJob] = []
     board_error = None
@@ -88,20 +96,26 @@ def search_for_page(
         logger.error("Job search is not configured (listings provider keys missing)")
         board_error = "Job search is temporarily unavailable. Please try again later."
     else:
-        source = AdzunaSource(app_id=settings.app_id, app_key=settings.app_key, country=country)
+        source = AdzunaSource(app_id=settings.app_id, app_key=settings.app_key, country=country, interactive=True)
         per_query = max(10, min(50, CARDS_PER_PAGE // result["queries"]))
         try:
             found = search_jobs(source, titles, locations, page=page, per_page=per_query,
-                                keywords=keywords, areas=location_paths(session))
+                                keywords=keywords, areas=location_paths(session), radius_km=radius_km,
+                                deadline_seconds=PAGE_SEARCH_DEADLINE_SECONDS)
         except Exception:
             logger.exception("Job search failed")
             board_error = "Job search is temporarily unavailable. Please try again shortly."
         else:
             board_jobs = found.jobs
-            result.update(has_next=found.has_next, failed=found.failed_queries, requests=found.requests)
+            # The board returns its best matches first: once a page has nothing
+            # relevant, later pages won't either.
+            has_more = found.has_next and (not titles or any(
+                relevance.tier(titles, j.title, j.company) >= relevance.RELEVANT for j in board_jobs))
+            result.update(has_next=has_more, failed=found.failed_queries, requests=found.requests)
 
     try:
-        pooled = pool.search_pool(session, titles, locations, keywords, country, page=page, per_page=POOL_PER_PAGE)
+        pooled = pool.search_pool(session, titles, locations, keywords, country, page=page, per_page=POOL_PER_PAGE,
+                                  radius_km=radius_km)
     except Exception:
         logger.exception("Job pool search failed")
         pooled = pool.PoolResults(jobs=[], has_next=False, total=0)
@@ -109,7 +123,7 @@ def search_for_page(
         result["error"] = board_error
         return result
 
-    jobs = _by_relevance(_merge_results(pooled.jobs, board_jobs), titles)
+    jobs, result["hidden"] = relevant_only(_merge_results(pooled.jobs, board_jobs), titles)
     tracked = tracked_by_external_id(session, [j.external_id for j in jobs if j.external_id])
     cards = [{"raw": j, "tracked": tracked.get(j.external_id)} for j in jobs]
     result["cards"] = best_match_first(cards, lambda card: card["tracked"])
@@ -133,48 +147,67 @@ def _merge_results(pool_jobs: list[RawJob], board_jobs: list[RawJob]) -> list[Ra
     return sorted(merged, key=_posted_at, reverse=True)
 
 
-def _by_relevance(jobs: list[RawJob], titles: list[str]) -> list[RawJob]:
-    """Best match to the typed titles first (app/modules/jobs/relevance.py),
-    newest first within each tier. The job board searches whole descriptions,
-    so a posting that only mentions the term in passing goes to the end."""
+def relevant_only(jobs: list[RawJob], titles: list[str]) -> tuple[list[RawJob], int]:
+    """Only postings whose title matches the typed titles (or whose company is
+    the one typed), best match first and newest first within each tier
+    (app/modules/jobs/relevance.py). The job board searches whole descriptions,
+    so it also returns jobs that only mention the term in passing ("plumber ...
+    send your resume to our HR team"); those are left out rather than shown last.
+
+    Returns:
+        (the relevant postings, how many were left out).
+    """
     if not titles:
-        return jobs
-    return sorted(jobs, key=lambda job: -relevance.tier(titles, job.title, job.company, job.description))
+        return jobs, 0
+    ranked = sorted(((relevance.tier(titles, job.title, job.company), job) for job in jobs), key=lambda p: -p[0])
+    kept = [job for tier, job in ranked if tier >= relevance.RELEVANT]
+    return kept, len(jobs) - len(kept)
 
 
-def _search_summary(titles: list[str], locations: list[str], keywords: list[str], country: str) -> str:
+def _search_summary(titles: list[str], locations: list[str], keywords: list[str], country: str,
+                    radius_km: int | None = None) -> str:
     parts = [", ".join(titles) or "any title", "in " + (", ".join(locations) or "anywhere")]
+    if radius_km and locations:
+        parts.append(f"(within {radius_km} km)")
     if keywords:
         parts.append("with " + ", ".join(keywords))
     return " ".join(parts) + f" ({country.upper()})"
 
 
 def limited_search(session: Session, user: User, titles: list[str], locations: list[str], keywords: list[str],
-                   country: str, page: int, query_string: str) -> dict:
+                   country: str, page: int, query_string: str, *, free_if_empty: bool = False,
+                   radius_km: int | None = None) -> dict:
     """The job search behind the hourly search limit (app/modules/usage/quota.py):
     a new search counts once; its other pages, or running it again within the
     hour, are free. Over the limit, the result offers the last search instead.
+    `free_if_empty`: give the search back if it finds nothing (words no job
+    title uses -- usually a typo -- shouldn't use up a search).
 
     Returns:
         The `search_for_page` result plus ``allowance``; over the limit,
         ``limited=True``, an ``error`` message and ``last_search``.
     """
     platform = quota.platform_limits(session)
-    fingerprint = quota.search_fingerprint(titles, locations, keywords, country)
-    summary = _search_summary(titles, locations, keywords, country)
+    radius_km = radius_km if locations else None
+    fingerprint = quota.search_fingerprint(titles, locations, keywords, country, radius_km=radius_km)
+    summary = _search_summary(titles, locations, keywords, country, radius_km)
     try:
         charge = quota.charge_search(
             session, user, fingerprint=fingerprint, page=page, summary=summary, platform=platform,
             meta={"titles": titles, "locations": locations, "keywords": keywords, "country": country,
-                  "query_string": query_string},
+                  "radius_km": radius_km, "query_string": query_string},
         )
     except quota.LimitReached as exc:
         current = exc.allowance or quota.allowance(session, user, quota.SEARCH, platform)
         return {"error": str(exc), "limited": True, "cards": [], "page": page, "has_next": False, "failed": [],
                 "queries": 0, "allowance": current, "last_search": _last_search(session, user, fingerprint)}
     search = search_for_page(session, titles=titles, locations=locations, keywords=keywords, country=country,
-                             page=page)
-    quota.settle_search(session, user, charge, provider_calls=search.get("requests", 0), failed=bool(search.get("error")),
+                             page=page, radius_km=radius_km)
+    # Not counted: a search that failed, found nothing for words no title uses,
+    # or couldn't reach the job board at all (only the job pool answered).
+    board_down = bool(search.get("failed")) and len(search["failed"]) >= search.get("queries", 1)
+    failed = bool(search.get("error")) or (free_if_empty and not search["cards"]) or board_down
+    quota.settle_search(session, user, charge, provider_calls=search.get("requests", 0), failed=failed,
                         summary=summary, fingerprint=fingerprint, page=page)
     search["has_next"] = search["has_next"] and page < platform.max_search_pages
     search["allowance"] = charge.allowance

@@ -25,6 +25,9 @@ SOURCE_NAME = "adzuna"
 _API_ROOT = "https://api.adzuna.com/v1/api/jobs"
 _URL_TEMPLATE = _API_ROOT + "/{country}/search/{page}"
 _REQUEST_TIMEOUT_SECONDS = 30.0
+# Someone is waiting on the Jobs page: fail fast and show what the other
+# sources found, instead of sitting through the background scan's long retries.
+_INTERACTIVE_TIMEOUT_SECONDS = 8.0
 _RESULTS_PER_PAGE = 50
 
 
@@ -38,7 +41,15 @@ class _RateLimited(Exception):
     pass
 
 
-_RETRYABLE_ERRORS = (httpx.TransportError, _RateLimited)
+class _Unavailable(Exception):
+    """HTTP 502/503/504: the board is briefly down or overloaded; worth another try."""
+
+    def __init__(self, status: int) -> None:
+        super().__init__(status)
+        self.status = status
+
+
+_RETRYABLE_ERRORS = (httpx.TransportError, _RateLimited, _Unavailable)
 
 
 _CURRENCY = {
@@ -73,11 +84,19 @@ class AdzunaSource:
 
     name = SOURCE_NAME
 
-    def __init__(self, app_id: str, app_key: str, country: str, client: httpx.Client | None = None) -> None:
+    def __init__(
+        self, app_id: str, app_key: str, country: str, client: httpx.Client | None = None, *,
+        interactive: bool = False,
+    ) -> None:
+        """`interactive`: a person is waiting for the answer (the Jobs page), so
+        one quick retry and a short timeout; background scans can afford to wait."""
         self._app_id = app_id
         self._app_key = app_key
         self._country = country
-        self._client = client or httpx.Client(timeout=_REQUEST_TIMEOUT_SECONDS)
+        self._retry = {"max_attempts": 2, "base_delay_seconds": 1.0} if interactive else \
+            {"max_attempts": 4, "base_delay_seconds": 2.0}
+        timeout = _INTERACTIVE_TIMEOUT_SECONDS if interactive else _REQUEST_TIMEOUT_SECONDS
+        self._client = client or httpx.Client(timeout=timeout)
 
     def discover_jobs(self, search_profile: Any) -> list[RawJob]:
         titles = list(getattr(search_profile, "titles", None) or [])
@@ -160,12 +179,16 @@ class AdzunaSource:
             response = self._client.get(url, params=params)
             if response.status_code == 429:  # per-minute rate limit: back off and retry
                 raise _RateLimited()
+            if response.status_code in (502, 503, 504):
+                raise _Unavailable(response.status_code)
             return response
 
         try:
-            response = with_retry(get, retry_on=_RETRYABLE_ERRORS, max_attempts=4, base_delay_seconds=2.0)
+            response = with_retry(get, retry_on=_RETRYABLE_ERRORS, **self._retry)
         except _RateLimited:
             raise AdzunaError("Adzuna rate limit reached (HTTP 429) -- try again in a minute") from None
+        except _Unavailable as exc:
+            raise AdzunaError(f"Adzuna is temporarily unavailable (HTTP {exc.status})") from None
         except httpx.TransportError as exc:
             raise AdzunaError(f"Could not reach Adzuna: {type(exc).__name__}") from None
         if response.status_code >= 400:

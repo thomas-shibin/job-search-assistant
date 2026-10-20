@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Canadian resume check - Job Assistant{% endblock %}
+{% block crumb %}Canadian resume check{% endblock %}
+{% set level_names = {"must": "Must fix", "should": "Should fix", "tip": "Tip"} %}
+{% set removals = ["photo", "personal", "declaration", "references", "high_school"] %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Resume</p>
+    <h1>Canadian resume check</h1>
+    <p class="lead">What Canadian employers expect, checked against your resume. Choose the fixes you want and convert it in one step. You see every change before it's made.</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/resume">{{ icon("back") }} My resume</a>
+  </div>
+</header>
+
+{% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+{% if converted %}
+<section class="panel convert-done">
+  <div class="panel-head">
+    <div>
+      <h2>{{ icon("check") }} Your converted resume is ready</h2>
+      <p>It's now your resume for matching and tailoring (version {{ current.version }}). The version before it is kept in your history.</p>
+    </div>
+    <a class="button primary" href="/resume/file" hx-boost="false" download>{{ icon("download") }} Download</a>
+  </div>
+</section>
+{% endif %}
+
+{% if review %}
+{% set counts = review.counts %}
+{% set to_fix = counts["must"] + counts["should"] %}
+<section class="panel check-summary">
+  <div class="check-summary-head">
+    <span class="check-summary-icon {{ 'ok' if not to_fix else 'todo' }}">{{ icon("check" if not to_fix else "alert") }}</span>
+    <div>
+      <h2>{% if not to_fix %}Your resume follows Canadian conventions{% else %}{{ to_fix }} thing{{ "s" if to_fix != 1 }} to change for Canadian employers{% endif %}</h2>
+      <p class="muted">Version {{ current.version }} · {{ "Word file" if review.is_docx else "PDF file" }} · about {{ review.pages }} page{{ "s" if review.pages != 1 }}</p>
+    </div>
+  </div>
+  <div class="check-counts">
+    <span class="chip level-must">{{ counts["must"] }} must fix</span>
+    <span class="chip level-should">{{ counts["should"] }} should fix</span>
+    <span class="chip level-tip">{{ counts["tip"] }} tip{{ "s" if counts["tip"] != 1 }}</span>
+  </div>
+</section>
+
+<form method="post" action="/resume/canadian" hx-boost="false" class="check-form"
+      onsubmit="var b = event.submitter; if (b) { b.disabled = true; b.lastChild.textContent = b.dataset.busy || ' Working…'; }">
+
+  {% if not review.is_docx %}
+  <div class="warning-box">{{ icon("info") }}<div class="alert-body">
+    Your resume is a PDF, which can't be edited, so the converted resume is a new Word file in the standard layout. That layout writes dates as month and year and has no photo, declaration or references.
+    {% if review.dropped_sections %}These parts the app couldn't place in a section aren't carried over: <strong>{{ review.dropped_sections | join(", ") }}</strong>.{% endif %}
+    To keep your own design, <a href="/resume#upload">upload the Word (.docx) version</a> and check it instead.
+  </div></div>
+  {% endif %}
+
+  {% for f in review.findings %}
+  <article class="finding level-{{ f.level }}">
+    <div class="finding-head">
+      <span class="chip level-{{ f.level }}">{{ level_names[f.level] }}</span>
+      <h3>{{ f.title }}</h3>
+    </div>
+    <p>{{ f.advice }}</p>
+    {% if f.examples %}
+    <ul class="finding-examples">
+      {% for example in f.examples %}<li>{% if f.key in removals and not example.startswith("and ") %}<del>{{ example }}</del>{% else %}{{ example }}{% endif %}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if f.unclear %}
+    <p class="finding-note">{{ icon("info") }} Change these yourself; the day and month can't be told apart: {{ f.unclear | join(", ") }}</p>
+    {% endif %}
+    {% if review.fixed_by_layout(f) %}
+      <p class="finding-fix"><span class="status-badge ok">Fixed by the standard layout</span></p>
+    {% elif f.fixable %}
+      <label class="check finding-fix"><input type="checkbox" name="fix" value="{{ f.key }}" {% if f.level != "tip" %}checked{% endif %}> {{ f.fix_label }}</label>
+    {% elif f.level != "tip" %}
+      <p class="finding-note">{{ icon("pen") }} Change this on the <a href="/resume/edit">Edit resume</a> page{% if review.is_docx %} or in Word, then upload it again{% endif %}.</p>
+    {% endif %}
+  </article>
+  {% endfor %}
+
+  {% if roles %}
+  <section class="panel titles-panel" id="titles">
+    <div class="panel-head">
+      <div>
+        <h2>Job titles</h2>
+        <p>If a title isn't common in Canada, add the Canadian equivalent. It goes in brackets after your title, for example "Senior Executive - HR (HR Generalist)". Your original title stays: it's what your employer called the role and what a reference check will confirm.</p>
+      </div>
+    </div>
+    <div class="title-rows">
+      {% for role in roles %}
+      <label class="title-row">
+        <span class="title-original"><strong>{{ role.title }}</strong><span class="muted">{{ role.company }}</span></span>
+        <input type="text" name="title-{{ role.id }}" maxlength="60" value="{{ suggestions.get(role.id, '') }}"
+               placeholder="Canadian equivalent (optional)" autocomplete="off"
+               onkeydown="if (event.key === 'Enter') event.preventDefault()">
+      </label>
+      {% endfor %}
+    </div>
+    {% if titles_available %}
+    <div class="titles-suggest">
+      <button type="submit" formaction="/resume/canadian/titles" formnovalidate data-busy=" Suggesting…">{{ icon("sparkles") }} Suggest equivalents</button>
+      <span class="muted">Suggests only for titles that need it, never more senior than yours.{% if ai_allowance and not ai_allowance.unlimited %} Uses 1 resume action ({{ ai_allowance.remaining }} of {{ ai_allowance.limit }} left this hour).{% endif %}</span>
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <div class="convert-bar">
+    <button type="submit" class="primary" data-busy=" Converting…">{{ icon("refresh") }} Convert my resume</button>
+    <span class="muted">Saved as a new version{% if review.is_docx %} of your Word file, in your own design{% endif %}. Your current version is kept.</span>
+  </div>
+</form>
+{% endif %}
+{% endblock %}

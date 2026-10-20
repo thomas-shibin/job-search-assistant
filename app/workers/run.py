@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.config.schema import AppConfig, SearchProfile
 from app.core.config.store import load_app_config
 from app.core.logging import log_event
-from app.core.tenancy import system_session, tenant_session
+from app.core.tenancy import system_session, tenant_of, tenant_session
 from app.integrations.ai.base import AIProvider
 from app.integrations.ai.factory import AIProviderConfigError, build_ai_provider
 from app.integrations.ai.settings import AISettings
@@ -29,6 +29,7 @@ from app.integrations.job_boards.lever import LeverSource
 from app.integrations.job_boards.settings import AdzunaSettings
 from app.modules.access import rbac
 from app.modules.alerts.base import NotificationProvider
+from app.modules.alerts.email_alerts import send_due
 from app.modules.alerts.service import maybe_notify_qualified_job
 from app.modules.alerts.watchlist import WatchlistAlerter, build_watchlist_alerter
 from app.modules.applications.retention import purge_old_jobs, was_deleted
@@ -133,6 +134,21 @@ def _build_notification_provider() -> NotificationProvider | None:
     except Exception:
         logger.warning("Could not initialize a desktop notification provider for %s", sys.platform, exc_info=True)
         return None
+
+
+def _send_alert_email(session: Session, config: AppConfig) -> None:
+    """Email the member's queued watch matches if their email is due (now, or
+    their daily / weekly summary). Never breaks the scan."""
+    user_id = tenant_of(session)
+    if user_id is None:  # a single-user database: alerts go to Telegram only
+        return
+    try:
+        user = session.get(User, user_id)
+        if user is not None and user.is_active:
+            send_due(session, user, config)
+    except Exception:
+        session.rollback()
+        logger.warning("Job alert email failed for user_id=%s", user_id, exc_info=True)
 
 
 def run_once(session: Session, config: AppConfig) -> RunSummary:
@@ -299,6 +315,7 @@ def _run(session: Session, config: AppConfig, *, desktop_notifications: bool = T
 
     if watchlist_alerter is not None:
         watchlist_alerter.flush()
+    _send_alert_email(session, config)
 
     try:  # retention clean-up: old jobs you haven't acted on (Settings -> Retention)
         summary.jobs_deleted = purge_old_jobs(session, config).deleted

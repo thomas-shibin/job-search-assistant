@@ -1,7 +1,9 @@
 """Watchlist alerts: every newly discovered job is checked against your
-watches (Watchlist page), and matches are pushed to Telegram. Separate from
-`service.maybe_notify_qualified_job`: a watch is an explicit "tell me about
-anything like this", optionally gated on a minimum match score.
+watches (Watchlist page), and matches go to the channels you use:
+Telegram (sent at once) and email (queued here as "pending", then sent after
+the scan or in a daily or weekly summary by app/modules/alerts/email_alerts.py).
+Separate from `service.maybe_notify_qualified_job`: a watch is an explicit
+"tell me about anything like this", optionally gated on a minimum match score.
 """
 from __future__ import annotations
 
@@ -128,10 +130,14 @@ def format_alert(job: Job, watch_names: list[str], score: int | None, dashboard_
     return "\n".join(lines)
 
 
-# The same role (company + title) alerts at most once in this window, even if it's
-# reposted or listed in several cities.
+# The same role (company + title) alerts at most once per channel in this window,
+# even if it's reposted or listed in several cities.
 DUPLICATE_WINDOW = timedelta(days=30)
 RETRY_WINDOW = timedelta(hours=24)
+
+TELEGRAM, EMAIL = "telegram", "email"
+# Decisions that count as "already told" on each channel (email: queued or sent).
+_ALERTED = {TELEGRAM: ("sent", "summarized"), EMAIL: ("pending", "sent")}
 
 
 def alert_key(job: Job) -> str:
@@ -147,43 +153,64 @@ def _utcnow() -> datetime:
 class WatchlistAlerter:
     """One instance per scheduler run, so `max_alerts_per_run` caps a single run.
 
-    With a `session`, every decision is written to `watchlist_alerts` -- sent,
-    failed, rolled into a summary, or skipped as a duplicate -- and that log is
-    what stops the same role being alerted twice (see `alert_key`).
+    Channels: Telegram when `client` and `chat_id` are given, email when
+    `email` is set (it needs a `session` to queue into). With a `session`,
+    every decision is written to `watchlist_alerts`, one row per channel --
+    sent, failed, rolled into a summary, queued for email, or skipped as a
+    duplicate -- and that log is what stops the same role being alerted twice
+    (see `alert_key`).
     """
 
     def __init__(
-        self, config: WatchlistConfig, client: TelegramClient, chat_id: str,
+        self, config: WatchlistConfig, client: TelegramClient | None, chat_id: str | None,
         province_resolver: Callable[[Job], str | None] | None = None, session: Session | None = None,
+        *, email: bool = False,
     ) -> None:
         self._config = config
         self._province = province_resolver or province_code_of
-        self._client = client
+        self._client = client if client is not None and chat_id else None
         self._chat_id = chat_id
         self._session = session
+        self._email = email and session is not None
         self._sent = 0
         self._overflow: list[tuple[Job, str, list[str], int | None]] = []
-        self._this_run: dict[str, int] = {}  # alert_key -> job id alerted in this run
+        self._this_run: dict[str, dict[str, int]] = {TELEGRAM: {}, EMAIL: {}}  # channel -> alert_key -> job id
 
     # ---- log ----------------------------------------------------------------
     def _record(self, job: Job, key: str, watches: list[str], score: int | None, status: str,
-                detail: str | None = None) -> None:
+                detail: str | None = None, channel: str = TELEGRAM) -> None:
         if self._session is None:
             return
         self._session.add(WatchlistAlert(job_id=job.id, job_title=job.title, job_company=job.company, alert_key=key,
-                                         watches=watches, score=score, status=status, detail=detail))
+                                         watches=watches, score=score, status=status, detail=detail,
+                                         channel=channel))
         self._session.commit()
 
-    def _already_alerted(self, key: str, job: Job) -> WatchlistAlert | None:
+    def _already_alerted(self, key: str, job: Job, channel: str = TELEGRAM) -> WatchlistAlert | None:
         if self._session is None:
             return None
         return (
             self._session.query(WatchlistAlert)
-            .filter(WatchlistAlert.alert_key == key, WatchlistAlert.status.in_(("sent", "summarized")),
+            .filter(WatchlistAlert.alert_key == key, WatchlistAlert.channel == channel,
+                    WatchlistAlert.status.in_(_ALERTED[channel]),
                     WatchlistAlert.created_at >= _utcnow() - DUPLICATE_WINDOW)
             .order_by(WatchlistAlert.created_at.desc())
             .first()
         )
+
+    def _duplicate(self, job: Job, key: str, matched: list[str], score: int | None, channel: str) -> bool:
+        """Records and returns True when this role was already alerted on `channel`."""
+        if key in self._this_run[channel]:
+            self._record(job, key, matched, score, "duplicate",
+                         f"same role as job #{self._this_run[channel][key]} in this scan", channel)
+            return True
+        previous = self._already_alerted(key, job, channel)
+        if previous is not None:
+            self._record(job, key, matched, score, "duplicate",
+                         f"already alerted for job #{previous.job_id} on {previous.created_at:%b %d}", channel)
+            return True
+        self._this_run[channel][key] = job.id
+        return False
 
     # ---- alerts ---------------------------------------------------------------
     def consider(self, job: Job, score: int | None = None) -> None:
@@ -192,15 +219,12 @@ class WatchlistAlerter:
         if not matched:
             return
         key = alert_key(job)
-        if key in self._this_run:
-            self._record(job, key, matched, score, "duplicate", f"same role as job #{self._this_run[key]} in this scan")
-            return
-        previous = self._already_alerted(key, job)
-        if previous is not None:
-            self._record(job, key, matched, score, "duplicate",
-                         f"already alerted for job #{previous.job_id} on {previous.created_at:%b %d}")
-            return
-        self._this_run[key] = job.id
+        if self._email and not self._duplicate(job, key, matched, score, EMAIL):
+            self._record(job, key, matched, score, "pending", None, EMAIL)  # emailed by email_alerts.send_due
+        if self._client is not None and not self._duplicate(job, key, matched, score, TELEGRAM):
+            self._send_telegram(job, key, matched, score)
+
+    def _send_telegram(self, job: Job, key: str, matched: list[str], score: int | None) -> None:
         if self._sent >= self._config.max_alerts_per_run:
             self._overflow.append((job, key, matched, score))
             return
@@ -217,8 +241,8 @@ class WatchlistAlerter:
         log_event(logger, "WATCHLIST_ALERT_SENT", job_id=job.id, watches=matched)
 
     def flush(self) -> None:
-        """Send one roll-up message for alerts skipped by `max_alerts_per_run`."""
-        if not self._overflow:
+        """Send one Telegram roll-up message for alerts skipped by `max_alerts_per_run`."""
+        if not self._overflow or self._client is None:
             return
         e = html.escape
         lines = [f"➕ <b>{len(self._overflow)} more watchlist matches</b> this scan:"]
@@ -236,12 +260,15 @@ class WatchlistAlerter:
         self._overflow = []
 
     def retry_failed(self) -> int:
-        """Re-send alerts that failed in the last day (e.g. Telegram was down). Returns how many went out."""
-        if self._session is None:
+        """Re-send Telegram alerts that failed in the last day (e.g. Telegram was
+        down). Returns how many went out. Email retries itself: a failed email
+        leaves its matches pending."""
+        if self._session is None or self._client is None:
             return 0
         failed = (
             self._session.query(WatchlistAlert)
-            .filter(WatchlistAlert.status == "failed", WatchlistAlert.created_at >= _utcnow() - RETRY_WINDOW)
+            .filter(WatchlistAlert.channel == TELEGRAM, WatchlistAlert.status == "failed",
+                    WatchlistAlert.created_at >= _utcnow() - RETRY_WINDOW)
             .order_by(WatchlistAlert.created_at)
             .limit(self._config.max_alerts_per_run)
             .all()
@@ -267,6 +294,7 @@ def build_watchlist_alerter(
     config: AppConfig, settings: TelegramSettings | None = None,
     province_resolver: Callable[[Job], str | None] | None = None, session: Session | None = None,
 ) -> WatchlistAlerter | None:
+    """The alerter for one member's scan, or None when they get no alerts."""
     watchlist = config.watchlist
     if not watchlist.enabled or not watchlist.watches:
         return None
@@ -274,7 +302,9 @@ def build_watchlist_alerter(
     # Only the user's own linked chat (Watchlist -> Connect Telegram) -- never a
     # shared fallback, which would send one user's alerts to someone else.
     chat_id = watchlist.telegram_chat_id
-    if not (settings.bot_token and chat_id):
-        logger.info("Watchlist alerts are on but Telegram isn't connected for this user -- skipping")
+    client = TelegramClient(settings.bot_token) if settings.bot_token and chat_id else None
+    email = watchlist.email_alerts != "off" and session is not None
+    if client is None and not email:
+        logger.info("Watchlist alerts are on but neither email nor Telegram is set up for this user -- skipping")
         return None
-    return WatchlistAlerter(watchlist, TelegramClient(settings.bot_token), chat_id, province_resolver, session)
+    return WatchlistAlerter(watchlist, client, chat_id, province_resolver, session, email=email)

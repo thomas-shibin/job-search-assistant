@@ -134,7 +134,7 @@ input[type="url"], input[type="number"], input[type="date"], input[type="month"]
 }
 textarea { resize: vertical; line-height: 1.5; }
 input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
-input[type="file"] { padding: 0.4rem; background: var(--surface-2); }
+input[type="file"] { padding: 0.4rem; background: var(--surface-2); min-width: 0; max-width: 100%; }
 input[type="file"]::file-selector-button {
   font: inherit; font-size: 0.85rem; margin-right: 0.7rem; padding: 0.35rem 0.8rem;
   border: 1px solid var(--border-strong); border-radius: 6px; background: var(--surface); color: var(--text); cursor: pointer;
@@ -206,6 +206,15 @@ button.small, a.button.small { font-size: 0.8rem; padding: 0.38rem 0.7rem; }
 .warning-box > .icon { color: var(--warning); margin-top: 0.15rem; }
 .flash ul, .error ul, .warning-box ul { margin: 0.3rem 0 0; }
 .alert-body { flex: 1; min-width: 0; }
+.flash { transition: opacity 0.3s ease, transform 0.3s ease; }
+.flash.is-leaving { opacity: 0; transform: translateY(-4px); }
+.flash-close {
+  flex: none; width: 28px; height: 28px; margin: -0.25rem -0.35rem -0.25rem 0; padding: 0;
+  border: 0; border-radius: 50%; background: transparent; box-shadow: none;
+  font-size: 1.25rem; line-height: 1; color: var(--text-3); cursor: pointer;
+}
+.flash-close:hover, .flash-close:focus-visible { background: color-mix(in srgb, var(--success) 15%, transparent); color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .flash { transition: none; } }
 
 /* Badges */
 .status-badge, .fit-badge, .chip {
@@ -297,6 +306,19 @@ tr.paused td { opacity: 0.55; }
 .results-bar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin: 0 0 0.9rem; flex-wrap: wrap; }
 .result-count { margin: 0; font-size: 0.9rem; color: var(--text-2); }
 .result-count strong { color: var(--text); font-size: 1rem; }
+.search-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; width: 100%; margin: 0; padding: 0; list-style: none; order: 3; }
+.search-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.45rem 0.25rem 0.7rem;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface);
+  color: var(--text); font-size: 0.82rem; text-decoration: none;
+}
+.search-chip-title, .search-chip-place { background: var(--primary-soft); border-color: transparent; color: var(--primary-text); }
+.search-chip .icon { width: 13px; height: 13px; opacity: 0.65; }
+.search-chip:hover, .search-chip:focus-visible { border-color: var(--danger); color: var(--text); }
+.search-chip:hover .icon, .search-chip:focus-visible .icon { color: var(--danger); opacity: 1; }
+.search-read { display: flex; gap: 0.5rem; align-items: flex-start; margin: -0.4rem 0 1rem; font-size: 0.88rem; color: var(--text-2); }
+.search-read .icon { flex: none; width: 15px; height: 15px; margin-top: 0.2rem; }
+.search-read s { color: var(--text-3); }
 
 /* Job cards */
 .job-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 1rem; }
@@ -656,7 +678,7 @@ svg.chart .series-5, .swatch.series-5 { fill: var(--series-5); background: var(-
 .feed-text { color: var(--text-2); overflow-wrap: anywhere; }
 .feed .empty { color: var(--text-3); border: 0; }
 .chip.kind-limit_hit { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
-.chip.kind-ai_analysis, .chip.kind-ai_tailor, .chip.kind-quick_tailor { background: color-mix(in srgb, var(--series-2) 15%, transparent); border-color: transparent; }
+.chip.kind-ai_analysis, .chip.kind-ai_tailor, .chip.kind-quick_tailor, .chip.kind-canadian_titles { background: color-mix(in srgb, var(--series-2) 15%, transparent); border-color: transparent; }
 .chip.kind-search { background: var(--primary-soft); color: var(--primary-text); border-color: transparent; }
 .meter-row { display: grid; gap: 0.35rem; margin-bottom: 0.9rem; }
 .meter-label { display: flex; justify-content: space-between; gap: 0.6rem; flex-wrap: wrap; font-size: 0.9rem; }
@@ -735,8 +757,9 @@ details[data-dropdown] > summary::-webkit-details-marker { display: none; }
 }
 :root[data-theme="dark"] .theme-menu .icon-sun { display: none; }
 :root[data-theme="dark"] .theme-menu .icon-moon { display: inline; }
-.theme-menu .menu-button[aria-checked="true"] { color: var(--primary-text); font-weight: 600; }
-.theme-menu .menu-button[aria-checked="true"]::after { content: "\2713"; margin-left: auto; }
+.menu-button[role="menuitemradio"][aria-checked="true"] { color: var(--primary-text); font-weight: 600; }
+.menu-button[role="menuitemradio"][aria-checked="true"]::after { content: "\2713"; margin-left: auto; }
+.mobile-theme { display: none; }
 .mobile-menu > summary { display: inline-flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 8px; }
 .mobile-menu > summary:hover { background: var(--surface-2); }
 .mobile-menu .icon { width: 22px; height: 22px; }
@@ -747,7 +770,16 @@ details[data-dropdown] > summary::-webkit-details-marker { display: none; }
   .user-menu-name { display: none; }
   .user-menu > summary { padding: 0.15rem; border: 0; }
 }
-@media (max-width: 420px) { .site-actions .header-link { display: none; } }
+@media (max-width: 420px) {
+  /* Small phones (360px is common): the theme choice moves into the menu, and
+     saved jobs are in the account menu, so the header fits on one line. */
+  .site-actions .header-link, .site-actions > .theme-menu, .site-actions > .icon-link { display: none; }
+  .js .mobile-theme { display: grid; }
+  .site-actions { gap: 0.4rem; }
+}
+@media (max-width: 340px) { .site-logo > span:last-child { display: none; } }
+/* A tall menu (the account menu on a phone held sideways) scrolls rather than running off screen. */
+.menu-panel { max-height: calc(100vh - 80px); max-height: calc(100dvh - 80px); overflow-y: auto; }
 
 main { flex: 1 0 auto; width: 100%; }
 .app-main { max-width: 1240px; margin: 0 auto; padding: 1.75rem clamp(1rem, 3vw, 2rem) 3rem; }
@@ -788,6 +820,13 @@ button.saved { color: var(--primary-text); border-color: var(--primary); backgro
 .hero-field { flex: 1; display: flex; align-items: center; gap: 0.6rem; padding: 0 1rem; min-width: 0; color: var(--text-3); cursor: text; }
 .hero-field .icon { width: 20px; height: 20px; flex: none; }
 .hero-field input, .hero-field input[type="text"] { border: 0 !important; box-shadow: none !important; background: transparent; padding: 0.85rem 0; font-size: 1rem; width: 100%; min-width: 0; color: var(--text); }
+.hero-field-place { cursor: default; padding-right: 0.4rem; }
+.hero-field-input { flex: 1; display: flex; align-items: center; gap: 0.6rem; min-width: 0; cursor: text; }
+.radius-select {
+  flex: none; width: auto; max-width: 9.5rem; padding: 0.35rem 0.5rem; border: 0; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2); font-size: 0.82rem; cursor: pointer;
+}
+.radius-select:hover { color: var(--text); }
 .hero-divider { width: 1px; align-self: stretch; margin: 0.5rem 0; background: var(--border); }
 .hero-search button, .results-search button { min-height: 50px; padding: 0 1.8rem; font-size: 1rem; }
 .hero-search:focus-within, .results-search:focus-within { border-color: var(--primary); box-shadow: 0 0 0 4px var(--primary-soft), 0 8px 30px rgba(16, 27, 56, 0.10); }
@@ -997,10 +1036,11 @@ input.has-error { border-color: var(--danger) !important; }
    ========================================================================== */
 .page-search { display: flex; gap: 0.5rem; }
 .page-search input { width: 240px; border-radius: 999px; }
+@media (max-width: 640px) { .page-search { width: 100%; } .page-search input { width: auto; flex: 1 1 auto; min-width: 0; } }
 .profile-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 1.5rem; align-items: start; }
 .profile-side { position: sticky; top: 80px; display: grid; gap: 1rem; }
-@media (max-width: 900px) { .profile-layout { grid-template-columns: 1fr; } .profile-side { position: static; } .profile-toc { display: none !important; } }
-.profile-main { display: grid; gap: 1.25rem; min-width: 0; }
+@media (max-width: 900px) { .profile-layout { grid-template-columns: minmax(0, 1fr); } .profile-side { position: static; } .profile-toc { display: none !important; } }
+.profile-main { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; min-width: 0; }
 .profile-main .panel { scroll-margin-top: 80px; }
 .profile-main h2, .completion-card h2 { font-size: 1.15rem; margin: 0 0 1rem; }
 .profile-toc { display: grid; gap: 0.15rem; }
@@ -1128,7 +1168,9 @@ form[data-dirty] [data-matrix-status] { color: var(--warning); font-weight: 600;
 .feature-card h2 { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 0.3rem; font-size: 1.05rem; }
 .feature-card p { margin: 0 0 0.6rem; }
 .feature-card.off { background: var(--surface-2); }
-.kv.compact { grid-template-columns: max-content 1fr; gap: 0.3rem 1rem; font-size: 0.85rem; margin: 0; }
+.kv.compact { grid-template-columns: max-content minmax(0, 1fr); gap: 0.3rem 1rem; font-size: 0.85rem; margin: 0; }
+.kv.compact dd { overflow-wrap: anywhere; }
+.feature-main { min-width: 0; }
 @media (max-width: 600px) { .feature-card { flex-direction: column; } }
 
 .audit-table td { font-size: 0.85rem; vertical-align: top; }
@@ -1138,4 +1180,67 @@ form[data-dirty] [data-matrix-status] { color: var(--warning); font-weight: 600;
 /* Job search filters apply on change on wide screens (app.js), so the button is only for phones. */
 @media (min-width: 821px) {
   .js .filter-form[data-auto-apply] .filter-apply { display: none; }
+}
+
+/* ---- Canadian resume check ---- */
+.check-summary-head { display: flex; align-items: center; gap: 0.9rem; }
+.check-summary-head h2 { margin: 0; }
+.check-summary-head p { margin: 0.2rem 0 0; }
+.check-summary-icon { display: inline-grid; place-items: center; width: 2.5rem; height: 2.5rem; border-radius: 50%; flex-shrink: 0; }
+.check-summary-icon.ok { background: var(--success-soft); color: var(--success); }
+.check-summary-icon.todo { background: var(--warning-soft); color: var(--warning); }
+.check-counts { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.9rem; }
+.chip.level-must { background: var(--danger-soft); color: var(--danger); border-color: transparent; }
+.chip.level-should { background: var(--warning-soft); color: var(--warning); border-color: transparent; }
+.chip.level-tip { background: var(--primary-soft); color: var(--primary-text); border-color: transparent; }
+.check-form { display: grid; gap: 0.9rem; }
+.finding { background: var(--surface); border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: var(--radius); padding: 1rem 1.1rem; }
+.finding.level-must { border-left-color: var(--danger); }
+.finding.level-should { border-left-color: var(--warning); }
+.finding-head { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem; }
+.finding-head h3 { margin: 0; font-size: 1rem; }
+.finding p { margin: 0.55rem 0 0; color: var(--text-2); line-height: 1.5; }
+.finding-examples { margin: 0.6rem 0 0; padding: 0.55rem 0.8rem 0.55rem 1.8rem; background: var(--surface-2); border-radius: 8px; font-size: 0.88rem; display: grid; gap: 0.2rem; }
+.finding-examples li { overflow-wrap: anywhere; }
+.finding-examples del { color: var(--text-3); text-decoration-color: var(--danger); }
+.finding-note { display: flex; gap: 0.4rem; align-items: flex-start; font-size: 0.87rem; color: var(--text-3) !important; }
+.finding-note .icon { width: 15px; height: 15px; flex-shrink: 0; margin-top: 0.15rem; }
+.finding-fix { margin-top: 0.75rem !important; }
+.titles-panel { margin: 0; }
+.title-rows { display: grid; gap: 0.6rem; }
+.title-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.4rem 1rem; align-items: center; }
+.title-original { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; overflow-wrap: anywhere; }
+.titles-suggest { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 1rem; margin-top: 1rem; }
+.convert-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 0.6rem 1rem; padding: 0.25rem 0 1rem; }
+.convert-done { border-color: color-mix(in srgb, var(--success) 40%, transparent); }
+.convert-done h2 { display: flex; align-items: center; gap: 0.45rem; }
+.convert-done h2 .icon { color: var(--success); }
+@media (max-width: 640px) {
+  .title-row { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   Touch screens (phones, tablets): controls big enough to tap, and text
+   fields at 16px so iOS doesn't zoom the page when one is focused.
+   ========================================================================== */
+@media (pointer: coarse) {
+  input:not([type]), input[type="text"], input[type="email"], input[type="password"], input[type="tel"], input[type="search"],
+  input[type="url"], input[type="number"], input[type="date"], input[type="month"], select, textarea { font-size: 16px; }
+  select, input:not([type]), input[type="text"], input[type="email"], input[type="password"], input[type="tel"],
+  input[type="search"], input[type="url"], input[type="number"], input[type="date"], input[type="month"] { min-height: 44px; }
+  .tp-box input.tp-input { font-size: 16px; min-height: 0; }
+  button, a.button { min-height: 40px; }
+  button.small, a.button.small { min-height: 36px; }
+  .tp-remove { width: 1.75rem; height: 1.75rem; min-height: 0; }
+  .tp-more { min-height: 0; height: 1.9rem; }
+  .flash-close { min-height: 0; }
+  input[type="checkbox"], input[type="radio"] { width: 1.25rem; height: 1.25rem; }
+  label.check { min-height: 40px; align-items: center; }
+  details > summary { min-height: 40px; display: flex; align-items: center; }
+  details.theme-menu > summary, details.mobile-menu > summary { display: inline-flex; }
+  .footer-col a { padding: 0.45rem 0; }
+  .footer-col { gap: 0.1rem; }
+  .menu-panel a, .menu-button { padding-top: 0.75rem; padding-bottom: 0.75rem; }
+  .tp-menu li { padding-top: 0.7rem; padding-bottom: 0.7rem; }
+  .tp-menu li.tp-selected small { visibility: visible; }  /* no hover to reveal "remove" */
 }

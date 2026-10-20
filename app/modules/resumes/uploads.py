@@ -27,13 +27,16 @@ ALLOWED_RESUME_SUFFIXES = {".docx", ".pdf"}
 MAX_RESUME_BYTES = 10_000_000
 
 
-def import_resume_file(session: Session, filename: str, data: bytes) -> tuple[ImportResult | None, str | None]:
+def import_resume_file(session: Session, filename: str, data: bytes, *, force: bool = False,
+                       record: bool = True) -> tuple[ImportResult | None, str | None]:
     """Save an uploaded resume and import it as the active candidate profile
-    (a no-op if its content matches the current one).
+    (a no-op if its content matches the current one, unless `force`).
 
     Args:
         filename: The name the user's file had (only its suffix and stem are used).
         data: The file's bytes; anything over MAX_RESUME_BYTES is refused.
+        force: Make a new version even when the text is unchanged (a removed photo).
+        record: Log a new version as an upload (False: the caller logs what it did).
 
     Returns:
         (result, None), or (None, a message for the user) if the file can't be used.
@@ -56,7 +59,7 @@ def import_resume_file(session: Session, filename: str, data: bytes) -> tuple[Im
     # native install and Docker (/app) alike.
     stored_path = dest_path.relative_to(PROJECT_ROOT) if dest_path.is_relative_to(PROJECT_ROOT) else dest_path
     try:
-        result = import_resume(session, stored_path if stored_path.exists() else dest_path)
+        result = import_resume(session, stored_path if stored_path.exists() else dest_path, force=force)
     except Exception as exc:  # unreadable/corrupt file
         session.rollback()
         dest_path.unlink(missing_ok=True)
@@ -69,7 +72,7 @@ def import_resume_file(session: Session, filename: str, data: bytes) -> tuple[Im
             save_section(session, "candidate", {**candidate.model_dump(), "base_resume": str(result.profile.raw_resume_path)})
         except ConfigError:
             pass
-    if result.created:
+    if result.created and record:
         quota.record(session, require_tenant(session), ActivityKind.RESUME_UPLOAD, f"Version {result.profile.version}")
     return result, None
 

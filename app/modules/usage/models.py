@@ -25,19 +25,23 @@ class ActivityKind:
     AI_ANALYSIS = "ai_analysis"    # match analysis
     AI_TAILOR = "ai_tailor"        # tailored resume (analyze & tailor, re-tailor)
     QUICK_TAILOR = "quick_tailor"
+    CANADIAN_TITLES = "canadian_titles"  # Canadian equivalents of job titles (resume check)
     LIMIT_HIT = "limit_hit"        # blocked by an hourly limit
     RESUME_UPLOAD = "resume_upload"
     RESUME_EDIT = "resume_edit"
+    RESUME_CANADIAN = "resume_canadian"  # converted to Canadian format
     JOB_TRACKED = "job_tracked"
     JOB_SAVED = "job_saved"
     JOB_STATUS = "job_status"
 
-    AI_KINDS = (AI_ANALYSIS, AI_TAILOR, QUICK_TAILOR)
+    AI_KINDS = (AI_ANALYSIS, AI_TAILOR, QUICK_TAILOR, CANADIAN_TITLES)
 
     LABELS = {
         SIGN_IN: "Signed in", SEARCH: "Searched", SEARCH_MORE: "Browsed results", AI_ANALYSIS: "Match analysis",
-        AI_TAILOR: "Tailored resume", QUICK_TAILOR: "Quick tailor", LIMIT_HIT: "Hit a limit",
-        RESUME_UPLOAD: "Uploaded resume", RESUME_EDIT: "Edited resume", JOB_TRACKED: "Tracked a job", JOB_SAVED: "Saved a job",
+        AI_TAILOR: "Tailored resume", QUICK_TAILOR: "Quick tailor", CANADIAN_TITLES: "Canadian job titles",
+        LIMIT_HIT: "Hit a limit",
+        RESUME_UPLOAD: "Uploaded resume", RESUME_EDIT: "Edited resume", RESUME_CANADIAN: "Converted resume",
+        JOB_TRACKED: "Tracked a job", JOB_SAVED: "Saved a job",
         JOB_STATUS: "Changed job status",
     }
 

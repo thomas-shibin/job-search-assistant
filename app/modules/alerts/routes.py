@@ -1,18 +1,26 @@
 """The Watchlist page's actions: add, edit, pause and delete watches (saved
 searches that the scheduled scans check), and connect, test or disconnect the
-user's Telegram chat for alerts."""
+user's Telegram chat for alerts. Also the unsubscribe link in alert emails
+(`/alerts/unsubscribe/{token}`), which works without signing in."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.config.models import WatchlistEntry
+from app.core.config.schema import AppConfig
 from app.core.config.store import WATCH_LIST_FIELDS, save_watch
+from app.core.database.session import get_session
+from app.core.tenancy import bind_tenant, make_strict
+from app.modules.alerts import email_alerts
 from app.modules.alerts.telegram_link import disconnect, send_test_message, telegram_link
 from app.modules.alerts.views import watchlist_response
 from app.modules.auth.deps import member_session
+from app.modules.auth.models import User
+from app.web.templating import templates
 from app.modules.jobs.catalog.store import remember_user_terms
 from app.web.responses import load_config_or_500, redirect
 
@@ -122,3 +130,54 @@ def telegram_test(session: Session = Depends(member_session)):
     except Exception:  # TelegramError, or a network failure
         return redirect("/watchlist", msg="Couldn't send a test message. Reconnect Telegram and try again.")
     return redirect("/watchlist", msg="Test message sent -- check Telegram.")
+
+
+# ---- unsubscribe (from an alert email; no sign-in) -------------------------------------
+
+def _unsubscriber(session: Session, token: str) -> tuple[User, AppConfig] | None:
+    """The member an unsubscribe link belongs to, with their settings -- or None."""
+    parsed = email_alerts.parse_token(token)
+    if parsed is None:
+        return None
+    user = session.get(User, parsed[0])
+    if user is None:
+        return None
+    make_strict(bind_tenant(session, user.id))
+    try:
+        config = user_config(session)
+    except ConfigError:
+        return None
+    return (user, config) if email_alerts.key_matches(config, parsed[1]) else None
+
+
+def _masked(address: str) -> str:
+    name, _, domain = address.partition("@")
+    return f"{name[:1]}{'*' * max(len(name) - 1, 2)}@{domain}"
+
+
+def _unsubscribe_page(request: Request, state: str, user: User | None = None, token: str = "", status_code: int = 200):
+    return templates.TemplateResponse(request, "alert_unsubscribe.html", {
+        "state": state, "address": _masked(user.email) if user else None, "token": token,
+    }, status_code=status_code)
+
+
+@router.get("/alerts/unsubscribe/{token}")
+def unsubscribe_page(request: Request, token: str, session: Session = Depends(get_session)):
+    """Ask before unsubscribing: mail scanners open links, and must not unsubscribe anyone."""
+    found = _unsubscriber(session, token)
+    if found is None:
+        return _unsubscribe_page(request, "invalid", status_code=404)
+    user, config = found
+    return _unsubscribe_page(request, "done" if config.watchlist.email_alerts == "off" else "confirm", user, token)
+
+
+@router.post("/alerts/unsubscribe/{token}")
+def unsubscribe_now(request: Request, token: str, session: Session = Depends(get_session)):
+    """The confirm button, and mail apps' one-click unsubscribe (RFC 8058) -- same effect."""
+    found = _unsubscriber(session, token)
+    if found is None:
+        return _unsubscribe_page(request, "invalid", status_code=404)
+    user, config = found
+    if config.watchlist.email_alerts != "off":
+        email_alerts.unsubscribe(session, config)
+    return _unsubscribe_page(request, "done", user)

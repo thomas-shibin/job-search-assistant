@@ -55,15 +55,26 @@ HELP: dict[str, str] = {
     "sessions.member_idle_days": "Everyone else is signed out after this many days without using the site.",
     "sessions.member_max_days": "Everyone else must sign in again this many days after signing in. Guests always get 24 hours.",
     "ai.provider": "Provider id; 'mock' is a free offline stand-in for testing.",
+    "ai.search_assist": ("Ask the analysis provider to read job searches the search box can't understand on its own "
+                         "(unusual wording, descriptions instead of titles). About $0.0002 a search; most searches "
+                         "don't need it. Needs Smart search on (Features)."),
     "notifications.minimum_score": "Notify about qualified jobs scoring at least this.",
     "scheduler.enabled": "Scan job sources automatically for every member while the server runs.",
     "scheduler.interval_minutes": "Minutes between scans (60 = hourly). Takes effect immediately.",
-    "watchlist.enabled": "Send Telegram alerts for new jobs matching any of your watches.",
-    "watchlist.max_alerts_per_run": "Past this many alerts in one scan, the rest come as one summary message.",
+    "watchlist.enabled": "Send alerts for new jobs matching any of your watches.",
+    "watchlist.email_alerts": ("Emailed to your account's address. A summary lists every new match since the last "
+                               "one; every email has an unsubscribe link."),
+    "watchlist.max_alerts_per_run": "Telegram: past this many alerts in one scan, the rest come as one summary message.",
     }
 
 
-_LABELS = {"search": "Job search", "ai": "Analysis provider", "platform": "Limits", "sessions": "Sign-in sessions", "candidate": "Your name"}
+# Choices of a fixed-choice setting, as shown: path -> {value: label}.
+CHOICE_LABELS: dict[str, dict[str, str]] = {
+    "watchlist.email_alerts": {"daily": "Daily summary", "weekly": "Weekly summary",
+                               "instant": "After every scan", "off": "Off"},
+}
+
+_LABELS = {"email_alerts": "Email alerts", "search": "Job search", "ai": "Analysis provider", "platform": "Limits", "sessions": "Sign-in sessions", "candidate": "Your name"}
 
 
 def _label(name: str) -> str:
@@ -108,6 +119,11 @@ def _field_node(annotation: Any, name: str, value: Any, path: str, help_path: st
         return {**node, "kind": "tags", "name": f"{path}:tags", "value": list(value or []), "catalog": extra["catalog"]}
     if annotation is bool:
         return {**node, "kind": "bool", "name": f"{path}:bool", "value": bool(value)}
+    if origin is typing.Literal:
+        labels = CHOICE_LABELS.get(help_path, {})
+        values = sorted(typing.get_args(annotation), key=lambda v: list(labels).index(v) if v in labels else len(labels))
+        return {**node, "kind": "choice", "name": path, "value": value,
+                "options": [(v, labels.get(v, str(v).replace("_", " ").capitalize())) for v in values]}
     if annotation is int:
         return {**node, "kind": "int", "name": path, "value": value}
     if annotation is str:

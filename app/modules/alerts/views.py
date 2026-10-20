@@ -15,7 +15,7 @@ from app.core.config.store import WATCH_LIST_FIELDS
 from app.integrations.telegram import TelegramSettings
 from app.modules.alerts.models import WatchlistAlert
 from app.modules.jobs.models import Job
-from app.web.forms import section_form
+from app.web.forms import CHOICE_LABELS, section_form
 from app.web.responses import load_config_or_500
 from app.web.templating import templates
 
@@ -23,7 +23,7 @@ from app.web.templating import templates
 HIDDEN_FIELDS = {
     "search": ("adzuna_daily_limit",),
     "candidate": ("base_resume",),
-    "watchlist": ("watches", "dashboard_url", "telegram_chat_id"),
+    "watchlist": ("watches", "dashboard_url", "telegram_chat_id", "email_unsubscribe_key"),
 }
 
 
@@ -46,6 +46,9 @@ def watchlist_response(request: Request, session: Session, *, error: str | None 
             ),
             "token_set": bool(telegram.bot_token), "chat_id": chat_id,
             "watchlist_enabled": config.watchlist.enabled,
+            "email_alerts": config.watchlist.email_alerts,
+            "email_alerts_label": CHOICE_LABELS["watchlist.email_alerts"][config.watchlist.email_alerts],
+            "alert_email": getattr(getattr(request.state, "user", None), "email", None),
             "error": error, "message": message, "edit": edit,
         },
         status_code=status_code,

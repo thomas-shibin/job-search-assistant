@@ -117,7 +117,11 @@ query remembering to filter.
    so nobody's searches show up in anyone else's suggestions. Settings files
    (`config.yaml`) only ever seed *platform* settings automatically, never
    someone's personal settings.
-8. **Telegram.** Each member links their own chat through a single-use,
+8. **Job alert emails** go only to the member's own verified address, with matches
+   from their own watches. Every email has an unsubscribe link that works without
+   signing in; it carries a random key stored with that member's settings, so it
+   can't be guessed for another account.
+9. **Telegram.** Each member links their own chat through a single-use,
    15-minute code (`t.me/<bot>?start=<code>`) from their Watchlist page. There is
    no shared chat fallback. `/health` answers only chats linked to an admin, and
    group chats are ignored.
@@ -198,7 +202,8 @@ pages. Errors are logged on the server, and users see a neutral message.
 1. Fill in `.env` (see `.env.example`). The key settings are:
    - `PUBLIC_URL`: where people reach the app;
    - `ADMIN_EMAILS`;
-   - `SMTP_*`: needed for confirmation and reset emails on a real server;
+   - `SMTP_*`: needed for confirmation and reset emails and job alert emails on a real server;
+   - `MAIL_POSTAL_ADDRESS`: your mailing address, which job alert emails must carry (CASL);
    - `GOOGLE_*` and `FACEBOOK_*`: optional. Register
      `<PUBLIC_URL>/auth/google/callback` and `<PUBLIC_URL>/auth/facebook/callback`
      as redirect URIs. Facebook requires https.

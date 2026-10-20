@@ -2,6 +2,8 @@
 set, with defaults and validation. Stored values are validated against it."""
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 
 
@@ -143,6 +145,9 @@ class AIConfig(BaseModel):
     provider: str = "openai"
     model: str = "gpt-4o-mini"
     generate_match_explanations: bool = False
+    # Read job searches the search box's rules can't (app/modules/jobs/interpret.py);
+    # about $0.0002 a search, and only for those searches.
+    search_assist: bool = True
 
     @model_validator(mode="after")
     def provider_is_known(self) -> "AIConfig":
@@ -210,13 +215,21 @@ class Watch(BaseModel):
         return self
 
 
+EmailAlerts = Literal["off", "instant", "daily", "weekly"]
+
+
 class WatchlistConfig(BaseModel):
-    """Telegram alerts for newly discovered jobs matching any watch, independent
-    of the match score (spec: notifications are pluggable -- see
-    app/modules/alerts/base.py). Needs TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID in .env.
+    """Job alerts for newly discovered jobs matching any watch, by email
+    (app/modules/alerts/email_alerts.py) and, once connected, Telegram.
     """
 
     enabled: bool = False
+    # How often matches are emailed to the account's address: after every scan,
+    # in a daily or weekly summary, or not at all.
+    email_alerts: EmailAlerts = "daily"
+    # Random, per account, made on the first alert email: the secret in its
+    # unsubscribe link. Never shown or edited.
+    email_unsubscribe_key: str | None = None
     # A newly added Greenhouse board can surface dozens of "new" jobs on its first
     # scan; past this many alerts in one run, the rest are rolled into one summary.
     max_alerts_per_run: int = 15
