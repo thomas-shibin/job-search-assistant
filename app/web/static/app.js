@@ -1,4 +1,4 @@
-/* Job Assistant -- page behaviour without a framework:
+/* Hirlumo -- page behaviour without a framework:
  *  - the sign-in / sign-up flow (the "Welcome" dialog and the /login, /signup pages),
  *    talking JSON to /api/auth/*; the session itself is an HttpOnly cookie, so
  *    nothing about it lives in JavaScript or localStorage;
@@ -7,9 +7,11 @@
  *  - Show/Hide on password fields, account / mobile menus, the job details panel;
  *  - the theme menu (Light / Dark / Match system), kept in a "theme" cookie so the
  *    server renders the page in that theme from the first paint;
- *  - window.jobAssistant.access: hasPermission / hasAnyPermission / hasAllPermissions /
+ *  - window.hirlumo.access: hasPermission / hasAnyPermission / hasAllPermissions /
  *    canAccessRoute for the signed-in user (UX only -- the server checks every request);
- *  - admin pages: the permission matrix's unsaved-changes state, confirm prompts.
+ *  - admin pages: the permission matrix's unsaved-changes state, confirm prompts;
+ *  - the review card: asks once after a few minutes of use (counted in localStorage);
+ *  - the help assistant: a chat panel answering from the help articles (/help/ask).
  * Everything is attached by event delegation, so it keeps working after htmx swaps.
  */
 (function () {
@@ -21,13 +23,11 @@
   // ---------- theme ----------
   function setTheme(choice) {
     var root = document.documentElement;
-    if (choice === "light" || choice === "dark") {
-      root.setAttribute("data-theme", choice);
-      document.cookie = "theme=" + choice + "; path=/; max-age=31536000; samesite=lax";
-    } else {
-      root.removeAttribute("data-theme");  // follow the device's setting
-      document.cookie = "theme=; path=/; max-age=0; samesite=lax";
-    }
+    if (choice !== "light" && choice !== "dark") choice = "system";
+    if (choice === "system") root.removeAttribute("data-theme");  // follow the device's setting
+    else root.setAttribute("data-theme", choice);
+    // "system" is remembered too, so it wins over a site default of light or dark.
+    document.cookie = "theme=" + choice + "; path=/; max-age=31536000; samesite=lax";
     document.querySelectorAll("[data-theme-choice]").forEach(function (button) {
       button.setAttribute("aria-checked", button.dataset.themeChoice === (choice || "system") ? "true" : "false");
     });
@@ -129,8 +129,10 @@
 
   Flow.prototype.reset = function (next, reason) {
     if (next) this.root.dataset.next = next;
-    var google = $(this.root, "[data-google]");
-    if (google) google.href = "/auth/google/start?next=" + encodeURIComponent(this.next());
+    var next = encodeURIComponent(this.next());
+    $all(this.root, "[data-social]").forEach(function (link) {
+      link.href = "/auth/" + link.dataset.social + "/start?next=" + next;
+    });
     this.show("email");
   };
 
@@ -239,7 +241,7 @@
     var problems = {};
     if (!form.first_name.value.trim()) problems.first_name = "Enter your first name.";
     if (!form.last_name.value.trim()) problems.last_name = "Enter your last name.";
-    if (form.password.value.length < 12) problems.password = "Use at least 12 characters.";
+    if (form.password.value.length < 8) problems.password = "Use at least 8 characters.";
     if (form.password.value !== form.confirm_password.value) problems.confirm_password = "The passwords don't match.";
     if (Object.keys(problems).length) { this.error(section, { message: "Check the highlighted fields.", fields: problems }); return; }
     busy(button, true);
@@ -336,11 +338,11 @@
     input.addEventListener("input", function () {
       var v = input.value, kinds = 0;
       [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].forEach(function (r) { if (r.test(v)) kinds++; });
-      var score = v.length < 12 ? 0 : (v.length >= 20 ? 3 : (v.length >= 16 || kinds >= 3 ? 2 : 1));
-      var labels = ["Too short -- at least 12 characters", "Fair -- longer is stronger", "Good", "Strong"];
+      var score = v.length < 8 ? 0 : (v.length >= 16 ? 3 : (v.length >= 12 || kinds >= 3 ? 2 : 1));
+      var labels = ["Too short -- at least 8 characters", "Fair -- longer is stronger", "Good", "Strong"];
       bar.style.width = v ? [25, 50, 75, 100][score] + "%" : "0";
       bar.className = "s" + score;
-      text.textContent = v ? labels[score] : "At least 12 characters. A short phrase works well.";
+      text.textContent = v ? labels[score] : "At least 8 characters.";
     });
   };
 
@@ -476,7 +478,7 @@
       .catch(function () { /* offline: try again next time */ });
   }
   document.addEventListener("visibilitychange", refreshAccess);
-  window.jobAssistant = Object.assign(window.jobAssistant || {}, {
+  window.hirlumo = Object.assign(window.hirlumo || {}, {
     access: { hasPermission: hasPermission, hasAnyPermission: hasAnyPermission,
               hasAllPermissions: hasAllPermissions, canAccessRoute: canAccessRoute, refresh: refreshAccess,
               get roles() { return access.roles.slice(); }, get permissions() { return access.permissions.slice(); } }
@@ -578,9 +580,463 @@
     }
   }
 
+  // ---------- countdowns: how long the server really keeps something ----------
+  // [data-hold-seconds="<seconds>"] ticks [data-hold-clock] down as m:ss; at zero it
+  // hides [data-hold-live] and shows [data-hold-done]. The seconds come from
+  // the server, so the clock never runs ahead of (or behind) what's actually held.
+  function initCountdowns() {
+    $all(document, "[data-hold-seconds]").forEach(function (el) {
+      if (el._holdTimer) return;
+      var ends = Date.now() + (parseInt(el.dataset.holdSeconds, 10) || 0) * 1000;
+      function tick() {
+        var left = Math.max(0, Math.round((ends - Date.now()) / 1000));
+        $all(el, "[data-hold-clock]").forEach(function (clock) {
+          clock.textContent = Math.floor(left / 60) + ":" + ("0" + (left % 60)).slice(-2);
+        });
+        if (left > 0) return;
+        clearInterval(el._holdTimer);
+        $all(el, "[data-hold-live]").forEach(function (part) { part.hidden = true; });
+        $all(el, "[data-hold-done]").forEach(function (part) { part.hidden = false; });
+        $all(document, "[data-hold-gone]").forEach(function (part) { part.hidden = true; });
+      }
+      el._holdTimer = setInterval(tick, 1000);
+      tick();
+    });
+  }
+
   // ---------- init flows on the page (login / signup pages) ----------
+  // The free resume check: ticks through its steps over about six seconds
+  // before sending the form. The steps are worded indirectly, on purpose.
+  var CHECK_WAIT_MS = 6000;
+  function initCheckSteps() {
+    $all(document, "form[data-check-steps]").forEach(function (form) {
+      if (form._checkSteps) return;
+      form._checkSteps = true;
+      var list = form.querySelector(".check-steps");
+      var button = form.querySelector("button[type=submit]");
+      function reset() {
+        if (list) list.hidden = true;
+        $all(document, "[data-check-results]").forEach(function (el) { el.hidden = false; });
+        $all(form, ".check-steps li").forEach(function (li) { li.className = ""; });
+        button.disabled = false;
+        button.lastChild.textContent = " Check my resume";
+      }
+      // Back from the results restores this page from cache mid-animation.
+      window.addEventListener("pageshow", function (event) { if (event.persisted) reset(); });
+      form.addEventListener("submit", function (event) {
+        if (!list) return;
+        event.preventDefault();
+        if (button.disabled) return;
+        button.disabled = true;
+        button.lastChild.textContent = " Checking…";
+        var steps = $all(form, ".check-steps li");
+        var each = CHECK_WAIT_MS / steps.length;
+        // A new resume: the last one's results go, so they can't be mistaken for these.
+        $all(document, "[data-check-results]").forEach(function (el) { el.hidden = true; });
+        list.hidden = false;
+        steps.forEach(function (li, i) {
+          setTimeout(function () {
+            if (i > 0) steps[i - 1].className = "is-done";
+            li.className = "is-active";
+          }, i * each);
+        });
+        setTimeout(function () {
+          steps[steps.length - 1].className = "is-done";
+          form.submit();  // submit() skips this handler
+        }, CHECK_WAIT_MS);
+      });
+    });
+  }
+
+  // Choosing resume changes one by one (resume_canadian.html): a fix's own tick
+  // box ticks all its changes, the toolbar ticks all, none, or a resume section's.
+  var CHANGE_BOXES = 'input[name="change"], input[name="fix"]';
+  function syncChanges(form) {
+    $all(form, "[data-change-group]").forEach(function (group) {
+      var toggle = $(group, "[data-group-toggle]");
+      var boxes = $all(group, 'input[name="change"]');
+      if (!toggle || !boxes.length) return;
+      var on = boxes.filter(function (b) { return b.checked; }).length;
+      toggle.checked = on === boxes.length;
+      toggle.indeterminate = on > 0 && on < boxes.length;
+    });
+    $all(form, "[data-select-section]").forEach(function (chip) {
+      var mine = $all(form, CHANGE_BOXES).filter(function (b) { return b.dataset.section === chip.dataset.selectSection; });
+      var on = mine.filter(function (b) { return b.checked; }).length;
+      chip.setAttribute("aria-pressed", on > 0 && on === mine.length ? "true" : "false");
+    });
+    var count = $all(form, CHANGE_BOXES).filter(function (b) { return b.checked; }).length;
+    $all(form, "[data-change-count]").forEach(function (el) { el.textContent = count; });
+  }
+  document.addEventListener("change", function (event) {
+    var form = event.target.closest && event.target.closest("[data-change-form]");
+    if (!form) return;
+    if (event.target.matches("[data-group-toggle]")) {
+      $all(event.target.closest("[data-change-group]"), 'input[name="change"]').forEach(function (b) {
+        b.checked = event.target.checked;
+      });
+    }
+    syncChanges(form);
+  });
+  document.addEventListener("click", function (event) {
+    var button = event.target.closest && event.target.closest("[data-select], [data-select-section]");
+    var form = button && button.closest("[data-change-form]");
+    if (!form) return;
+    var boxes = $all(form, CHANGE_BOXES);
+    if (button.dataset.select) {
+      boxes.forEach(function (b) { b.checked = button.dataset.select === "all"; });
+    } else {
+      var on = button.getAttribute("aria-pressed") !== "true";
+      boxes.forEach(function (b) { if (b.dataset.section === button.dataset.selectSection) b.checked = on; });
+    }
+    syncChanges(form);
+  });
+  function initChangeForms() {
+    $all(document, "[data-change-form]").forEach(function (form) {
+      $all(form, "[data-change-toolbar]").forEach(function (bar) { bar.hidden = false; });
+      syncChanges(form);
+    });
+  }
+
+  // Plans (/plans): arrows, dots and arrow keys move between plan cards; swiping scrolls natively.
+  function initPlans() {
+    $all(document, "[data-plans]").forEach(function (root) {
+      if (root._plans) return;
+      root._plans = true;
+      var track = root.querySelector("[data-plans-track]");
+      var cards = $all(root, "[data-plan]");
+      var prev = root.querySelector("[data-plans-prev]"), next = root.querySelector("[data-plans-next]");
+      var dots = $all(root, "[data-plans-dot]");
+      if (!track || cards.length < 2) return;
+      function current() { return Math.round(track.scrollLeft / Math.max(1, track.clientWidth)); }
+      function go(i) {
+        i = Math.max(0, Math.min(cards.length - 1, i));
+        track.scrollTo({ left: cards[i].offsetLeft - track.offsetLeft, behavior: "smooth" });
+      }
+      function sync() {
+        var i = current();
+        if (prev) prev.disabled = i <= 0;
+        if (next) next.disabled = i >= cards.length - 1;
+        dots.forEach(function (d, n) { d.setAttribute("aria-selected", n === i ? "true" : "false"); });
+      }
+      if (prev) prev.addEventListener("click", function () { go(current() - 1); });
+      if (next) next.addEventListener("click", function () { go(current() + 1); });
+      dots.forEach(function (d) { d.addEventListener("click", function () { go(+d.dataset.plansDot); }); });
+      track.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowLeft") { e.preventDefault(); go(current() - 1); }
+        if (e.key === "ArrowRight") { e.preventDefault(); go(current() + 1); }
+      });
+      track.addEventListener("scroll", function () { window.requestAnimationFrame(sync); }, { passive: true });
+      sync();
+    });
+  }
+
+  // Review card (app/modules/feedback): comes up by itself after a few minutes
+  // of real use -- the tab in view and someone clicking, typing or scrolling in
+  // the last minute -- counted across pages in localStorage (a convenience: if
+  // storage is blocked it just counts this page). "Rate Hirlumo" opens it any time.
+  var REVIEW_TICK = 15, REVIEW_IDLE = 60;
+  var reviewLastInput = Date.now(), reviewTimer = null, reviewMemory = {};
+  ["pointerdown", "keydown", "scroll", "touchstart"].forEach(function (name) {
+    document.addEventListener(name, function () { reviewLastInput = Date.now(); }, { passive: true, capture: true });
+  });
+  function reviewCard() { return document.getElementById("review-card"); }
+  function reviewKey(card) { return "hirlumo.review." + (card.dataset.user || ""); }
+  function reviewStore(card, value) {
+    var key = reviewKey(card);
+    try {
+      if (value === undefined) return Number(window.localStorage.getItem(key)) || reviewMemory[key] || 0;
+      window.localStorage.setItem(key, String(value));
+    } catch (e) { /* storage blocked: keep it for this page only */ }
+    if (value === undefined) return reviewMemory[key] || 0;
+    reviewMemory[key] = value;
+    return value;
+  }
+  function helpIsOpen() {
+    var panel = document.getElementById("help-chat");
+    return !!panel && !panel.hidden;
+  }
+  function showReview(card, manual) {
+    if (manual && helpIsOpen()) closeHelp();  // they share the corner: one at a time
+    card.hidden = false;
+    card.classList.add("open");
+    document.body.classList.add("review-open");
+    var error = card.querySelector("[data-review-error]");
+    if (error) error.hidden = true;
+    if (manual) { var first = card.querySelector("input[type=radio]"); if (first) first.focus(); }
+  }
+  function hideReview(card) {
+    card.classList.remove("open");
+    card.hidden = true;
+    document.body.classList.remove("review-open");
+  }
+  function reviewPost(url, data) {
+    return fetch(url, { method: "POST", body: data, credentials: "same-origin",
+                        headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json().catch(function () { return { ok: r.ok }; }); });
+  }
+  function reviewTick() {
+    var card = reviewCard();
+    if (!card || card.dataset.auto !== "1" || !card.hidden || helpIsOpen()) return;  // never over the help chat
+    if (document.visibilityState !== "visible" || Date.now() - reviewLastInput > REVIEW_IDLE * 1000) return;
+    var seconds = reviewStore(card) + REVIEW_TICK;
+    reviewStore(card, seconds);
+    if (seconds >= (Number(card.dataset.minutes) || 5) * 60) showReview(card, false);
+  }
+  function postponeReview(card, never) {
+    var data = new FormData();
+    if (never) data.append("never", "1");
+    var page = card.querySelector("input[name=page]");
+    if (page) data.append("page", page.value);
+    card.dataset.auto = "0";
+    reviewStore(card, 0);  // "later": another few minutes of use once it's due again
+    hideReview(card);
+    reviewPost("/feedback/later", data).catch(function () {});
+  }
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest) return;
+    var open = event.target.closest("[data-review-open]");
+    var card = reviewCard();
+    if (open && card) {
+      var menu = open.closest("details");
+      if (menu) menu.open = false;
+      var form = card.querySelector("[data-review-form]"), thanks = card.querySelector("[data-review-thanks]");
+      if (form) form.hidden = false;
+      if (thanks) thanks.hidden = true;
+      showReview(card, true);
+      return;
+    }
+    if (!card || !card.contains(event.target)) return;
+    if (event.target.closest("[data-review-later]")) postponeReview(card, false);
+    else if (event.target.closest("[data-review-never]")) postponeReview(card, true);
+  });
+  document.addEventListener("keydown", function (event) {
+    var card = reviewCard();
+    if (event.key === "Escape" && card && !card.hidden && card.contains(document.activeElement)) postponeReview(card, false);
+  });
+  document.addEventListener("submit", function (event) {
+    var form = event.target.closest && event.target.closest("[data-review-form]");
+    if (!form) return;
+    event.preventDefault();
+    var card = reviewCard(), error = form.querySelector("[data-review-error]");
+    var button = form.querySelector("button[type=submit]");
+    if (button) button.disabled = true;
+    reviewPost(form.action, new FormData(form)).then(function (answer) {
+      if (button) button.disabled = false;
+      if (!answer.ok) {
+        if (error) { error.textContent = answer.error || "That didn't go through. Please try again."; error.hidden = false; }
+        return;
+      }
+      card.dataset.auto = "0";
+      form.hidden = true;
+      form.reset();
+      var thanks = card.querySelector("[data-review-thanks]");
+      if (thanks) thanks.hidden = false;
+      window.setTimeout(function () { hideReview(card); }, 4000);  // the thank-you fades on its own
+    }).catch(function () {
+      if (button) button.disabled = false;
+      if (error) { error.textContent = "That didn't go through. Please check your connection and try again."; error.hidden = false; }
+    });
+  });
+  function initReview() {
+    if (!reviewTimer && reviewCard()) reviewTimer = window.setInterval(reviewTick, REVIEW_TICK * 1000);
+  }
+
+  // Help assistant (app/modules/help): questions go to /help/ask, which answers
+  // from the help articles. The conversation is kept in sessionStorage so it
+  // carries across pages (a convenience: without storage it lasts the page).
+  // It belongs to whoever was signed in: once that account signs out (or another
+  // signs in) it's wiped, and so is any conversation left unused for HELP_IDLE_MS,
+  // signed in or not, so the next person on a shared computer can't read it.
+  var HELP_KEY = "hirlumo.help", HELP_IDLE_MS = 30 * 60 * 1000, helpMemory = null, helpTimer = null;
+  function freshHelp() { return { log: [], open: false, context: "", at: Date.now() }; }
+  function helpPanel() { return document.getElementById("help-chat"); }
+  function helpState() {
+    if (!helpMemory) {
+      try { helpMemory = JSON.parse(window.sessionStorage.getItem(HELP_KEY) || "null"); } catch (e) { helpMemory = null; }
+    }
+    if (!helpMemory || !Array.isArray(helpMemory.log)) helpMemory = freshHelp();
+    var panel = helpPanel(), owner = panel ? panel.dataset.owner || "" : "";
+    var idle = helpMemory.log.length && Date.now() - (helpMemory.at || 0) > HELP_IDLE_MS;
+    if (idle || (helpMemory.owner && helpMemory.owner !== owner)) {
+      helpMemory = freshHelp();  // unused for a while, signed out, or someone else signed in
+      try { window.sessionStorage.removeItem(HELP_KEY); } catch (e) { /* nothing kept */ }
+    }
+    if (owner) helpMemory.owner = owner;  // a visitor who signs in keeps their conversation
+    return helpMemory;
+  }
+  function touchHelp() { helpState().at = Date.now(); }
+  function saveHelp() {
+    var state = helpState();
+    state.log = state.log.slice(-30);
+    try { window.sessionStorage.setItem(HELP_KEY, JSON.stringify(state)); } catch (e) { /* this page only */ }
+  }
+  function helpBubble(entry) {
+    var item = document.createElement("div");
+    item.className = "help-msg " + (entry.who === "me" ? "me" : "bot");
+    var body = document.createElement("div");
+    body.className = "help-msg-body";
+    if (entry.who === "me") body.textContent = entry.text;
+    else body.innerHTML = entry.html;  // our own article text, escaped on the server
+    item.appendChild(body);
+    if (entry.source) {
+      var from = document.createElement("a");
+      from.className = "help-source";
+      from.href = entry.source.url;
+      from.textContent = "From " + entry.source.article + (entry.source.heading ? " › " + entry.source.heading : "") + " →";
+      item.appendChild(from);
+    }
+    return item;
+  }
+  function helpChips(list, label) {
+    var box = helpPanel() && helpPanel().querySelector("[data-help-suggest]");
+    if (!box) return;
+    box.innerHTML = "";
+    if (!list || !list.length) return;
+    if (label) { var l = document.createElement("small"); l.textContent = label; box.appendChild(l); }
+    list.forEach(function (text) {
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "chip-button"; b.dataset.helpAsk = text; b.textContent = text;
+      box.appendChild(b);
+    });
+  }
+  function renderHelp() {
+    var panel = helpPanel();
+    if (!panel) return;
+    var log = panel.querySelector("[data-help-log]");
+    log.innerHTML = "";
+    helpState().log.forEach(function (entry) { log.appendChild(helpBubble(entry)); });
+    var last = helpState().chips;
+    helpChips(last ? last.list : [], last ? last.label : "");
+    log.scrollTop = log.scrollHeight;
+  }
+  function openHelp(focus) {
+    var panel = helpPanel();
+    if (!panel) return;
+    var review = reviewCard();
+    if (review && !review.hidden) { hideReview(review); review.dataset.waiting = "1"; }  // back when the chat closes
+    panel.hidden = false;
+    panel.classList.add("open");
+    $all(document, "[data-help-toggle]").forEach(function (b) { b.setAttribute("aria-expanded", "true"); });
+    var state = helpState();
+    state.open = true;
+    touchHelp();
+    if (!state.log.length) {
+      state.log.push({ who: "bot", html: "<p>Hi! I can explain how anything in Hirlumo works. Ask a question, or pick one below.</p>" });
+      fetch("/help/ask/suggestions?page=" + encodeURIComponent(location.pathname), { credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) { state.chips = { list: data.suggestions || [], label: "" }; saveHelp(); renderHelp(); })
+        .catch(function () {});
+    }
+    saveHelp();
+    renderHelp();
+    if (focus !== false) { var input = panel.querySelector("input[name=question]"); if (input) input.focus(); }
+  }
+  function closeHelp() {
+    var panel = helpPanel();
+    if (!panel) return;
+    panel.classList.remove("open");
+    panel.hidden = true;
+    $all(document, "[data-help-toggle]").forEach(function (b) { b.setAttribute("aria-expanded", "false"); });
+    helpState().open = false;
+    saveHelp();
+    var review = reviewCard();
+    if (review && review.dataset.waiting === "1") { delete review.dataset.waiting; showReview(review, false); }
+  }
+  function askHelp(question) {
+    question = (question || "").trim();
+    var panel = helpPanel();
+    if (!question || !panel) return;
+    var state = helpState();
+    touchHelp();
+    state.log.push({ who: "me", text: question });
+    state.chips = null;
+    renderHelp();
+    var log = panel.querySelector("[data-help-log]");
+    var typing = document.createElement("div");
+    typing.className = "help-msg bot typing";
+    typing.innerHTML = '<div class="help-msg-body"><span></span><span></span><span></span></div>';
+    log.appendChild(typing);
+    log.scrollTop = log.scrollHeight;
+    var data = new FormData();
+    data.append("question", question);
+    data.append("context", state.context || "");
+    data.append("page", location.pathname);
+    fetch("/help/ask", { method: "POST", body: data, credentials: "same-origin", headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json(); })
+      .then(function (answer) {
+        touchHelp();
+        state.log.push({ who: "bot", html: answer.html, source: answer.source || null });
+        if (answer.source) state.context = answer.source.slug;
+        if (answer.related && answer.related.length) {
+          state.chips = { list: answer.related.map(function (s) { return s.heading; }), label: "Related" };
+        } else {
+          state.chips = { list: answer.suggestions || [], label: answer.kind === "fallback" ? "Maybe one of these?" : "" };
+        }
+        saveHelp(); renderHelp();
+      })
+      .catch(function () {
+        state.log.push({ who: "bot", html: "<p>Sorry, that didn't go through. Please check your connection and try again.</p>" });
+        saveHelp(); renderHelp();
+      });
+    saveHelp();
+  }
+  document.addEventListener("click", function (event) {
+    if (!event.target.closest) return;
+    var ask = event.target.closest("[data-help-ask]");
+    if (ask) { event.preventDefault(); openHelp(false); askHelp(ask.dataset.helpAsk); return; }
+    if (event.target.closest("[data-help-open]")) { event.preventDefault(); openHelp(); return; }
+    var toggle = event.target.closest("[data-help-toggle]");
+    if (toggle) { var panel = helpPanel(); if (panel && !panel.hidden) closeHelp(); else openHelp(); return; }
+    if (event.target.closest("[data-help-close]")) { closeHelp(); return; }
+    // A link in the chat on a phone, where the chat fills the screen: close it so
+    // the page it opens can be seen. (On a wider screen it stays open beside the page.)
+    var link = event.target.closest("#help-chat a[href]");
+    if (link && window.matchMedia("(max-width: 560px)").matches) { closeHelp(); return; }
+    if (event.target.closest("[data-help-clear]")) {
+      helpMemory = freshHelp();
+      helpMemory.open = true;
+      saveHelp(); openHelp();
+    }
+  });
+  document.addEventListener("submit", function (event) {
+    if (event.target.matches && event.target.matches("form[action='/logout']")) {
+      helpMemory = freshHelp();
+      try { window.sessionStorage.removeItem(HELP_KEY); } catch (e) { /* nothing kept */ }
+      return;
+    }
+    var form = event.target.closest && event.target.closest("[data-help-form]");
+    if (!form) return;
+    event.preventDefault();
+    var input = form.querySelector("input[name=question]");
+    askHelp(input.value);
+    input.value = "";
+  });
+  document.addEventListener("keydown", function (event) {
+    var panel = helpPanel();
+    if (event.key === "Escape" && panel && !panel.hidden && panel.contains(document.activeElement)) closeHelp();
+  });
+  function initHelpChat() {
+    var panel = helpPanel();
+    if (panel && helpState().open && panel.hidden) openHelp(false);  // still open after moving to another page
+    if (!helpTimer && panel) {
+      // A page left open: clear a conversation that has gone unused, even with nobody clicking.
+      helpTimer = window.setInterval(function () {
+        var before = helpMemory, shown = before && before.log.length;
+        helpState();  // replaces the conversation if it has gone unused
+        if (helpMemory !== before && shown) { closeHelp(); renderHelp(); }
+      }, 60 * 1000);
+    }
+  }
+
   function init() {
     initFlashes();
+    initPlans();
+    initReview();
+    initHelpChat();
+    initCountdowns();
+    initCheckSteps();
+    initChangeForms();
     loadAccess();
     applyAccess(document);
     $all(document, "[data-auth-flow]").forEach(function (root) {

@@ -32,7 +32,7 @@ class LinuxNotifySendProvider:
         title, message = format_notification(notification)
         try:
             subprocess.run(
-                [self._notify_send, "--app-name=Job Assistant", f"--expire-time={_TOAST_DURATION_MS}", title, message],
+                [self._notify_send, "--app-name=Hirlumo", f"--expire-time={_TOAST_DURATION_MS}", title, message],
                 check=True,
                 capture_output=True,
                 timeout=_SEND_TIMEOUT_SECONDS,

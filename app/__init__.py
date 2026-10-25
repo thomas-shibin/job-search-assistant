@@ -1,4 +1,4 @@
-"""Job Assistant: a job search and resume-tailoring platform, built as a
+"""Hirlumo: a job search and resume-tailoring platform, built as a
 modular monolith -- one FastAPI app and one database, organised by business
 area. See docs/ARCHITECTURE.md.
 

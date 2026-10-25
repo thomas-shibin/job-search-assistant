@@ -1,0 +1,35 @@
+{# The review card (app/modules/feedback): comes up by itself once, after a few
+   minutes of use (app.js initReview), or from the account menu's "Rate Hirlumo". #}
+{% from "_icons.html" import icon %}
+<aside class="review-card" id="review-card" hidden aria-labelledby="review-title"
+       data-review data-auto="{{ '1' if review_due(nav_user) and not request.url.path.startswith('/admin') else '0' }}"
+       data-minutes="{{ REVIEW_MINUTES }}" data-user="{{ nav_user.id }}">
+  <button type="button" class="dialog-close" data-review-later aria-label="Close, ask me later">{{ icon("x") }}</button>
+  <form method="post" action="/feedback" data-review-form hx-boost="false">
+    <input type="hidden" name="page" value="{{ request.url.path }}">
+    <h2 id="review-title">How is Hirlumo working for you?</h2>
+    <p class="muted review-intro">A few taps help us improve during the beta. Skip any question you like.</p>
+    {% for field, (question, low, high) in REVIEW_QUESTIONS.items() %}
+    <fieldset class="review-question">
+      <legend>{{ question }}</legend>
+      <div class="stars">
+        {% for n in range(1, 6) %}
+        <label title="{{ n }} of 5"><input type="radio" name="{{ field }}" value="{{ n }}"><span class="sr-only">{{ n }} star{{ "s" if n > 1 }}{% if n == 1 %} ({{ low }}){% elif n == 5 %} ({{ high }}){% endif %}</span>{{ icon("star") }}</label>
+        {% endfor %}
+      </div>
+      <div class="stars-scale" aria-hidden="true"><span>{{ low }}</span><span>{{ high }}</span></div>
+    </fieldset>
+    {% endfor %}
+    <label class="review-comment"><span>Anything else you'd like to tell us? <span class="muted">(optional)</span></span>
+      <textarea name="comment" rows="3" maxlength="2000" placeholder="What you like, what's missing, what got in the way..."></textarea></label>
+    <p class="review-error" data-review-error role="alert" hidden></p>
+    <div class="review-actions">
+      <button type="submit" class="primary">{{ icon("send") }} Send</button>
+      <button type="button" data-review-later>Maybe later</button>
+      <button type="button" class="link-button" data-review-never>Don't ask again</button>
+    </div>
+  </form>
+  <div class="review-thanks" data-review-thanks hidden role="status">
+    {{ icon("check") }}<div><strong>Thank you!</strong><p class="muted">We read every review. For anything that needs an answer, use <a href="/contact">Contact us</a>.</p></div>
+  </div>
+</aside>

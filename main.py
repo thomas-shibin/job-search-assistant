@@ -134,12 +134,31 @@ def _same_origin(request: Request) -> bool:
     return urlparse(source).netloc in allowed
 
 
+def _canonical_url(request: Request) -> str | None:
+    """www.<domain> and <domain> both work, but everyone ends up on the one in
+    PUBLIC_URL: sign-in cookies and Google's return address belong to one host."""
+    from app.modules.auth.settings import AuthSettings
+
+    settings = AuthSettings()
+    if settings.public_url_is_local:
+        return None
+    public = urlparse(settings.base_url)
+    host, want = (request.url.hostname or "").lower(), (public.hostname or "").lower()
+    if not want or host == want or host.removeprefix("www.") != want.removeprefix("www."):
+        return None
+    query = f"?{request.url.query}" if request.url.query else ""
+    return f"{public.scheme}://{public.netloc}{request.url.path}{query}"
+
+
 def create_app() -> FastAPI:
-    fastapi_app = FastAPI(title="Job Search Assistant", docs_url=None, redoc_url=None, openapi_url=None)
+    fastapi_app = FastAPI(title="Hirlumo", docs_url=None, redoc_url=None, openapi_url=None)
     fastapi_app.add_exception_handler(AccessDenied, _access_denied)
 
     @fastapi_app.middleware("http")
     async def security(request: Request, call_next):
+        if request.url.path != "/health" and (canonical := _canonical_url(request)):
+            # 308 keeps a form's POST a POST.
+            return RedirectResponse(canonical, status_code=301 if request.method in ("GET", "HEAD") else 308)
         if request.method in _UNSAFE and not _same_origin(request):
             logger.warning("Blocked cross-site %s %s", request.method, request.url.path)
             return PlainTextResponse("Cross-site request blocked", status_code=403)
@@ -148,6 +167,9 @@ def create_app() -> FastAPI:
             response.headers.setdefault(name, value)
         if request.url.scheme == "https":
             response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        if request.url.path.startswith("/static/") and "v=" in request.url.query and response.status_code == 200:
+            # static_url() puts the file's hash in ?v=, so a changed file gets a new URL.
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
     @fastapi_app.get("/health")
@@ -167,6 +189,8 @@ def create_app() -> FastAPI:
     from app.modules.applications import routes as applications
     from app.modules.auth import api as auth_api
     from app.modules.auth import routes as auth
+    from app.modules.feedback import routes as feedback
+    from app.modules.help import routes as help_centre
     from app.modules.jobs import api as jobs_api
     from app.modules.jobs import routes as jobs
     from app.modules.matching import routes as matching
@@ -174,6 +198,7 @@ def create_app() -> FastAPI:
     from app.modules.profiles import settings_routes as settings
     from app.modules.resumes import routes as resumes
     from app.web import public_routes as public
+    from app.web import seo
 
     @fastapi_app.on_event("startup")
     def seed_search_catalog() -> None:
@@ -204,9 +229,10 @@ def create_app() -> FastAPI:
     # Each module contributes its own routers; which permission every route
     # needs is listed in app/modules/access/rbac.py (ROUTE_PERMISSIONS).
     for router in (
-        auth_api.router, auth.router, public.router, profiles.router, access.router, admin.router, access.api,
+        auth_api.router, auth.router, public.router, seo.router, profiles.router, access.router, admin.router, access.api,
         jobs_api.router, applications_api.router, jobs.router, applications.router, matching.router,
-        resumes.router, settings.router, alerts.router,
+        resumes.router, settings.router, alerts.router, feedback.router,
+        help_centre.router,
     ):
         fastapi_app.include_router(router)
 

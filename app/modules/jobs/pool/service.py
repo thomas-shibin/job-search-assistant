@@ -1,6 +1,6 @@
 """The shared job pool: every open posting of the companies an admin lists
 (Platform -> Job sources), pulled from their public careers-site feeds
-(Greenhouse, Lever, Ashby -- free, no key) on a schedule and kept in the
+(Greenhouse, Lever, Ashby, SmartRecruiters, Workable -- free, no key) on a schedule and kept in the
 database with the **full** description.
 
 Why: the job-board search API only returns a ~500-character preview of each
@@ -32,13 +32,17 @@ from app.integrations.job_boards.ashby import AshbySource
 from app.integrations.job_boards.base import RawJob
 from app.integrations.job_boards.greenhouse import GreenhouseSource
 from app.integrations.job_boards.lever import LeverSource
-from app.modules.jobs import places, postings, relevance
+from app.integrations.job_boards.smartrecruiters import SmartRecruitersSource
+from app.integrations.job_boards.workable import WorkableSource
+from app.modules.jobs import dedupe, places, postings, relevance
 from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.usage import quota
 
 logger = logging.getLogger(__name__)
 
-PROVIDERS = ("greenhouse", "lever", "ashby")
-PROVIDER_LABELS = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby"}
+PROVIDERS = ("greenhouse", "lever", "ashby", "smartrecruiters", "workable")
+PROVIDER_LABELS = {"greenhouse": "Greenhouse", "lever": "Lever", "ashby": "Ashby",
+                   "smartrecruiters": "SmartRecruiters", "workable": "Workable"}
 _PAUSE_BETWEEN_COMPANIES_SECONDS = 1.0
 _sync_lock = threading.Lock()
 _status = {"running": False, "done": 0, "total": 0, "started_at": None}
@@ -54,7 +58,14 @@ def _naive_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc).replace(tzinfo=None)
 
 
-def fetch(provider: str, board: str) -> list[RawJob]:
+def fetch(provider: str, board: str, known: set[str] | None = None) -> list[RawJob]:
+    """Every open posting on one company's feed. `known`: postings whose full
+    description the pool already has (SmartRecruiters fetches each one's
+    description separately, so those aren't fetched again)."""
+    if provider == "smartrecruiters":
+        return SmartRecruitersSource(company=board, known=known or set()).discover_jobs(None)
+    if provider == "workable":
+        return WorkableSource(account=board).discover_jobs(None)
     if provider == "greenhouse":
         return GreenhouseSource(board_token=board).discover_jobs(None)
     if provider == "lever":
@@ -75,6 +86,19 @@ _CANADA = re.compile(
 _USA = re.compile(r"united states|\busa?\b|\bu\.s\.|new york|san francisco|seattle|chicago|austin|boston|"
                   r"los angeles|denver|atlanta", re.IGNORECASE)
 _REMOTE = re.compile(r"\bremote\b", re.IGNORECASE)
+# A posting whose own location names another country is there, whatever the
+# company's office list says (Elastic lists "Portugal" jobs under a Canadian office).
+_ABROAD = re.compile(
+    r"\b(?:united kingdom|\buk\b|england|scotland|ireland|dublin|london|germany|berlin|munich|france|paris|spain|"
+    r"madrid|barcelona|portugal|lisbon|italy|netherlands|amsterdam|belgium|switzerland|zurich|austria|poland|"
+    r"warsaw|czech|romania|bulgaria|greece|athens|hungary|sweden|stockholm|norway|denmark|copenhagen|finland|"
+    r"estonia|latvia|lithuania|ukraine|serbia|croatia|turkey|israel|tel aviv|india|bangalore|bengaluru|"
+    r"hyderabad|mumbai|pune|delhi|chennai|pakistan|philippines|manila|singapore|japan|tokyo|korea|seoul|china|"
+    r"shanghai|beijing|hong kong|taiwan|vietnam|thailand|indonesia|malaysia|australia|sydney|melbourne|"
+    r"new zealand|mexico|brazil|s[aã]o paulo|argentina|buenos aires|colombia|bogot[aá]|chile|peru|costa rica|"
+    r"south africa|nigeria|kenya|egypt|uae|dubai|saudi|emea|apac|latam)\b",
+    re.IGNORECASE,
+)
 
 
 def _place_text(raw: RawJob) -> tuple[str, str | None]:
@@ -88,6 +112,16 @@ def _place_text(raw: RawJob) -> tuple[str, str | None]:
     elif raw.source == "greenhouse":
         for office in p.get("offices") or []:
             places += [office.get("name") or "", office.get("location") or ""]
+    elif raw.source == "smartrecruiters":
+        place = p.get("location") or {}
+        code = (place.get("country") or "").lower() or None
+        places.append(place.get("fullLocation") or "")
+    elif raw.source == "workable":
+        codes = [(loc.get("countryCode") or "").lower() for loc in p.get("locations") or []]
+        code = next((c for c in codes if c), None)
+        places += [p.get("country") or ""] + [", ".join(x for x in (loc.get("city"), loc.get("region"),
+                                                                     loc.get("country")) if x)
+                                              for loc in p.get("locations") or []]
     elif raw.source == "ashby":
         address = ((p.get("address") or {}).get("postalAddress") or {})
         places.append(address.get("addressCountry") or "")
@@ -97,15 +131,29 @@ def _place_text(raw: RawJob) -> tuple[str, str | None]:
     return " | ".join(x for x in places if x), code
 
 
+_FEED_WORKPLACES = {"remote": "remote", "hybrid": "hybrid", "onsite": "onsite"}
+
+
+def feed_workplace(raw: RawJob) -> str | None:
+    """The workplace a feed states outright (Ashby, Lever: `workplaceType`), or None.
+    It outranks guesses: Ashby marks a hybrid job that allows some remote days `isRemote: true`."""
+    value = str((raw.raw_payload or {}).get("workplaceType") or "").lower().replace("-", "").replace("_", "")
+    return _FEED_WORKPLACES.get(value)
+
+
 def classify(raw: RawJob) -> tuple[str | None, bool]:
     """(country code or None, remote?) for one posting."""
     text, code = _place_text(raw)
     p = raw.raw_payload or {}
-    remote = bool(_REMOTE.search(text)) or str(p.get("workplaceType") or "").lower() == "remote" \
-        or p.get("isRemote") is True
+    stated = feed_workplace(raw)
+    remote = bool(_REMOTE.search(text)) or stated == "remote" \
+        or (stated is None and p.get("isRemote") is True) or p.get("telecommuting") is True \
+        or (raw.source == "smartrecruiters" and (p.get("location") or {}).get("remote") is True)
     own = raw.location or ""  # the posting's own location outranks the company's other offices
     if _CANADA.search(own):
         return "ca", remote
+    if _ABROAD.search(own):
+        return (code[:2] if code and code != "ca" else None), remote
     if _USA.search(own) and not code:
         return "us", remote
     if _CANADA.search(text):
@@ -123,6 +171,8 @@ _BOARD_URL_HOSTS = {
     "boards.greenhouse.io": "greenhouse", "job-boards.greenhouse.io": "greenhouse",
     "boards-api.greenhouse.io": "greenhouse", "jobs.lever.co": "lever", "api.lever.co": "lever",
     "jobs.ashbyhq.com": "ashby", "api.ashbyhq.com": "ashby",
+    "jobs.smartrecruiters.com": "smartrecruiters", "careers.smartrecruiters.com": "smartrecruiters",
+    "api.smartrecruiters.com": "smartrecruiters", "apply.workable.com": "workable",
 }
 _BOARD_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,119}$")
 
@@ -135,14 +185,18 @@ def parse_board(provider: str, value: str) -> tuple[str, str]:
         url = urlparse(value if "://" in value else f"https://{value}")
         host = (url.hostname or "").lower()
         if host not in _BOARD_URL_HOSTS:
-            raise ValueError("That isn't a Greenhouse, Lever or Ashby careers-page URL.")
+            raise ValueError("That isn't a Greenhouse, Lever, Ashby, SmartRecruiters or Workable careers-page URL.")
         provider = _BOARD_URL_HOSTS[host]
         parts = [part for part in url.path.split("/") if part]
-        skip = {"v1", "boards", "v0", "postings", "posting-api", "job-board", "embed", "job_board"}
+        skip = {"v1", "boards", "v0", "postings", "posting-api", "job-board", "embed", "job_board", "api",
+                "companies", "widget", "accounts"}
         parts = [part for part in parts if part not in skip]
         value = parts[0] if parts else ""
     if provider not in PROVIDERS:
-        raise ValueError("Choose Greenhouse, Lever or Ashby.")
+        raise ValueError("Choose Greenhouse, Lever, Ashby, SmartRecruiters or Workable.")
+    if provider == "workable" and value.lower() == "j":
+        raise ValueError("That's a link to one Workable job. Use the company's jobs page "
+                         "(https://apply.workable.com/<company>/).")
     if not _BOARD_RE.match(value):
         raise ValueError("Enter the company's board name (e.g. acme) or its careers-page URL.")
     return provider, value.lower()
@@ -167,6 +221,9 @@ def add_company(session: Session, provider: str, board: str, *, fetcher=None) ->
     except Exception as exc:
         raise ValueError(f"Couldn't read {board} on {PROVIDER_LABELS[provider]} -- check the name "
                          f"({type(exc).__name__}).") from exc
+    if provider == "smartrecruiters" and not raw_jobs:  # an unknown company is an empty list, not an error
+        raise ValueError(f"{board} on SmartRecruiters has no jobs in Canada right now, or isn't a company "
+                         "there -- check the name in its careers-page URL.")
     company = PoolCompany(provider=provider, board=board, name=_pretty_name(raw_jobs, board), enabled=True)
     session.add(company)
     session.flush()
@@ -190,7 +247,7 @@ def _store(session: Session, company: PoolCompany, raw_jobs: list[RawJob]) -> No
         canada += country == "ca"
         salary = _salary(raw)
         values = dict(
-            workplace=postings.workplace(raw.title, raw.location, raw.description or "", remote),
+            workplace=feed_workplace(raw) or postings.workplace(raw.title, raw.location, raw.description or "", remote),
             salary_min=salary[0], salary_max=salary[1], currency=salary[2],
             provider=company.provider, company=(company.name or raw.company)[:200], title=raw.title[:300],
             location=(raw.location or None) and raw.location[:500], country=country, remote=remote,
@@ -199,6 +256,8 @@ def _store(session: Session, company: PoolCompany, raw_jobs: list[RawJob]) -> No
             last_seen_at=now,
         )
         job = existing.get(external_id)
+        if job is not None and not values["description"]:
+            values["description"] = job.description  # not fetched again this time (SmartRecruiters)
         if job is None:
             session.add(PoolJob(company_id=company.id, external_id=external_id, first_seen_at=now, **values))
         else:
@@ -217,7 +276,14 @@ def _store(session: Session, company: PoolCompany, raw_jobs: list[RawJob]) -> No
 def sync_company(session: Session, company: PoolCompany, *, fetcher=None) -> bool:
     """Refresh one company. On failure its postings are kept and the error noted."""
     try:
-        raw_jobs = (fetcher or fetch)(company.provider, company.board)
+        if company.provider == "smartrecruiters":  # descriptions the pool has needn't be fetched again
+            known = {external_id for (external_id,) in session.query(PoolJob.external_id).filter(
+                PoolJob.company_id == company.id, PoolJob.description != "")}
+            raw_jobs = (fetcher or fetch)(company.provider, company.board, known)
+        else:
+            raw_jobs = (fetcher or fetch)(company.provider, company.board)
+        _store(session, company, raw_jobs)  # a posting it can't read fails this company only
+        session.commit()
     except Exception as exc:
         session.rollback()
         company.last_synced_at = _utcnow()
@@ -226,8 +292,6 @@ def sync_company(session: Session, company: PoolCompany, *, fetcher=None) -> boo
         session.commit()
         logger.warning("Job pool: couldn't refresh %s/%s: %s", company.provider, company.board, exc)
         return False
-    _store(session, company, raw_jobs)
-    session.commit()
     return True
 
 
@@ -277,6 +341,83 @@ def sync_status() -> dict:
     return dict(_status)
 
 
+def suggestions(session: Session) -> list[tuple[str, str, str, int]]:
+    """The suggested employers (pool/suggested.py) not in the list yet."""
+    from app.modules.jobs.pool.suggested import SUGGESTED
+
+    have = set(session.query(PoolCompany.provider, PoolCompany.board).all())
+    return [s for s in SUGGESTED if (s[0], s[1]) not in have]
+
+
+def add_suggested(session_factory, *, fetcher=None, pause: float = _PAUSE_BETWEEN_COMPANIES_SECONDS) -> dict:
+    """Add every suggested employer not in the list yet, one at a time. One
+    run at a time (shares the refresh lock); returns counts."""
+    if not _sync_lock.acquire(blocking=False):
+        return {"skipped": True}
+    try:
+        with session_factory() as session:
+            todo = suggestions(session)
+        _status.update(running=True, done=0, total=len(todo), started_at=_utcnow())
+        added = failed = 0
+        for i, (provider, board, _name, _count) in enumerate(todo):
+            with session_factory() as session:
+                try:
+                    add_company(session, provider, board, fetcher=fetcher)
+                    added += 1
+                except ValueError as exc:
+                    session.rollback()
+                    failed += 1
+                    logger.warning("Job pool: couldn't add suggested %s/%s: %s", provider, board, exc)
+            _status["done"] = i + 1
+            if pause and i + 1 < len(todo):
+                time.sleep(pause)
+        log_event(logger, "JOB_POOL_SUGGESTED_ADDED", added=added, failed=failed)
+        return {"added": added, "failed": failed}
+    finally:
+        _status["running"] = False
+        _sync_lock.release()
+
+
+def start_adding_suggested(session_factory) -> bool:
+    if _status["running"]:
+        return False
+    threading.Thread(target=add_suggested, args=(session_factory,), daemon=True, name="job-pool-suggested").start()
+    return True
+
+
+# ---- what's current ----------------------------------------------------------------
+
+_MIN_UNCHECKED_HOURS = 24
+
+
+def fresh_conditions(session: Session) -> list:
+    """SQL conditions for pool postings fit to show a job seeker:
+    - the company's feed listed it at its last successful refresh within the
+      last two refreshes (and at least a day): a feed that keeps failing can't
+      say whether the job is still open, so its jobs are hidden until it's read
+      again (a job the feed stops listing is deleted at once, in `_store`);
+    - posted within `platform.pool_max_job_age_days` (an undated posting
+      counts as current while its feed lists it)."""
+    platform = quota.platform_limits(session)
+    now = _utcnow()
+    conditions = [PoolCompany.enabled.is_(True),
+                  or_(PoolJob.date_posted.is_(None), PoolJob.date_posted >= dedupe.cutoff(platform.pool_max_job_age_days))]
+    if platform.pool_refresh_hours:  # refreshing off: nothing to measure against
+        hours = max(2 * platform.pool_refresh_hours, _MIN_UNCHECKED_HOURS)
+        conditions.append(PoolJob.last_seen_at >= now - timedelta(hours=hours))
+    return conditions
+
+
+def fresh_jobs(session: Session):
+    """Pool postings (joined to their company) fit to show: `fresh_conditions`."""
+    return session.query(PoolJob).join(PoolCompany, PoolJob.company_id == PoolCompany.id).filter(
+        *fresh_conditions(session))
+
+
+def is_fresh(session: Session, job_id: int) -> bool:
+    return fresh_jobs(session).filter(PoolJob.id == job_id).first() is not None
+
+
 # ---- searching ---------------------------------------------------------------------
 
 def _like(value: str) -> str:
@@ -290,6 +431,10 @@ def _place(location: str) -> tuple[str | None, bool]:
     rest = re.sub(r"\b(?:in|only|anywhere|canada)\b", " ", rest, flags=re.IGNORECASE)
     rest = rest.split(",")[0].strip(" -()/")
     return (rest.lower() or None), remote
+
+
+def _row_key(row: PoolJob) -> tuple[str, str, str]:
+    return dedupe.key(row.company, row.title, row.location)
 
 
 @dataclass
@@ -330,8 +475,7 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
     matches jobs within that distance of it, measured from the places named in
     each job's location; other places (a province, "Remote") match by name.
     """
-    query = session.query(PoolJob).join(PoolCompany, PoolJob.company_id == PoolCompany.id).filter(
-        PoolCompany.enabled.is_(True))
+    query = fresh_jobs(session)
     country = (country or "").strip().lower()
     if country:
         query = query.filter(PoolJob.country == country)
@@ -340,7 +484,8 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
     if titles:  # a job title, keyword or company name -- or a synonym (relevance.py)
         query = query.filter(or_(*(or_(and_(*(PoolJob.title.ilike(_like(w), escape="\\") for w in words)),
                                        PoolJob.company.ilike(_like(" ".join(words)), escape="\\"))
-                                   for t in titles for words in {*relevance.variants(t), tuple(t.split())})))
+                                   for t in titles
+                                   for words in {*relevance.variants(t), *relevance.related(t), tuple(t.split())})))
     place_filters = []
     origins = []  # places searched by distance: checked below, row by row
     named: set[int] = set()  # rows matching a place searched by name, when others are by distance
@@ -369,6 +514,7 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
     if not (titles or keywords or origins):
         total = query.count()
         rows = query.offset((page - 1) * per_page).limit(per_page).all()
+        rows = dedupe.unique_by(rows, _row_key)  # the same job in one city, listed twice
         return PoolResults(jobs=[to_raw_job(r) for r in rows], has_next=page * per_page < total, total=total)
 
     # The database narrows by substring; whole words and synonyms are checked
@@ -382,6 +528,7 @@ def search_pool(session: Session, titles: list[str], locations: list[str], keywo
     if titles:
         ranked = [(relevance.tier(titles, r.title, r.company), r) for r in rows]
         rows = [r for t, r in sorted(ranked, key=lambda pair: -pair[0]) if t >= relevance.RELEVANT]
+    rows = dedupe.unique_by(rows, _row_key)  # best match and newest first, so that copy is kept
     total = len(rows)
     shown = rows[(page - 1) * per_page: page * per_page]
     return PoolResults(jobs=[to_raw_job(r) for r in shown], has_next=page * per_page < total, total=total)

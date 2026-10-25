@@ -1,6 +1,7 @@
-# Go-Live Plan — Job Search Assistant (Canada)
+# Go-Live Plan — Hirlumo (Canada)
 
-_Prepared 2026-10-10. Figures are estimates in CAD unless noted._
+_Prepared 2026-10-10. Figures are estimates in CAD unless noted. Status notes added
+2026-10-22 (marked **Status**); what the app does today is listed in [FEATURES.md](FEATURES.md)._
 
 ## 1. Verdict
 
@@ -27,10 +28,16 @@ _Prepared 2026-10-10. Figures are estimates in CAD unless noted._
 
 - **Single-user local install.** Needs Python, LibreOffice and OpenAI, Adzuna and Telegram
   keys. Almost no job seekers will set that up.
+  **Status:** solved. Hirlumo is a hosted multi-user site at hirlumo.com.
 - **Weak job data.** Adzuna's free tier is about 250 requests/day and commercial use needs
   an agreement. Greenhouse and Lever cover mostly tech companies. LinkedIn and Indeed
   can't be scraped.
+  **Status:** improved, not solved. Added Jooble as a fallback board; SmartRecruiters and
+  Workable feeds; 45 checked non-tech Canadian employers; old and duplicate jobs
+  filtered out. The Adzuna licence (and its required "Adzuna" label on each ad) is
+  still undecided.
 - **Telegram alerts.** Few Canadians use Telegram; email, SMS or push is needed.
+  **Status:** solved for email (after every scan, daily or weekly). No SMS or push.
 - **Address-swap feature is a reputational risk.** Swapping the resume location to the
   job's city conflicts with the "truthful" positioning. Reframe it as "relocating to X" or
   don't market it.
@@ -74,13 +81,20 @@ $30–80, users churn as soon as they're hired, and lifetime value is about $30�
 
 1. **Hosted multi-user web app:** auth, Postgres, Stripe billing, per-user storage and a
    "delete my data" option. The existing FastAPI + HTMX stack is fine.
+   **Status:** built, except billing. SQLite instead of Postgres for now (enough at this
+   size; see ARCHITECTURE.md "Future scalability"); nightly encrypted backups.
 2. **Chrome extension, "Tailor for this job":** the user captures any LinkedIn, Indeed or
    Job Bank posting with one click. This solves job data legally because the user
    initiates it and nothing is scraped.
+   **Status:** not started. Quick Tailor (paste a description) covers part of it.
 3. **Email (and optionally SMS) alerts** in place of or alongside Telegram.
+   **Status:** email built.
 4. **Canadian resume converter** (headline feature): flag and fix photo, date of birth,
    marital status, length, spelling and date formats, and translate foreign job titles.
+   **Status:** built, plus a free public check (no account), an ATS readability check
+   with layout fixes, choosing changes one by one, and version compare and undo.
 5. **Cover letter generator** using the same truthfulness guardrail.
+   **Status:** not started.
 
 ### Niche differentiators
 
@@ -90,11 +104,16 @@ $30–80, users churn as soon as they're hired, and lifetime value is about $30�
 9. **Interview prep** generated from the existing gap analysis.
 10. **ATS keyword coverage score** to compete with Jobscan.
 
+**Status (6–10):** none started. The ATS readability check (layout problems that break
+parsing) is built; keyword coverage is not.
+
 ### B2B (revenue engine)
 
 11. **Counsellor dashboard:** one counsellor manages 50–200 clients.
 12. **Outcome reports:** applications, interviews and hires, exportable for funders.
 13. **White-label / agency branding.**
+
+**Status (11–13):** not started.
 
 ### Do not build
 

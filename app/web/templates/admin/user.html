@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% set u = d.user %}
-{% block title %}{{ u.full_name or u.email }} - Activity - Job Assistant{% endblock %}
+{% block title %}{{ u.full_name or u.email }} - Activity - Hirlumo{% endblock %}
 
 {% block content %}
 {% include "admin/_nav.html" %}
@@ -74,8 +74,48 @@
         <input type="number" name="search_limit" min="0" max="10000" value="{{ u.search_limit_per_hour if u.search_limit_per_hour is not none else '' }}" placeholder="default: {{ d.allowances.defaults.search }}"></label>
       <label>Resume actions per hour
         <input type="number" name="ai_limit" min="0" max="10000" value="{{ u.ai_limit_per_hour if u.ai_limit_per_hour is not none else '' }}" placeholder="default: {{ d.allowances.defaults.ai }}"></label>
+      <label>Free plan: job-board searches in total
+        <input type="number" name="search_total_limit" min="0" max="10000" value="{{ u.search_total_limit if u.search_total_limit is not none else '' }}" placeholder="default: {{ free.search_default }}"></label>
+      <label>Free plan: resume actions in total
+        <input type="number" name="ai_total_limit" min="0" max="10000" value="{{ u.ai_total_limit if u.ai_total_limit is not none else '' }}" placeholder="default: {{ free.default }}"></label>
       <button type="submit" class="primary">Save limits</button>
     </form>
+    {% endif %}
+  </section>
+
+  <section class="panel" id="free-plan">
+    <div class="panel-head"><div><h2>Free plan</h2><p>Lifetime allowances, shared by every account found to be the same person.</p></div>
+      {% if can_route("/admin/duplicates") %}<a class="button pill outline small" href="/admin/duplicates">Duplicate accounts</a>{% endif %}</div>
+    {% for name, fs in free.standings %}
+    <div class="meter-row">
+      <div class="meter-label"><strong>{{ name }}</strong>
+        <span class="muted">{% if fs.unlimited %}unlimited (admin){% else %}{{ fs.used }} of {{ fs.limit }} used{% if fs.accounts > 1 %} across {{ fs.accounts }} accounts{% endif %}{% endif %}</span></div>
+      {% if not fs.unlimited %}
+      <div class="meter"><span style="width: {{ [100, (100 * fs.used / fs.limit) if fs.limit else 100] | min }}%" class="{{ 'full' if fs.exhausted }}"></span></div>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if free.links %}
+    <ul class="free-links">
+      {% for l in free.links %}
+      <li>
+        <div>
+          {% if l.other_user %}<a href="/admin/users/{{ l.other_user.id }}">{{ l.other_user.full_name or "—" }}</a> <small class="muted">{{ l.other_user.email }}</small>{% else %}<span class="muted">A deleted account</span>{% endif %}
+          <div>{% for r in l.reasons %}<span class="chip">{{ r }}</span> {% endfor %}
+            <span class="status-badge {{ 'ok' if l.link.status in ('shared', 'confirmed') else 'missing' }}">{{ {"shared": "sharing", "confirmed": "sharing (confirmed)", "review": "to review", "dismissed": "different people"}[l.link.status] }}</span></div>
+        </div>
+        {% if can("users.update") %}
+        <form method="post" action="/admin/duplicates/{{ l.link.id }}" class="dup-actions">
+          <input type="hidden" name="next" value="/admin/users/{{ u.id }}#free-plan">
+          {% if l.link.status not in ("shared", "confirmed") %}<button type="submit" name="decision" value="same" class="small">Same person</button>{% endif %}
+          {% if l.link.status != "dismissed" %}<button type="submit" name="decision" value="different" class="small">Different people</button>{% endif %}
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No other account looks like this person.</p>
     {% endif %}
   </section>
 

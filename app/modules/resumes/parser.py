@@ -29,6 +29,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database.session import PROJECT_ROOT
@@ -656,7 +657,8 @@ def import_resume(session: Session, resume_path: Path, *, force: bool = False) -
         }
         return ImportResult(profile=existing_active, created=False, counts=counts)
 
-    new_version = existing_active.version + 1 if existing_active is not None else 1
+    # After the member has gone back to an older version, the next is still numbered after the newest.
+    new_version = (session.query(func.max(CandidateProfile.version)).scalar() or 0) + 1
     if existing_active is not None:
         existing_active.is_active = False
 

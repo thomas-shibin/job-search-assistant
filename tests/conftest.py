@@ -10,7 +10,7 @@ TEST_USER_ID = 1
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "real_auth: use real sign-in instead of the default signed-in test member")
-    config.addinivalue_line("markers", "real_limits: enforce the hourly search / resume-action limits")
+    config.addinivalue_line("markers", "real_limits: enforce the hourly search / resume-action limits and the free plan")
     config.addinivalue_line("markers", "rbac_strict: users get only the roles the app itself assigns")
 
 
@@ -21,6 +21,15 @@ def _isolated_resume_uploads(tmp_path, monkeypatch):
     import app.modules.resumes.uploads as uploads
 
     monkeypatch.setattr(uploads, "UPLOAD_DIR", tmp_path / "uploads")
+
+
+@pytest.fixture(autouse=True)
+def _isolated_free_plan_key(tmp_path, monkeypatch):
+    """The free plan's key file is made in a temp folder, never in the real config/."""
+    from app.modules.usage import free_plan
+
+    monkeypatch.setattr(free_plan, "KEY_FILE", tmp_path / "free_plan.key")
+    monkeypatch.setattr(free_plan, "_cached_key", None)
 
 
 @pytest.fixture(autouse=True)
@@ -38,6 +47,12 @@ def _no_real_job_board(monkeypatch):
     be read from .env); tests that need it stub the search."""
     monkeypatch.setenv("ADZUNA_APP_ID", "")
     monkeypatch.setenv("ADZUNA_APP_KEY", "")
+    monkeypatch.setenv("JOOBLE_API_KEY", "")  # nor the second board
+    # Backups: never the real bucket, key or schedule.
+    for name in ("BACKUP_S3_BUCKET", "BACKUP_S3_ACCESS_KEY_ID", "BACKUP_S3_SECRET_ACCESS_KEY", "BACKUP_S3_ENDPOINT",
+                 "BACKUP_ENCRYPTION_KEY"):
+        monkeypatch.setenv(name, "")
+    monkeypatch.setenv("BACKUP_ENABLED", "false")
     # ...nor the analysis provider for search (smart search falls back to its rules).
     monkeypatch.setenv("OPENAI_API_KEY", "")
 
@@ -52,21 +67,25 @@ def _rate_limits_reset():
 
     from app.modules.jobs import interpret
 
+    from app.modules.jobs import service as job_search
+
     code_limiter.reset()
     postings.clear()
     interpret.clear_cache()
+    job_search.reset_board_pause()
     yield
 
 
 @pytest.fixture(autouse=True)
 def _no_hourly_limits(request, monkeypatch):
-    """Tests run searches and analyses freely -- except those marked
-    `real_limits`, which test the limits themselves."""
+    """Tests run searches and analyses freely (no hourly or free-plan limits) --
+    except those marked `real_limits`, which test the limits themselves."""
     if request.node.get_closest_marker("real_limits"):
         return
     from app.modules.usage import quota
 
     monkeypatch.setattr(quota, "limit_for", lambda user, kind, platform: None)
+    monkeypatch.setattr(quota.free_plan, "limit_for", lambda user, default, kind="ai": None)
 
 
 # Test users are written with the legacy `role` column ("member" / "admin"); give

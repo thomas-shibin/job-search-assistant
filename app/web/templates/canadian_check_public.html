@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% import "_check_basis.html" as check_basis %}
+{% block title %}Free Canadian Resume Checker and ATS Check: Is Your Resume Ready for Canada? - Hirlumo{% endblock %}
+{% block description %}Check your resume against Canadian conventions and ATS readability for free, no sign-up: photo, personal details, dates, references, tables, columns and more, and what to change.{% endblock %}
+{% block boost %}false{% endblock %}
+{% set level_names = {"must": "Must fix", "should": "Should fix", "tip": "Tip"} %}
+{% set preview_open = 8 %}
+{% set first_shown = 5 %}
+{% set guide_more = 5 %}{# dates, spelling, contact details, ATS layout, job titles and education #}
+
+{% macro score_ring(value, label) %}
+<span class="check-score {{ 'ok' if value >= 90 else ('mid' if value >= 70 else 'low') }}" aria-label="{{ label }} {{ value }} out of 100"><strong>{{ value }}</strong><small>/100</small></span>
+{% endmacro %}
+
+{% macro finding_card(f) %}
+<article class="finding level-{{ f.level }}">
+  <div class="finding-head">
+    <span class="chip level-{{ f.level }}">{{ level_names[f.level] }}</span>
+    <h3>{{ f.title }}</h3>
+  </div>
+  {{ check_basis.impact(f) }}
+  <p>{{ f.advice }}</p>
+  {% if f.examples %}
+  <ul class="finding-examples">{% for example in f.examples %}<li>{{ example }}</li>{% endfor %}</ul>
+  {% endif %}
+</article>
+{% endmacro %}
+
+{# Guests see how many problems there are and how serious, never what they are:
+   none of the finding's text is in the page, so it can't be read from the source. #}
+{% macro locked_list(items) %}
+<div class="locked-findings">
+  {% for f in items %}
+  <div class="locked-finding level-{{ f.level }}">
+    <span class="chip level-{{ f.level }}">{{ level_names[f.level] }}</span>
+    <span class="locked-bars" aria-hidden="true"><span></span><span></span></span>
+    {{ icon("lock") }}
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro guest_unlock(reason, label) %}
+<div class="check-unlock" data-hold-gone>
+  <a class="button primary pill" href="/signup?next=%2Fresume%2Fcanadian" data-auth-open data-next="/resume/canadian"
+     data-reason="{{ reason }}">{{ icon("lock") }} {{ label }}</a>
+  <span class="muted">Free account. You won't need to upload your resume again.</span>
+</div>
+{% endmacro %}
+
+{# The most important few, worst first; the rest one click away. #}
+{% macro findings_list(items) %}
+{% for f in items[:first_shown] %}{{ finding_card(f) }}{% endfor %}
+{% if items|length > first_shown %}
+<details class="check-more">
+  <summary>Show {{ items|length - first_shown }} more</summary>
+  {% for f in items[first_shown:] %}{{ finding_card(f) }}{% endfor %}
+</details>
+{% endif %}
+{% endmacro %}
+
+{% block content %}
+<header class="page-header check-hero">
+  <div>
+    <p class="eyebrow">Free · No sign-up</p>
+    <h1>Canadian resume and ATS check</h1>
+    <p class="lead">Find out in seconds whether your resume follows what Canadian employers expect, and whether applicant tracking software can read it. With a free account, see exactly what to change and fix it in one click.</p>
+  </div>
+</header>
+
+{% if error %}<div class="error" role="alert">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+<section class="panel check-upload" id="check">
+  <form method="post" action="/canadian-resume-check" enctype="multipart/form-data" hx-boost="false" data-check-steps>
+    <label class="check-drop">
+      {{ icon("file") }}
+      <strong>{{ "Check another resume" if review else "Choose your resume" }}</strong>
+      <span class="muted">PDF or Word (.docx), up to 10 MB</span>
+      <input type="file" name="resume" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+    </label>
+    <button type="submit" class="primary pill large">{{ icon("search") }} Check my resume</button>
+    {# Indirect on purpose: the steps don't name what the check looks at. #}
+    <ol class="check-steps" role="status" aria-live="polite" hidden>
+      <li>Reading your resume</li>
+      <li>Understanding the layout</li>
+      <li>Comparing with Canadian expectations</li>
+      <li>Reviewing how software reads it</li>
+      <li>Scoring your resume</li>
+      <li>Preparing your results</li>
+    </ol>
+  </form>
+  <p class="muted check-privacy">{{ icon("shield") }} Your resume is checked and never saved to disk. It's held in memory for {{ hold_minutes }} minutes so you can fix it after signing up without uploading it again, then deleted.</p>
+</section>
+
+{% if review %}
+{% set marks = review.marks %}
+{% set notes = review.notes %}
+<div class="check-results" data-check-results>
+<section class="panel check-summary" id="results">
+  <p class="muted check-file">{{ review.filename }} · about {{ review.pages }} page{{ "s" if review.pages != 1 }}</p>
+  <div class="check-scores">
+    <div class="check-score-card">
+      {{ score_ring(review.score, "Canada-ready score") }}
+      <div>
+        <p class="eyebrow">Canada-ready</p>
+        <h2>{{ review.verdict }}</h2>
+        <p class="check-counts">
+          <span class="chip level-must">{{ review.counts["must"] }} must fix</span>
+          <span class="chip level-should">{{ review.counts["should"] }} should fix</span>
+          <span class="chip level-tip">{{ review.counts["tip"] }} tip{{ "s" if review.counts["tip"] != 1 }}</span>
+        </p>
+      </div>
+    </div>
+    <div class="check-score-card">
+      {{ score_ring(review.ats_score, "ATS readability score") }}
+      <div>
+        <p class="eyebrow">ATS readability</p>
+        <h2>{{ review.ats_verdict }}</h2>
+        <p class="muted">{% if review.ats %}{{ review.ats|length }} thing{{ "s" if review.ats|length != 1 }} that can make software misread it{% else %}None of the documented problems found{% endif %}</p>
+      </div>
+    </div>
+  </div>
+  {% if review.improves %}
+  <p class="check-after">{{ icon("sparkles") }} After the one-click fixes, the same checks give it
+    <strong>{{ review.score }} → {{ review.after_score }}</strong> Canada-ready{% if review.ats_after_score != review.ats_score %} and <strong>{{ review.ats_score }} → {{ review.ats_after_score }}</strong> ATS readability{% endif %}.</p>
+  {% endif %}
+</section>
+
+{% macro countdown() %}
+{% if held_seconds %}
+<p class="check-countdown" data-hold-seconds="{{ held_seconds }}">{{ icon("clock") }}
+  <span data-hold-live>We'll keep your resume for <strong data-hold-clock>{{ held_seconds // 60 }}:{{ "%02d"|format(held_seconds % 60) }}</strong> so you don't have to upload it again. Then it's deleted.</span>
+  <span data-hold-done hidden>Your resume has been deleted from memory. Check it again above to continue.</span>
+</p>
+{% endif %}
+{% endmacro %}
+
+{% if review.ready %}
+<section class="panel check-fix-cta check-ready">
+  <div>
+    <h2>{{ icon("check") }} Your resume is ready for Canada</h2>
+    <p>Nothing important to fix. Next, see how well it matches each job: Hirlumo scores every job against your resume and shows what's missing.</p>
+    {{ countdown() }}
+  </div>
+  {% if member %}
+  <form method="post" action="/resume/canadian/claim" hx-boost="false" data-hold-gone><input type="hidden" name="next" value="/jobs"><button type="submit" class="primary pill large">Use it to match jobs</button></form>
+  {% else %}
+  <div class="check-fix-actions" data-hold-gone>
+    <a class="button primary pill large" href="/signup?next=%2Fresume%2Fcanadian" data-auth-open data-next="/resume/canadian"
+       data-reason="Create a free account to see your match score on every job. You won't need to upload your resume again.">See my match score on every job</a>
+    <span class="muted">Free account. Already have one? <a href="/login?next=%2Fresume%2Fcanadian">Log in</a>.</span>
+  </div>
+  {% endif %}
+</section>
+{% elif review.fixable %}
+<section class="panel check-fix-cta">
+  <div>
+    <h2>{{ icon("sparkles") }} Fix {{ review.fixable }} of these in one click</h2>
+    <p>Hirlumo makes the changes {% if review.is_docx %}in your own Word file, keeping your design{% else %}and gives you a clean Word resume in a standard one-column layout{% endif %}. You see every change first, and nothing is invented.</p>
+    {{ countdown() }}
+  </div>
+  {% if member %}
+  <form method="post" action="/resume/canadian/claim" hx-boost="false" data-hold-gone><button type="submit" class="primary pill large">Fix my resume</button></form>
+  {% else %}
+  <div class="check-fix-actions" data-hold-gone>
+    <a class="button primary pill large" href="/signup?next=%2Fresume%2Fcanadian" data-auth-open data-next="/resume/canadian"
+       data-reason="Create a free account to fix your resume. You won't need to upload it again.">Create a free account to fix it</a>
+    <span class="muted">Already have one? <a href="/login?next=%2Fresume%2Fcanadian">Log in</a>. No need to upload again.</span>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if member and (marks or review.photos) %}
+<section class="panel check-markup" aria-labelledby="markup-title">
+  <h2 id="markup-title">Your resume, marked up</h2>
+  <p class="muted">The lines the checks are about, in your resume's own words. <span class="mark-key mark-must">Must fix</span> <span class="mark-key mark-should">Should fix</span> <span class="mark-key mark-tip">Tip</span></p>
+  <div class="resume-lines">
+    {% if review.photos %}<p class="resume-line mark-must"><span class="resume-photo">{{ icon("user") }} Photo</span><span class="resume-note">Remove the photo</span></p>{% endif %}
+    {% for line in review.lines %}
+    {% set level = marks.get(loop.index0) %}
+    <p class="resume-line{% if line.heading %} is-heading{% endif %}{% if level %} mark-{{ level }}{% endif %}">
+      <span>{{ line.text }}</span>{% if level %}<span class="resume-note">{{ notes[loop.index0]|join(" · ") }}</span>{% endif %}
+    </p>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if review.findings %}
+<h2 class="check-section-title">What Canadian employers check</h2>
+{% if member %}{{ findings_list(review.findings) }}{% else %}
+<p class="muted">We found {{ review.findings|length }} thing{{ "s" if review.findings|length != 1 }} to look at. Sign up free to see what each one is and how to fix it.</p>
+{{ locked_list(review.findings) }}
+{{ guest_unlock("Create a free account to see what to change in your resume. You won't need to upload it again.", "See what to change") }}
+{% endif %}
+{% endif %}
+
+<h2 class="check-section-title">Will ATS software read it correctly?</h2>
+<section class="panel check-ats-note">
+  <p><strong>What this can and can't tell you.</strong> No tool can promise a specific applicant tracking system (Workday, Greenhouse, Taleo…) will accept your resume: they're private, and each employer sets its own filters. This checks for what ATS makers themselves document as breaking how their software reads a resume, and what we can see directly in your file.</p>
+  <p class="muted">{{ sources.ATS_CONTEXT.impact }}</p>
+</section>
+{% if review.ats and member %}{{ findings_list(review.ats) }}{% elif review.ats %}
+<p class="muted">We found {{ review.ats|length }} thing{{ "s" if review.ats|length != 1 }} that can make software misread your resume. Sign up free to see them.</p>
+{{ locked_list(review.ats) }}
+{% else %}
+<p class="check-none">{{ icon("check") }} We found none of the documented problems: no tables, columns, text boxes or contact details hidden in the page header, the text copies out cleanly, and your email and phone are there as text.</p>
+{% endif %}
+
+{% if review.improves and review.preview %}
+<section class="panel check-preview" aria-labelledby="preview-title">
+  <div class="panel-head">
+    <div>
+      <h2 id="preview-title">Your resume after the fixes</h2>
+      <p class="muted">{% if member %}{% if review.removed %}{{ review.removed }} line{{ "s" if review.removed != 1 }} taken out. {% endif %}Changed lines are <span class="mark-key mark-fixed">highlighted</span>.{% else %}Ready to download once you sign up.{% endif %}{% if not review.is_docx %} Your PDF becomes a Word file in a standard layout; this shows the changes to your text.{% endif %}</p>
+    </div>
+    <span class="check-before-after">{{ review.score }} → <strong>{{ review.after_score }}</strong></span>
+  </div>
+  {% if member %}
+  <div class="resume-lines">
+    {% for line in review.preview %}
+    <p class="resume-line{% if line.heading %} is-heading{% endif %}{% if line.changed %} mark-fixed{% endif %}"><span>{{ line.text }}</span></p>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="resume-lines is-locked">
+    {% for line in review.preview[:preview_open] %}
+    <p class="resume-line is-skeleton{% if line.heading %} is-heading{% endif %}{% if line.changed %} mark-fixed{% endif %}" aria-hidden="true"><span style="width: {{ [30, 45 + (line.text|length * 7) % 50]|max if not line.heading else 22 }}%"></span></p>
+    {% endfor %}
+    <div class="preview-lock" data-hold-gone>
+      <p><strong>Your fixed resume is ready.</strong> Create a free account to see all of it and download it as a Word file.</p>
+      <a class="button primary pill" href="/signup?next=%2Fresume%2Fcanadian" data-auth-open data-next="/resume/canadian"
+         data-reason="Create a free account to get your fixed resume. You won't need to upload it again.">Get my fixed resume</a>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+</div>
+{% endif %}
+
+<section class="check-guide" aria-labelledby="guide-title">
+  <h2 id="guide-title">What Canadian employers expect</h2>
+  <ol class="check-guide-list">
+    <li><strong>No photo or personal details</strong><span>Leave out your photo, date of birth and marital status.</span></li>
+    <li><strong>Two pages at most</strong><span>Newest experience first.</span></li>
+    <li><strong>References only when asked</strong><span>Keep them on a separate sheet.</span></li>
+  </ol>
+  <p class="check-guide-more">And {{ guide_more }} more things employers look for. <a href="#check">Check your resume</a> to see how yours scores.</p>
+</section>
+
+{% endblock %}

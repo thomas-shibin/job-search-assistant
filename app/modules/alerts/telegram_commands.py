@@ -41,7 +41,7 @@ _MAX_COMMAND_AGE_SECONDS = 300  # don't answer a backlog from while the app was 
 LINK_TTL = timedelta(minutes=15)
 
 HELP_TEXT = (
-    "<b>Job Search Assistant</b>\n"
+    "<b>Hirlumo</b>\n"
     "Connect this chat from the Watchlist page in the app to get job alerts here.\n\n"
     "/stop — stop alerts to this chat\n"
     "/help — this list"

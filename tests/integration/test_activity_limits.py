@@ -106,7 +106,8 @@ def test_one_new_search_per_hour_paging_and_repeats_free(world, monkeypatch):
         s.get(User, MEMBER).search_limit_per_hour = 1
         s.commit()
     first = http.get("/jobs?titles=Data+Analyst&locations=Toronto")
-    assert first.status_code == 200 and "New searches this hour: 1 of 1" in first.text
+    assert first.status_code == 200  # members see the free plan's searches left rather than the hour's
+    assert 'Job-board searches left on the <a href="/plans">free plan</a>: 9 of 10' in first.text
     assert http.get("/jobs?titles=Data+Analyst&locations=Toronto&page=2").status_code == 200  # paging: free
     assert http.get("/jobs?titles=data+analyst&locations=toronto").status_code == 200  # same search again: free
     assert len(calls) == 3

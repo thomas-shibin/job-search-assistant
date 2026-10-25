@@ -1,11 +1,15 @@
-# Job Assistant
+# Hirlumo
 
-A job search and resume-tailoring platform for Canada. Members search jobs from a
-job board (Adzuna) and from companies' own careers sites (Greenhouse, Lever, Ashby),
-save and track them, see how well each one fits their resume, and get a truthful
-tailored resume for the ones they apply to. Job alerts arrive by Telegram.
-Administrators manage users, roles and permissions, features, job sources and
-platform settings.
+A job search and resume platform for Canada. Members search current jobs from job
+boards (Adzuna, with Jooble as a fallback) and from companies' own careers sites
+(Greenhouse, Lever, Ashby, SmartRecruiters, Workable), save and track them, see how well
+each one fits their resume, and get a truthful tailored resume for the ones they apply
+to. Anyone can check a resume against Canadian conventions and ATS readability for
+free; members fix it change by change in their own Word design, compare versions and
+go back to any of them. Job alerts arrive by email or Telegram. Administrators manage
+users, roles and permissions, features, job sources and platform settings.
+
+> **What the app does today and what's planned:** [docs/FEATURES.md](docs/FEATURES.md).
 
 > Installing on another computer? See [INSTALL.md](INSTALL.md) for one-command installers
 > (Windows `install.cmd`, Linux `./install.sh`), with or without Docker.
@@ -32,46 +36,50 @@ app/
     exceptions.py       AppError / IntegrationError bases
     logging.py          structured JSON logging
   integrations/         external services, isolated from business logic
-    job_boards/         Adzuna search; Greenhouse, Lever, Ashby feeds
+    job_boards/         Adzuna and Jooble search; Greenhouse, Lever, Ashby, SmartRecruiters, Workable feeds
     ai/                 analysis provider interface, OpenAI, free mock
     email.py            SMTP delivery (or a local outbox in development)
     telegram.py         Telegram Bot API client
     libreoffice.py      DOCX -> PDF
+    object_storage.py   S3-compatible bucket for off-server backups
     desktop/            desktop notifications (native single-user install)
   modules/              one package per business area
-    auth/               sign-up/sign-in (email code, password, Google), sessions, account
+    auth/               sign-up/sign-in (email code, password, Google, Facebook, LinkedIn), sessions, account
     access/             roles, permissions, feature switches, audit log, admin pages
     jobs/               search, job pool, postings/filters, saved jobs, catalog, ingestion
     applications/       tracked jobs, status workflow, application bundles, retention
     matching/           keyword scoring, AI fit assessment, analyze/tailor workflows
-    resumes/            resume import/editing, tailoring + validation, DOCX/PDF, Quick Tailor
+    resumes/            resume import/editing, versions, Canadian + ATS check and fixes, tailoring, DOCX/PDF, Quick Tailor
     profiles/           job seeker profile, personal Settings page
     alerts/             watchlist, alert matching and sending, Telegram bot commands
     usage/              activity log, hourly limits, AI call costs
     admin/              activity/usage dashboards, job sources, platform settings, health
+    backups/            nightly encrypted backups, rotation, restore
   web/                  page shell: templates, static files, public pages, shared view helpers
   workers/              scheduled scans and job-pool refresh, run lock and history
   shared/               small pure helpers
   models/__init__.py    imports every model so Alembic sees the whole schema
 alembic/                database migrations
 tests/                  unit/ and integration/ tests
-docs/                   architecture, multi-tenancy, go-live plan
+docs/                   features, architecture, multi-tenancy, backups, sign-in setup, go-live and growth plans
+scripts/                deploy.sh, move-data.sh, package.py, build_places.py
 ```
 
 ### Module responsibilities
 
 | Module | Owns | Entry points |
 |---|---|---|
-| `auth` | accounts, email codes, passwords, sessions, Google sign-in, account deletion | `routes.py` (pages), `api.py` (`/api/auth/*`), `deps.py` (route guards) |
+| `auth` | accounts, email codes, passwords, sessions, Google/Facebook/LinkedIn sign-in, account deletion | `routes.py` (pages), `api.py` (`/api/auth/*`), `deps.py` (route guards) |
 | `access` | roles, permissions, route permission table, feature switches, audit log | `rbac.py`, `service.py`, `routes.py` (`/admin/roles`, `/api/admin/*`) |
 | `jobs` | job search, job pool, postings and filters, saved jobs, search-term catalog | `service.py`, `routes.py` (`/jobs`, `/saved`), `api.py` (`/api/jobs/*`) |
 | `applications` | tracked jobs and their statuses, application files, retention | `service.py`, `state_machine.py`, `routes.py` (`/applications`, `/jobs/{id}`) |
 | `matching` | keyword scoring, AI requirement extraction and fit assessment | `workflows.py`, `routes.py` (analyze buttons) |
-| `resumes` | resume parsing/editing, tailoring with provenance checks, documents | `tailor.py`, `uploads.py`, `routes.py` (`/resume`, `/quick`) |
+| `resumes` | resume parsing/editing, versions, the Canadian and ATS checks and their fixes, the free public check, tailoring with provenance checks, documents | `canadian.py`, `ats.py`, `canadian_convert.py`, `versions.py`, `tailor.py`, `routes.py` (`/resume`, `/resume/canadian`, `/resume/compare`, `/canadian-resume-check`, `/quick`) |
 | `profiles` | job seeker profile, experience/education, personal settings | `service.py`, `routes.py` (`/profile`, `/api/profile`), `settings_routes.py` |
 | `alerts` | watches, alert matching, Telegram linking and bot commands | `watchlist.py`, `routes.py` (`/watchlist`) |
 | `usage` | activity log, hourly search/AI limits, AI costs | `quota.py`, `costs.py` |
 | `admin` | dashboards, per-user limits, job sources, platform settings, health | `routes.py` (`/admin/*`) |
+| `backups` | nightly encrypted backups, rotation, restore into a new folder | `service.py`, `crypto.py`, `cli.py backup*` |
 
 ## Local development
 
@@ -93,15 +101,36 @@ settings, sign-in codes are written to `data/mail_outbox/` instead of being emai
 
 ### Docker
 
+Two compose files, one per place the app runs:
+
+| | Development (this computer) | Production (https://hirlumo.com) |
+|---|---|---|
+| File | `docker-compose.dev.yml` | `docker-compose.yml` |
+| Settings | `.env` | `.env.prod` (or `.env` on a server set up by the installer) |
+| Address | `http://127.0.0.1:8001` (`APP_PORT`) | `https://hirlumo.com` (`DOMAIN`), via Cloudflare Tunnel or Caddy |
+
 ```bash
-docker compose up --build -d        # http://127.0.0.1:8001; applies migrations on start
-docker compose logs -f app
-docker compose exec app python cli.py <command>
-docker compose down                 # data/ and config/ are bind-mounted and kept
+# Development
+docker compose -f docker-compose.dev.yml up --build -d   # applies migrations on start
+docker compose -f docker-compose.dev.yml logs -f app
+docker compose -f docker-compose.dev.yml exec app python cli.py <command>
+docker compose -f docker-compose.dev.yml down            # data/ and config/ are bind-mounted and kept
+
+# Production
+docker compose --env-file .env.prod --profile tunnel up -d   # or --profile https for Caddy
 ```
 
-Compose reads `.env` via `env_file` and expands `$` in values: quote any value that
-contains `$` with single quotes.
+Each file fixes `PUBLIC_URL` itself (127.0.0.1 in development, `https://$DOMAIN` in
+production), so sign-in callbacks and email links always match where the app runs.
+On this computer both use the same `data/` folder; run one at a time. Compose expands
+`$` in values: quote any value that contains `$` with single quotes.
+
+**On the server** the data lives outside the code folder (`HIRLUMO_DATA_DIR` and
+`HIRLUMO_CONFIG_DIR` in `.env.prod`, set by `sudo ./scripts/move-data.sh`), so copying
+in a new version can't replace it, and the app refuses to start if that folder is
+missing. Send a new version from this computer with `./scripts/deploy.sh`: it runs the
+tests, copies only the code and build files (never `data/`, `config/` or `.env*`),
+rebuilds and waits until the app is healthy. See [INSTALL.md](INSTALL.md) section 8.
 
 ## Environment configuration
 
@@ -118,9 +147,14 @@ edited on the Settings pages.
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`, `SMTP_STARTTLS` | outgoing email |
 | `MAIL_OUTBOX_DIR` | where emails are saved when SMTP isn't configured |
 | `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | job-board search |
+| `JOOBLE_API_KEY` | a second job board, used when Adzuna can't answer |
+| `HIRLUMO_DATA_DIR`, `HIRLUMO_CONFIG_DIR` | Docker: where the data and settings live on the host (default `./data`, `./config`) |
+| `BACKUP_ENCRYPTION_KEY`, `BACKUP_S3_*` | nightly backups encrypted and copied off the server ([docs/BACKUPS.md](docs/BACKUPS.md)) |
 | `OPENAI_API_KEY` | AI analysis and tailoring (or set the AI provider to `mock` in platform settings) |
 | `TELEGRAM_BOT_TOKEN` | job alerts by Telegram |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | optional Google sign-in |
+| `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET` | optional Facebook sign-in |
+| `LINKEDIN_CLIENT_ID`, `LINKEDIN_CLIENT_SECRET` | optional LinkedIn sign-in (setting up all three: [docs/SOCIAL_SIGN_IN.md](docs/SOCIAL_SIGN_IN.md)) |
 
 `config/config.yaml` only seeds settings the first time the database has none
 (`python cli.py import-config --force` re-imports it).
@@ -137,9 +171,11 @@ alembic upgrade head
 alembic revision --autogenerate -m "describe the change"   # after changing a model
 ```
 
-Back up by copying `data/job_assistant.db` (with the app stopped, or with SQLite's
-`.backup` while it runs). `DATABASE_URL` can point at PostgreSQL
-(`pip install -e ".[postgres]"`), but SQLite is what the app is currently run and tested on.
+The app backs itself up every night (database, resumes, application files, settings),
+encrypted and copied to a bucket once that's set up: see [docs/BACKUPS.md](docs/BACKUPS.md).
+`DATABASE_URL` can point at PostgreSQL (`pip install -e ".[postgres]"`), but SQLite is
+what the app is run and tested on, and is enough for now (see "Future scalability" in
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)).
 
 ## Running tests
 
@@ -194,6 +230,8 @@ python cli.py catalog-scan [--country ca]                     # refresh search-t
 python cli.py set-password --email EMAIL                      # set an account's password from the server
 python cli.py grant-role --email EMAIL --role ROLE [--revoke] # bootstrap/recover roles (audited)
 python cli.py claim-legacy-data --email EMAIL                 # give pre-accounts data to one account
+python cli.py backup | backup-list | backup-key               # back up now, list backups, make an encryption key
+python cli.py backup-restore NAME --to DIR                    # unpack a backup into a new folder
 python cli.py <command> --help
 ```
 
@@ -202,9 +240,15 @@ python cli.py <command> --help
 - **AI provider** (OpenAI, unless the provider is set to `mock`): a job's description,
   and for analysis and tailoring the structured fields of the user's resume relevant
   to it. Never the original file, never other users' data.
-- **Job sources**: search terms go to Adzuna; the job pool reads public careers feeds.
+- **Job sources**: search terms go to Adzuna (and to Jooble when Adzuna can't answer); the
+  job pool reads public careers feeds.
+- **Backups** (when `BACKUP_S3_*` is set): the nightly backup, only ever encrypted with
+  `BACKUP_ENCRYPTION_KEY`, which stays on the server.
 - **Email** (SMTP provider): sign-in codes and account emails.
 - **Telegram**: title, company, location, score and link of jobs matching a user's
   watches, sent to the chat they linked.
+- **The free resume check** sends nothing to other services. The file is read from a
+  temporary folder that's removed straight after (`/tmp`, which is in memory in Docker),
+  then held in memory for 30 minutes and deleted.
 
 API keys stay in `.env`, which is git-ignored and never logged.

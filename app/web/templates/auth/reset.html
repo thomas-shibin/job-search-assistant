@@ -1,5 +1,5 @@
 {% extends "auth/base.html" %}
-{% block title %}Choose a new password - Job Assistant{% endblock %}
+{% block title %}Choose a new password - Hirlumo{% endblock %}
 {% block layout %}single{% endblock %}
 {% block aside %}{% endblock %}
 {% block card %}
@@ -10,7 +10,7 @@
   <div class="field">
     <label for="rp-password">New password</label>
     <div class="input-with-action">
-      <input type="password" id="rp-password" name="password" autocomplete="new-password" required minlength="12" maxlength="128" autofocus>
+      <input type="password" id="rp-password" name="password" autocomplete="new-password" required minlength="8" maxlength="128" autofocus>
       <button type="button" class="input-action" data-password-toggle="rp-password" aria-label="Show password" aria-pressed="false">Show</button>
     </div>
     <small class="field-hint">{{ password_rules }}</small>

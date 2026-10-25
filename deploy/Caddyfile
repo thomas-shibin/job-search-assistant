@@ -1,0 +1,19 @@
+# HTTPS for Hirlumo (docker compose --profile https up -d). Caddy gets and
+# renews the certificate from Let's Encrypt by itself; DNS for the domain and
+# www must point at this server, with ports 80 and 443 open. On Cloudflare, set
+# both records to "DNS only" (grey cloud) -- or use the tunnel profile instead.
+{$DOMAIN:hirlumo.com} {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+	reverse_proxy app:8000
+}
+
+# One address for everyone: Google sign-in only returns to PUBLIC_URL.
+www.{$DOMAIN:hirlumo.com} {
+	redir https://{$DOMAIN:hirlumo.com}{uri} permanent
+}

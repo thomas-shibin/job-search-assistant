@@ -40,6 +40,18 @@ def test_known_locations_are_pinned_and_keywords_ride_along():
     assert query.what_or == "Kafka Spring Boot kafka"
 
 
+def test_office_admin_searches_use_the_admin_category():
+    from app.modules.jobs.search import ADMIN_CATEGORY, ADMIN_TITLE_WORDS, adzuna_query
+
+    query = adzuna_query("Administrator", "Toronto")
+    assert (query.what, query.where) == (None, "Toronto")
+    assert dict(query.filters) == {"category": ADMIN_CATEGORY}
+    assert query.what_or == ADMIN_TITLE_WORDS
+    assert adzuna_query("admin", "Toronto", keywords=["bilingual"]).what_or == "bilingual"
+    assert adzuna_query("admin", "Remote Canada").what == "remote"
+    assert adzuna_query("Systems Administrator", "Toronto").filters == ()  # IT work: searched as typed
+
+
 def test_normalize_term_ignores_accents_case_and_punctuation():
     from app.shared.terms import normalize_term
 

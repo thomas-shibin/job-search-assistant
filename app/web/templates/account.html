@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Account - Job Assistant{% endblock %}
+{% block title %}Account - Hirlumo{% endblock %}
 {% block crumb %}Account{% endblock %}
 {% macro field_error(name) %}{% if errors and errors[name] %}<span class="field-error">{{ errors[name] }}</span>{% endif %}{% endmacro %}
 {% block content %}
@@ -32,16 +32,16 @@
       <label>New email<input type="email" name="email" autocomplete="email" required>{{ field_error("email") }}</label>
       <div class="form-foot"><button type="submit">Change email</button></div>
     </form>
-    {% if providers %}<p class="muted">Signed in with: {{ providers|map("title")|join(", ") }}</p>{% endif %}
+    {% if providers %}<p class="muted">Signed in with: {{ providers|map("provider_name")|join(", ") }}</p>{% endif %}
   </section>
 
   <section class="panel">
     <div class="panel-head"><div><h2>{{ "Change password" if user.password_hash else "Set a password" }}</h2>
-      <p>{% if user.password_hash %}Changing it signs out your other devices.{% else %}You sign in with {{ providers|map("title")|join(" / ") }}; add a password to also sign in with your email.{% endif %}</p></div></div>
+      <p>{% if user.password_hash %}Changing it signs out your other devices.{% else %}You sign in with {{ providers|map("provider_name")|join(" / ") }}; add a password to also sign in with your email.{% endif %}</p></div></div>
     {% if errors.password %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ errors.password }}</div></div>{% endif %}
     <form method="post" action="/account/password" class="auth-form">
       {% if user.password_hash %}<label>Current password<input type="password" name="current_password" autocomplete="current-password" required></label>{% endif %}
-      <label>New password<input type="password" name="new_password" autocomplete="new-password" required minlength="12" maxlength="128">
+      <label>New password<input type="password" name="new_password" autocomplete="new-password" required minlength="8" maxlength="128">
         <small class="muted">{{ password_rules }}</small></label>
       <label>Confirm new password<input type="password" name="confirm_password" autocomplete="new-password" required></label>
       <div class="form-foot"><button type="submit" class="primary">Save password</button></div>

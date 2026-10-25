@@ -40,4 +40,4 @@ def send_test_message(config: AppConfig, settings: TelegramSettings | None = Non
     chat_id = config.watchlist.telegram_chat_id
     if not chat_id:
         raise TelegramError("Connect Telegram first.")
-    _client(settings).send_message(chat_id, "✅ Job Search Assistant is connected. Watchlist alerts will arrive here.")
+    _client(settings).send_message(chat_id, "✅ Hirlumo is connected. Watchlist alerts will arrive here.")

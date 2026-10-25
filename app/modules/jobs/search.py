@@ -29,7 +29,7 @@ from datetime import timezone
 
 from app.integrations.job_boards.adzuna import AdzunaSource
 from app.integrations.job_boards.base import RawJob
-from app.modules.jobs import places
+from app.modules.jobs import dedupe, places, relevance
 from app.shared.terms import normalize_term
 
 logger = logging.getLogger(__name__)
@@ -52,6 +52,9 @@ class SearchResults:
 
 
 _REMOTE = re.compile(r"\bremote\b", re.IGNORECASE)
+ADMIN_CATEGORY = "admin-jobs"
+# A posting in the admin category must mention one of these (any word).
+ADMIN_TITLE_WORDS = "admin administrative administrator administration receptionist office"
 _PLACE_FILLER = re.compile(
     r"\b(?:in|only|anywhere|canada|usa|united states|uk|united kingdom|australia|india|germany)\b", re.IGNORECASE
 )
@@ -78,8 +81,15 @@ def adzuna_query(
     - with `radius_km`, a town or city is sent by name with `distance` (Adzuna
       measures from its centre); a province or unknown place ignores the radius;
     - "Remote Canada" -> what="<title> remote", anywhere; "Remote BC" -> where="BC";
-    - `keywords` narrow every query: a job must mention at least one of them.
+    - `keywords` narrow every query: a job must mention at least one of them;
+    - office admin work ("admin", "administrator"...) is searched as the board's
+      admin category: its postings say "administrative", "receptionist" or
+      "office manager" as often as "administrator" (relevance.py sorts them).
     """
+    if title and normalize_term(title) in relevance.ADMIN_WORDS:
+        filters = {**(filters or {}), "category": ADMIN_CATEGORY}
+        keywords = list(keywords) or [ADMIN_TITLE_WORDS]
+        title = None
     what = title
     if location and _REMOTE.search(location):
         place = _PLACE_FILLER.sub(" ", _REMOTE.sub(" ", location))
@@ -112,11 +122,17 @@ def search_jobs(
     use_cache: bool = True, pairs: list[tuple[str | None, str | None]] | None = None,
     keywords: list[str] | tuple[str, ...] = (), areas: dict[str, list[str]] | None = None,
     filters: dict[str, str] | None = None, radius_km: int | None = None, deadline_seconds: float | None = None,
+    max_age_days: int | None = None,
 ) -> SearchResults:
     """`deadline_seconds`: stop waiting after this long; queries still running
     then are reported in `failed_queries`, and the results aren't cached, so
-    the next visit asks again."""
+    the next visit asks again. `max_age_days`: only ads posted within this many
+    days -- asked of the board, and checked again on what it returns. The same
+    job listed twice (same company, title and city) is kept once."""
     pairs = pairs if pairs is not None else query_pairs(titles, locations)
+    if max_age_days:
+        asked = int((filters or {}).get("max_days_old") or 0)
+        filters = {**(filters or {}), "max_days_old": str(min(asked, max_age_days) if asked else max_age_days)}
     queries = {pair: adzuna_query(*pair, areas=areas, keywords=keywords, filters=filters, radius_km=radius_km)
                for pair in pairs}
     key = (id(type(source)), getattr(source, "_country", None), tuple(queries.values()), page, per_page)
@@ -155,6 +171,8 @@ def search_jobs(
                 continue
             results.has_next |= len(batch) >= per_page
             for job in batch:
+                if dedupe.too_old(job, max_age_days):
+                    continue
                 dedupe_key = job.external_id or job.source_url
                 if dedupe_key in seen:
                     continue
@@ -165,6 +183,7 @@ def search_jobs(
         pool.shutdown(wait=deadline is None, cancel_futures=True)
 
     results.jobs.sort(key=_newest_first, reverse=True)
+    results.jobs = dedupe.unique(results.jobs)  # one ad on several sites: newest copy
     if use_cache and not timed_out and len(results.failed_queries) < len(pairs):
         with _cache_lock:
             if len(_cache) >= _CACHE_MAX_ENTRIES:

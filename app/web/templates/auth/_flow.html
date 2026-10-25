@@ -1,7 +1,7 @@
 {# The sign-in / sign-up flow, driven by /static/app.js against /api/auth/*.
    flow_mode: "login" or "signup" (only changes the first screen's wording). #}
 {% from "_icons.html" import icon %}
-{% set google_on = auth_providers.google if auth_providers is defined else false %}
+{% set social_on = auth_providers if auth_providers is defined else social_sign_in() %}
 <div class="auth-flow" hx-boost="false" data-auth-flow data-next="{{ flow_next|default('/jobs') }}" data-mode="{{ flow_mode|default('login') }}">
   <div class="flow-progress" data-progress hidden aria-label="Sign-up progress">
     <span data-progress-step="1"><i>1</i> Email</span><span data-progress-step="2"><i>2</i> Verification</span><span data-progress-step="3"><i>3</i> Account details</span>
@@ -13,10 +13,16 @@
     <h2 class="flow-title" data-title-signup hidden>Create your account</h2>
     <p class="flow-sub">Sign in or create an account to continue.</p>
     <div class="flow-error" role="alert" hidden></div>
-    {% if google_on %}
-    <a class="button pill outline large wide social" data-google href="/auth/google/start?next={{ flow_next|default('/jobs')|urlencode }}">
-      <svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8Z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.1-4 1.1-3.1 0-5.7-2.1-6.6-4.9h-4v3.1A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" d="M5.4 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1Z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.3.6 4.5 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8Z"/></svg>
-      Continue with Google</a>
+    {% if social_on.values()|select|list %}
+    <div class="social-buttons">
+      {% for provider, label in [("google", "Google"), ("linkedin", "LinkedIn"), ("facebook", "Facebook")] if social_on.get(provider) %}
+      <a class="button pill outline large wide social" data-social="{{ provider }}" href="/auth/{{ provider }}/start?next={{ flow_next|default('/jobs')|urlencode }}">
+        {% if provider == "google" %}<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5a5.6 5.6 0 0 1-2.4 3.6v3h3.9c2.3-2.1 3.5-5.2 3.5-8.8Z"/><path fill="#34A853" d="M12 24c3.2 0 6-1.1 7.9-2.9l-3.9-3c-1.1.7-2.4 1.1-4 1.1-3.1 0-5.7-2.1-6.6-4.9h-4v3.1A12 12 0 0 0 12 24Z"/><path fill="#FBBC05" d="M5.4 14.3a7.2 7.2 0 0 1 0-4.6V6.6h-4a12 12 0 0 0 0 10.8l4-3.1Z"/><path fill="#EA4335" d="M12 4.8c1.7 0 3.3.6 4.5 1.8l3.4-3.4A12 12 0 0 0 1.4 6.6l4 3.1C6.3 6.9 8.9 4.8 12 4.8Z"/></svg>
+        {%- elif provider == "linkedin" %}<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#0A66C2"/><path fill="#fff" d="M7.1 9.4H4.5V19h2.6V9.4ZM5.8 5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm13.7 8.7c0-2.6-.6-4.5-3.6-4.5-1.5 0-2.4.8-2.8 1.5V9.4h-2.5V19h2.6v-4.8c0-1.3.2-2.5 1.8-2.5s1.6 1.5 1.6 2.6V19h2.6l.3-5.3Z"/></svg>
+        {%- else %}<svg viewBox="0 0 24 24" class="icon" aria-hidden="true"><path fill="#1877F2" d="M24 12a12 12 0 1 0-13.9 11.9v-8.4h-3V12h3V9.4c0-3 1.8-4.7 4.5-4.7 1.3 0 2.7.2 2.7.2v3h-1.5c-1.5 0-2 .9-2 1.9V12h3.4l-.5 3.5h-2.9v8.4A12 12 0 0 0 24 12Z"/></svg>{% endif %}
+        Continue with {{ label }}</a>
+      {% endfor %}
+    </div>
     <div class="or-divider"><span>or</span></div>
     {% endif %}
     <form class="auth-form" data-form="email" novalidate>
@@ -87,10 +93,10 @@
       <div class="field">
         <label for="af-password">Password</label>
         <div class="input-with-action">
-          <input type="password" id="af-password" name="password" autocomplete="new-password" required minlength="12" maxlength="128" aria-describedby="af-strength">
+          <input type="password" id="af-password" name="password" autocomplete="new-password" required minlength="8" maxlength="128" aria-describedby="af-strength">
           <button type="button" class="input-action" data-password-toggle="af-password" aria-label="Show password" aria-pressed="false">Show</button>
         </div>
-        <div class="strength" id="af-strength" aria-live="polite"><span class="strength-bar"><i data-strength-bar></i></span><span data-strength-text>At least 12 characters. A short phrase works well.</span></div>
+        <div class="strength" id="af-strength" aria-live="polite"><span class="strength-bar"><i data-strength-bar></i></span><span data-strength-text>At least 8 characters.</span></div>
         <span class="field-error" data-field-error="password" hidden></span>
       </div>
       <div class="field">

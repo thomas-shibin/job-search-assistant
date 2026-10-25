@@ -1,9 +1,37 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Canadian resume check - Job Assistant{% endblock %}
+{% import "_check_basis.html" as check_basis %}
+{% block title %}Canadian resume check - Hirlumo{% endblock %}
 {% block crumb %}Canadian resume check{% endblock %}
 {% set level_names = {"must": "Must fix", "should": "Should fix", "tip": "Tip"} %}
 {% set removals = ["photo", "personal", "declaration", "references", "high_school"] %}
+{% macro change_text(before, after) -%}
+  {%- if after is none %}<del>{{ before }}</del> <span class="change-note">taken out</span>
+  {%- else %}{{ before | worddiff(after) }}{% endif -%}
+{%- endmacro %}
+
+{# One fix's changes, each with its own tick box (Word), or the whole fix to tick (PDF). #}
+{% macro change_group(key, label, items, checked, docx) %}
+<div class="change-group" data-change-group>
+  {% if docx %}
+  <label class="check change-all"><input type="checkbox" data-group-toggle {% if checked %}checked{% endif %}>
+    <span><strong>{{ label }}</strong> <span class="muted">· {{ items | length }} change{{ "s" if items | length != 1 }}, {{ "untick" if checked else "tick" }} any one below to {{ "skip" if checked else "make" }} it</span></span></label>
+  <ul class="change-list">
+    {% for c in items %}
+    <li><label class="check change-item">
+      <input type="checkbox" name="change" value="{{ key }}:{{ c.line if c.line is defined else c.index }}" data-section="{{ c.section if c.section is defined else '' }}" {% if checked %}checked{% endif %}>
+      <span class="change-body">{{ caller(c) }}</span>
+    </label></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <label class="check finding-fix"><input type="checkbox" name="fix" value="{{ key }}" {% if checked %}checked{% endif %}> {{ label }}</label>
+  <details class="change-preview"><summary>See the {{ items | length }} change{{ "s" if items | length != 1 }}</summary>
+    <ul class="change-list">{% for c in items %}<li><span class="change-body">{{ caller(c) }}</span></li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+</div>
+{% endmacro %}
 {% block content %}
 <header class="page-header">
   <div>
@@ -18,19 +46,51 @@
 
 {% if error %}<div class="error">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
 
+{% if pending %}
+<section class="panel check-fix-cta">
+  <div>
+    <h2>{{ icon("file") }} Use the resume you just checked?</h2>
+    <p><strong>{{ pending }}</strong> is waiting from the free check.{% if current %} Using it makes it your current resume; version {{ current.version }} stays in your history.{% else %} Use it as your resume and fix it here.{% endif %}</p>
+    {% if pending_seconds %}<p class="muted check-countdown" data-hold-seconds="{{ pending_seconds }}"><span data-hold-live>We'll keep it for another <strong data-hold-clock>{{ pending_seconds // 60 }}:{{ "%02d"|format(pending_seconds % 60) }}</strong>, then delete it.</span><span data-hold-done hidden>It's been deleted. Upload it on the My resume page instead.</span></p>{% endif %}
+  </div>
+  <form method="post" action="/resume/canadian/claim" hx-boost="false" class="check-fix-actions" data-hold-gone>
+    <button type="submit" class="primary pill">Use it and fix it here</button>
+    <button type="submit" name="next" value="/jobs" class="pill">Use it and see matching jobs</button>
+    <button type="submit" formaction="/resume/canadian/discard" class="pill">No thanks, delete it</button>
+  </form>
+</section>
+{% endif %}
+
 {% if converted %}
 <section class="panel convert-done">
   <div class="panel-head">
     <div>
       <h2>{{ icon("check") }} Your converted resume is ready</h2>
-      <p>It's now your resume for matching and tailoring (version {{ current.version }}). The version before it is kept in your history.</p>
+      <p>It's now your resume for matching and tailoring (version {{ current.version }}).{% if previous %} Version {{ previous.version }}, from before these changes, is kept: compare the two, or go back to it any time.{% endif %}</p>
     </div>
-    <a class="button primary" href="/resume/file" hx-boost="false" download>{{ icon("download") }} Download</a>
+    <div class="page-actions">
+      <a class="button primary" href="/resume/file" hx-boost="false" download>{{ icon("download") }} Download</a>
+      {% if previous %}
+      <a class="button" href="/resume/compare?from={{ previous.version }}&to={{ current.version }}">See what changed</a>
+      <form method="post" action="/resume/versions/{{ previous.version }}/use" hx-boost="false">
+        <input type="hidden" name="next" value="/resume/canadian">
+        <button type="submit">{{ icon("back") }} Undo: go back to version {{ previous.version }}</button>
+      </form>
+      {% endif %}
+    </div>
   </div>
 </section>
 {% endif %}
 
-{% if review %}
+{% if review and review.not_a_resume %}
+<section class="panel">
+  <div class="warning-box">{{ icon("alert") }}<div class="alert-body">
+    <strong>Your current resume (version {{ current.version }}) doesn't look like a resume, so it wasn't checked.</strong>
+    A resume has parts like Experience, Education or Skills, with dates for each job, and that's what the check looks for.
+    If you uploaded the wrong file, <a href="/resume#upload">upload your resume</a>, or <a href="/resume">go back to an earlier version</a>.
+  </div></div>
+</section>
+{% elif review %}
 {% set counts = review.counts %}
 {% set to_fix = counts["must"] + counts["should"] %}
 <section class="panel check-summary">
@@ -48,7 +108,7 @@
   </div>
 </section>
 
-<form method="post" action="/resume/canadian" hx-boost="false" class="check-form"
+<form method="post" action="/resume/canadian" hx-boost="false" class="check-form" data-change-form
       onsubmit="var b = event.submitter; if (b) { b.disabled = true; b.lastChild.textContent = b.dataset.busy || ' Working…'; }">
 
   {% if not review.is_docx %}
@@ -59,14 +119,30 @@
   </div></div>
   {% endif %}
 
+  <div class="change-toolbar" data-change-toolbar hidden>
+    <p>Changes chosen: <strong data-change-count>0</strong>. <span class="muted">You see each one below before anything is changed, and your current version is kept.</span></p>
+    <div class="change-toolbar-actions">
+      <button type="button" class="small" data-select="all">Choose every suggested change</button>
+      <button type="button" class="small" data-select="none">Clear all</button>
+    </div>
+    {% if review.is_docx and review.sections | length > 1 %}
+    <div class="change-sections" role="group" aria-label="Choose by section">
+      <span class="muted">By section:</span>
+      {% for section in review.sections %}<button type="button" class="chip-toggle" data-select-section="{{ section }}" aria-pressed="false">{{ section }}</button>{% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
   {% for f in review.findings %}
   <article class="finding level-{{ f.level }}">
     <div class="finding-head">
       <span class="chip level-{{ f.level }}">{{ level_names[f.level] }}</span>
       <h3>{{ f.title }}</h3>
     </div>
+    {{ check_basis.impact(f) }}
     <p>{{ f.advice }}</p>
-    {% if f.examples %}
+    {% set items = review.changes.get(f.key) %}
+    {% if f.examples and not items %}
     <ul class="finding-examples">
       {% for example in f.examples %}<li>{% if f.key in removals and not example.startswith("and ") %}<del>{{ example }}</del>{% else %}{{ example }}{% endif %}</li>{% endfor %}
     </ul>
@@ -76,12 +152,50 @@
     {% endif %}
     {% if review.fixed_by_layout(f) %}
       <p class="finding-fix"><span class="status-badge ok">Fixed by the standard layout</span></p>
+    {% elif items %}
+      {% call(c) change_group(f.key, f.fix_label, items, f.level != "tip", review.is_docx) %}
+        <span class="change-where">{{ c.section }}</span>
+        <span class="change-text">{{ change_text(c.before, c.after) }}</span>
+      {% endcall %}
     {% elif f.fixable %}
       <label class="check finding-fix"><input type="checkbox" name="fix" value="{{ f.key }}" {% if f.level != "tip" %}checked{% endif %}> {{ f.fix_label }}</label>
     {% elif f.level != "tip" %}
       <p class="finding-note">{{ icon("pen") }} Change this on the <a href="/resume/edit">Edit resume</a> page{% if review.is_docx %} or in Word, then upload it again{% endif %}.</p>
     {% endif %}
   </article>
+  {% endfor %}
+
+  <h2 class="check-section-title">Will ATS software read it correctly?</h2>
+  <p class="muted">No tool can promise a specific applicant tracking system will accept your resume: each is private, and every employer sets its own filters. This checks for what ATS makers document as breaking how their software reads a resume.{% if not review.is_docx %} Converting your PDF gives you a plain one-column Word file, which avoids most of these.{% endif %}</p>
+  {% for f in review.ats %}
+  <article class="finding level-{{ f.level }}">
+    <div class="finding-head">
+      <span class="chip level-{{ f.level }}">{{ level_names[f.level] }}</span>
+      <h3>{{ f.title }}</h3>
+    </div>
+    {{ check_basis.impact(f) }}
+    <p>{{ f.advice }}</p>
+    {% set items = review.layout.get(f.key) %}
+    {% if f.examples and not items %}<ul class="finding-examples">{% for example in f.examples %}<li>{{ example }}</li>{% endfor %}</ul>{% endif %}
+    {% if not review.is_docx and f.key in ats_layout_fixes %}
+      <p class="finding-fix"><span class="status-badge ok">Fixed by the standard layout</span></p>
+    {% elif items and f.key in ("ats_tables", "ats_text_boxes") %}
+      {% call(c) change_group(f.key, f.fix_label, items, f.level != "tip", true) %}
+        {% if c.near %}<span class="change-where">Near “{{ c.near | truncate(60) }}”</span>{% endif %}
+        <span class="change-layout">
+          <span class="change-side"><span class="change-label">Now ({{ "table" if f.key == "ats_tables" else "text box" }})</span>{% for line in c.before[:6] %}<span>{{ line | truncate(140) }}</span>{% endfor %}{% if c.before | length > 6 %}<span class="muted">and {{ c.before | length - 6 }} more</span>{% endif %}</span>
+          <span class="change-side"><span class="change-label">{{ "Plain lines" if f.key == "ats_tables" else "In the page" }}</span>{% for line in c.after[:6] %}<span>{{ line | truncate(140) }}</span>{% endfor %}{% if c.after | length > 6 %}<span class="muted">and {{ c.after | length - 6 }} more</span>{% endif %}</span>
+        </span>
+      {% endcall %}
+    {% elif items and f.key == "ats_header" %}
+      <ul class="finding-examples">{% for line in items[0].before %}<li>{{ line }}</li>{% endfor %}</ul>
+      <label class="check finding-fix"><input type="checkbox" name="fix" value="{{ f.key }}" {% if f.level != "tip" %}checked{% endif %}> {{ f.fix_label }}</label>
+    {% elif f.fixable %}
+      <label class="check finding-fix"><input type="checkbox" name="fix" value="{{ f.key }}" {% if f.level != "tip" %}checked{% endif %}> {{ f.fix_label }}</label>
+    {% endif %}
+  </article>
+  {% else %}
+  <p class="check-none">{{ icon("check") }} None of the documented problems found: no tables, columns, text boxes or contact details hidden in the page header, and your email and phone are there as text.</p>
   {% endfor %}
 
   {% if roles %}
@@ -105,16 +219,17 @@
     {% if titles_available %}
     <div class="titles-suggest">
       <button type="submit" formaction="/resume/canadian/titles" formnovalidate data-busy=" Suggesting…">{{ icon("sparkles") }} Suggest equivalents</button>
-      <span class="muted">Suggests only for titles that need it, never more senior than yours.{% if ai_allowance and not ai_allowance.unlimited %} Uses 1 resume action ({{ ai_allowance.remaining }} of {{ ai_allowance.limit }} left this hour).{% endif %}</span>
+      <span class="muted">Suggests only for titles that need it, never more senior than yours.{% if ai_allowance and not ai_allowance.unlimited %} Uses 1 resume action ({{ ai_allowance.remaining }} of {{ ai_allowance.limit }} left this hour{% if ai_allowance.free and not ai_allowance.free.unlimited %}, {{ ai_allowance.free.remaining }} of {{ ai_allowance.free.limit }} left on the <a href="/plans">free plan</a>{% endif %}).{% endif %}</span>
     </div>
     {% endif %}
   </section>
   {% endif %}
 
   <div class="convert-bar">
-    <button type="submit" class="primary" data-busy=" Converting…">{{ icon("refresh") }} Convert my resume</button>
-    <span class="muted">Saved as a new version{% if review.is_docx %} of your Word file, in your own design{% endif %}. Your current version is kept.</span>
+    <button type="submit" class="primary" data-busy=" Converting…">{{ icon("refresh") }} Make the chosen changes</button>
+    <span class="muted">Saved as a new version{% if review.is_docx %} of your Word file, in your own design apart from any layout change you ticked{% endif %}. Your current version is kept.</span>
   </div>
 </form>
+
 {% endif %}
 {% endblock %}

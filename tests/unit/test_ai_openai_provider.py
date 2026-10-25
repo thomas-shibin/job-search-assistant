@@ -180,3 +180,68 @@ def test_assess_fit_sends_job_and_resume_and_parses_result():
     assert sent["job"]["title"] == "Backend Engineer"
     assert sent["candidate"]["skills"] == ["Java"]
     assert provider.last_usage.tokens_in == 100
+
+
+class _SequenceCompletions:
+    """Returns the given responses in order, recording every call."""
+
+    def __init__(self, responses) -> None:
+        self._responses = list(responses)
+        self.calls: list[dict] = []
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        return self._responses.pop(0)
+
+
+def _sequence_provider(*contents):
+    completions = _SequenceCompletions([_chat_response(json.dumps(c)) for c in contents])
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    return OpenAIProvider(api_key="unused", model="gpt-4o-mini", client=client), completions
+
+
+def _job():
+    from app.modules.jobs.models import Job, JobStatus
+    return Job(id=1, source="manual", source_url="https://example.com", company="Acme", title="Backend Engineer",
+               description="posting text", status=JobStatus.DISCOVERED, fingerprint="fp", description_hash="dh")
+
+
+def test_rewrite_passages_sends_each_passage_its_length_limit():
+    passages = [{"id": 1, "heading": "Experience", "text": "Fixed bugs and did code reviews for a team of 6"}]
+    provider, calls = _sequence_provider({"passages": [{"id": 1, "text": "Reviewed code and fixed bugs for a team of 6",
+                                                        "relevance": "high"}]})
+
+    rewrites = provider.rewrite_passages(passages, _job(), None, ["Java"])
+
+    sent = json.loads(calls.calls[0]["messages"][-1]["content"])["passages"][0]
+    assert sent["max_chars"] == len(passages[0]["text"]) + 30 - 4  # the validator's limit (+30 for a short line), less a margin
+    assert rewrites[1]["text"] == "Reviewed code and fixed bugs for a team of 6"
+    assert len(calls.calls) == 1  # nothing to redo
+
+
+def test_rewrite_passages_redoes_a_rewrite_that_is_too_long_or_adds_an_outcome():
+    source = "Helped move 3 services to AWS using Docker"
+    passages = [{"id": 1, "heading": "Experience", "text": source},
+                {"id": 2, "heading": "Experience", "text": "Built the order API in Node.js"}]
+    first = {"passages": [{"id": 1, "text": "Helped move 3 services to AWS using Docker and GitHub Actions, " * 3, "relevance": "high"},
+                          {"id": 2, "text": "Built the order API in Node.js, enhancing performance", "relevance": "high"}]}
+    fixed = {"passages": [{"id": 1, "text": "Helped migrate 3 services to AWS with Docker"},
+                          {"id": 2, "text": "Built the order REST API in Node.js"}]}
+    provider, calls = _sequence_provider(first, fixed)
+
+    rewrites = provider.rewrite_passages(passages, _job(), None, [])
+
+    assert rewrites[1]["text"] == "Helped migrate 3 services to AWS with Docker"
+    assert rewrites[2]["text"] == "Built the order REST API in Node.js"
+    assert len(calls.calls) == 2
+    redo = {p["id"]: p for p in json.loads(calls.calls[1]["messages"][-1]["content"])["passages"]}
+    assert redo[1]["facts_from"] == source and redo[1]["remove"] == []
+    assert redo[2]["remove"] == ["enhancing"]
+
+
+def test_rewrite_passages_keeps_outcome_words_the_original_already_uses():
+    passages = [{"id": 1, "heading": "Experience", "text": "Improved page load time by 40%"}]
+    provider, calls = _sequence_provider({"passages": [{"id": 1, "text": "Improved page load times by 40%", "relevance": "high"}]})
+
+    assert provider.rewrite_passages(passages, _job(), None, [])[1]["text"] == "Improved page load times by 40%"
+    assert len(calls.calls) == 1

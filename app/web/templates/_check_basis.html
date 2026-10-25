@@ -1,0 +1,4 @@
+{# What a resume finding costs (app/modules/resumes/check_sources.py keeps the source behind each one). #}
+{% macro impact(f) -%}
+{% set b = f.basis %}{% if b %}<p class="finding-impact"><strong>What happens:</strong> {{ b.impact }}</p>{% endif %}
+{%- endmacro %}

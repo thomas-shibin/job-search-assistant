@@ -48,6 +48,34 @@ def test_other_jobs_are_not_hr_generalist(title):
     assert relevance.tier(["hr generalist"], title) < relevance.RELEVANT
 
 
+@pytest.mark.parametrize("title", ["Administrative Assistant", "Office Administrator", "Admin Coordinator",
+                                   "Reception and Administrative Support", "Payroll / HR Administrator"])
+def test_admin_administrative_and_administrator_are_one_search(title):
+    # A member searching "administrator" saw only IT jobs: "Administrative Assistant" didn't count.
+    for term in ("administrator", "admin", "administrative"):
+        assert relevance.tier([term], title) == relevance.TITLE_PHRASE
+
+
+@pytest.mark.parametrize("title", ["Receptionist", "Office Manager", "Executive Assistant", "Front Desk Agent"])
+def test_office_admin_searches_find_the_usual_titles_a_tier_below(title):
+    assert relevance.tier(["administrator"], title) == relevance.TITLE_WORDS
+    assert relevance.tier(["administrative assistant"], title) < relevance.RELEVANT  # only a one-word search
+
+
+@pytest.mark.parametrize("title", ["Systems Administrator", "Senior Linux System Administrator", "Salesforce Admin",
+                                   "Microsoft 365 Administrator", "IT Administrator", "Database Administrator",
+                                   "Jira and Confluence Administrator", "Program Manager - Jira Administration"])
+def test_it_administrators_are_not_office_admin_work(title):
+    assert relevance.tier(["administrator"], title) < relevance.RELEVANT
+    assert relevance.tier(["admin assistant"], title) < relevance.RELEVANT
+
+
+def test_naming_the_system_still_finds_it_administrators():
+    assert relevance.tier(["systems administrator"], "Systems Administrator") == relevance.TITLE_PHRASE
+    assert relevance.tier(["salesforce admin"], "Salesforce Administrator") == relevance.TITLE_PHRASE
+    assert relevance.tier(["it administrator"], "IT Administrator") == relevance.TITLE_PHRASE
+
+
 def test_company_and_description_tiers():
     assert relevance.tier(["shopify"], "Backend Developer", "Shopify Inc.") == relevance.COMPANY
     assert relevance.tier(["hr"], "CNC Machinist", "Fuze HR Solutions") < relevance.RELEVANT  # a word in a name
@@ -75,3 +103,29 @@ def test_only_relevant_results_are_shown_best_first_then_newest():
     assert [j.title for j in kept] == ["HR Generalist", "Human Resources Manager"]
     assert hidden == 2  # the passing mention and the posting without one
     assert relevant_only(newest_first, []) == (newest_first, 0)  # no title typed: everything, newest first
+
+
+@pytest.mark.parametrize("typed, titles", [
+    ("HR and Admin", ["HR", "Admin"]),
+    ("HR & Admin", ["HR", "Admin"]),
+    ("HR&Admin", ["HR", "Admin"]),
+    ("HR / Admin", ["HR", "Admin"]),
+    ("Sales and Marketing Manager", ["Sales Manager", "Marketing Manager"]),  # the job word is shared
+    ("UX/UI Designer", ["UX Designer", "UI Designer"]),
+    ("Health and Safety Officer", ["Health and Safety Officer"]),  # one field
+    ("Research & Development", ["Research & Development"]),
+    ("R&D Engineer", ["R&D Engineer"]),  # initials
+    ("24/7 support", ["24/7 support"]),
+    ("Data Analyst", ["Data Analyst"]),
+])
+def test_two_jobs_in_one_entry_are_two_searches(typed, titles):
+    assert relevance.split_titles(typed) == titles
+
+
+def test_hr_and_admin_finds_both_kinds_of_job():
+    titles = relevance.split_titles("HR and Admin")
+    for title in ("HR Generalist", "Human Resources Advisor", "Administrative Assistant", "Office Administrator",
+                  "Receptionist"):
+        assert relevance.tier(titles, title) >= relevance.RELEVANT, title
+    assert relevance.tier(titles, "Systems Administrator") < relevance.RELEVANT
+    assert relevance.tier(["HR and Admin"], "HR Generalist") < relevance.RELEVANT  # why one entry found nothing

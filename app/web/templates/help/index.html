@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ ("Search help: " ~ q) if q else "Help centre" }} - Hirlumo{% endblock %}
+{% block description %}How to use Hirlumo: searching jobs in Canada, the Canadian resume check, tailored resumes, job alerts, plans and your account. Search the help or ask the assistant.{% endblock %}
+{% block content %}
+<section class="help-hero">
+  <p class="eyebrow">Help centre</p>
+  <h1>How can we help?</h1>
+  <form method="get" action="/help" class="help-search" role="search">
+    <label class="sr-only" for="help-q">Search the help</label>
+    {{ icon("search") }}
+    <input id="help-q" type="search" name="q" value="{{ q }}" placeholder="Try &ldquo;tailor my resume&rdquo; or &ldquo;job alerts by email&rdquo;" maxlength="200" autocomplete="off">
+    <button type="submit" class="primary">Search</button>
+  </form>
+  <p class="help-hero-ask">Prefer to ask? <button type="button" class="link-button" data-help-open>{{ icon("chat") }} Chat with the help assistant</button></p>
+</section>
+
+{% if q %}
+<section class="help-results" aria-labelledby="results-title">
+  <h2 id="results-title">{{ results|length }} result{{ "s" if results|length != 1 }} for &ldquo;{{ q }}&rdquo;</h2>
+  {% for r in results %}
+  <a class="help-result" href="{{ r.section.url }}">
+    <small>{{ r.section.article.title }}</small>
+    <strong>{{ r.section.heading or r.section.article.title }}</strong>
+    <span>{{ r.snippet }}</span>
+  </a>
+  {% else %}
+  <div class="notice">{{ icon("info") }}<div class="alert-body">Nothing in the help matches that. Try other words, browse the topics below, or <a href="/contact">send us a message</a>.</div></div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section aria-labelledby="topics-title">
+  <h2 id="topics-title" class="help-section-title">{{ "All topics" if q else "Browse by topic" }}</h2>
+  <div class="help-topics">
+    {% for a in articles %}
+    <a class="help-topic" href="{{ a.url }}">
+      <strong>{{ a.title }}</strong>
+      <span>{{ a.summary }}</span>
+      <small>{{ a.sections|selectattr("heading")|list|length }} questions</small>
+    </a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="help-popular" aria-labelledby="popular-title">
+  <h2 id="popular-title" class="help-section-title">Popular questions</h2>
+  <div class="chips">{% for s in starters %}<button type="button" class="chip-button" data-help-ask="{{ s }}">{{ s }}</button>{% endfor %}</div>
+</section>
+
+<p class="muted help-foot">Can't find it? <a href="/contact">Contact us</a> and we'll answer by email.</p>
+{% endblock %}

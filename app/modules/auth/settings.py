@@ -12,7 +12,7 @@ class AuthSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     # Where people reach the app, e.g. https://jobs.example.com -- used for links in
-    # emails and as the Google/Facebook redirect address. Must match what you
+    # emails and as the Google/Facebook/LinkedIn redirect address. Must match what you
     # register with them.
     public_url: str = Field(default="http://127.0.0.1:8000", alias="PUBLIC_URL")
     # Comma-separated: these accounts are admins (platform settings, costs, health).
@@ -23,6 +23,8 @@ class AuthSettings(BaseSettings):
     facebook_client_id: str | None = Field(default=None, alias="FACEBOOK_CLIENT_ID")
     facebook_client_secret: str | None = Field(default=None, alias="FACEBOOK_CLIENT_SECRET")
     facebook_graph_version: str = Field(default="v23.0", alias="FACEBOOK_GRAPH_VERSION")
+    linkedin_client_id: str | None = Field(default=None, alias="LINKEDIN_CLIENT_ID")
+    linkedin_client_secret: str | None = Field(default=None, alias="LINKEDIN_CLIENT_SECRET")
 
     # (SMTP settings: app/integrations/email.py, EmailSettings.)
 
@@ -70,6 +72,8 @@ class AuthSettings(BaseSettings):
             return bool(self.google_client_id and self.google_client_secret)
         if provider == "facebook":
             return bool(self.facebook_client_id and self.facebook_client_secret)
+        if provider == "linkedin":
+            return bool(self.linkedin_client_id and self.linkedin_client_secret)
         return False
 
 

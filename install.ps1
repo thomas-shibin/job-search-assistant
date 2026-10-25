@@ -1,4 +1,4 @@
-# Job Assistant installer for Windows.
+# Hirlumo installer for Windows.
 #
 #   Double-click install.cmd, or in PowerShell:
 #   powershell -ExecutionPolicy Bypass -File install.ps1             # Docker Desktop (recommended)
@@ -50,7 +50,7 @@ function Wait-Healthy($url, $seconds) {
 }
 
 $mode = if ($Native) { "native" } else { "Docker" }
-Say "Job Assistant -- installing ($mode)"
+Say "Hirlumo -- installing ($mode)"
 
 # 1. Folders and settings ------------------------------------------------------
 New-Item -ItemType Directory -Force -Path data\resumes, data\applications, config | Out-Null
@@ -145,26 +145,26 @@ else {
     # A start script and a desktop shortcut to it.
     Set-Content -Path start.cmd -Encoding ASCII -Value @"
 @echo off
-rem Starts Job Assistant (dashboard + background job scans). Close this window to stop it.
+rem Starts Hirlumo (dashboard + background job scans). Close this window to stop it.
 cd /d "%~dp0"
 start "" $url
 .venv\Scripts\python.exe cli.py serve --port $Port
 "@
     try {
         $shell = New-Object -ComObject WScript.Shell
-        $link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath("Desktop")) "Job Assistant.lnk"))
+        $link = $shell.CreateShortcut((Join-Path ([Environment]::GetFolderPath("Desktop")) "Hirlumo.lnk"))
         $link.TargetPath = Join-Path $PSScriptRoot "start.cmd"
         $link.WorkingDirectory = $PSScriptRoot
         $link.Save()
-        Ok "Desktop shortcut 'Job Assistant' created"
+        Ok "Desktop shortcut 'Hirlumo' created"
     } catch { Warn "Couldn't create a desktop shortcut; use start.cmd instead." }
 
     Say "Starting"
     Start-Process -FilePath (Join-Path $PSScriptRoot "start.cmd") -WorkingDirectory $PSScriptRoot -WindowStyle Minimized
     if (-not (Wait-Healthy $url 60)) { Fail "The app didn't start -- open start.cmd to see the error." }
     Ok "Running at $url"
-    $startCmd = "double-click 'Job Assistant' on the desktop (or start.cmd)"
-    $stopCmd = "close the Job Assistant window"; $logsCmd = "shown in the Job Assistant window"
+    $startCmd = "double-click 'Hirlumo' on the desktop (or start.cmd)"
+    $stopCmd = "close the Hirlumo window"; $logsCmd = "shown in the Hirlumo window"
     $cli = ".venv\Scripts\python.exe cli.py"
 }
 

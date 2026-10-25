@@ -9,6 +9,7 @@ see `app/modules/matching/pipeline.py`).
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from openai import APIConnectionError, OpenAI, RateLimitError
@@ -86,8 +87,11 @@ Truthfulness rules (a rewrite that breaks one is discarded and the original kept
 - Never add a number, percentage or metric that isn't in that passage ("12+ years" -> "over 12 years" is fine).
 - Only mention technologies, tools, employers, job titles and domains that appear in that passage or in
   candidate_skills. Never give the candidate the posting's job title or a title they don't have.
-- Never add an outcome or benefit the passage doesn't state -- rephrase, don't embellish.
-- Keep each rewrite no longer than its passage (shorter is fine); rewrites over 25% longer are discarded.
+- Never add an outcome or benefit the passage doesn't state -- rephrase, don't embellish. No tacked-on
+  "enhancing ...", "improving ...", "to optimize ...", "for efficient ...", "effectively", "scalable".
+- Never overstate the candidate's part: "helped move" doesn't become "migrated" or "led".
+- Each passage has max_chars: its rewrite MUST be at most that many characters (count them; shorter is fine).
+  The resume's page layout can't grow, so a longer rewrite is discarded. Cut filler words, not facts.
 - Keep the passage's form: a first-person sentence stays first person; a "Label: description" passage keeps
   its label (you may rephrase the description); a fragment stays a fragment.
 
@@ -101,6 +105,35 @@ Respond with ONLY a JSON object: {"passages": [{"id": <int>, "text": <string>, "
 "reason": <string, for low only>}, ...]} with exactly one entry for every passage id given -- never omit, merge or
 invent a passage."""
 
+
+
+_REDO_SYSTEM_PROMPT = """You edit tailored resume lines. You will receive JSON {"passages": [{"id", "draft",
+"max_chars", "remove", "facts_from"}]}. For each, return the DRAFT with the smallest edit that:
+- deletes the claims built on the words listed in "remove" (an outcome or quality the candidate's own line doesn't
+  state, e.g. ", enhancing user experience" or "scalable"), and
+- brings it to at most max_chars characters (count them) by cutting filler words.
+Keep the draft's new wording and sentence structure -- do NOT go back to the facts_from wording. Keep every
+number, technology and name; never add anything. Respond with ONLY a JSON object:
+{"passages": [{"id": <int>, "text": <string>}, ...]} with one entry for every id."""
+
+_OUTCOME_WORDS = re.compile(r"\b(enhanc\w*|improv\w*|optimi[sz]\w*|ensur\w*|driv(?:e|ing)|boost\w*|streamlin\w*|"
+                            r"efficien\w*|effective\w*|seamless\w*|robust|scalab\w*|engagement|impactful)\b", re.I)
+
+
+def _added_outcomes(original: str, rewrite: str) -> list[str]:
+    """Outcome/quality words in the rewrite that the original line doesn't use."""
+    said = {w.lower() for w in _OUTCOME_WORDS.findall(original)}
+    return sorted({w for w in _OUTCOME_WORDS.findall(rewrite) if w.lower() not in said})
+
+
+def _needs_redo(original: str, rewrite: str) -> bool:
+    """Too long for the layout, or claims an outcome/quality the original doesn't."""
+    return len(rewrite) > _max_chars(original) or bool(_added_outcomes(original, rewrite))
+
+
+def _max_chars(text: str) -> int:
+    """The longest rewrite the validator keeps (resumes/validator.py: +25% or +30 characters), less a margin."""
+    return max(int(1.25 * len(text)), len(text) + 30) - 4
 
 _FIT_SYSTEM_PROMPT = """You are an experienced technical recruiter. You will receive JSON with a job posting and a
 candidate's resume (summary, skills, employment history with accomplishments, education, certifications, projects,
@@ -238,7 +271,7 @@ class OpenAIProvider:
             payload = {
                 "job_title": job.title, "job_company": job.company, "job_description": job.description,
                 "job_keywords": job_keywords, "candidate_skills": candidate_skills,
-                "passages": passages[start:start + _PASSAGES_PER_CALL],
+                "passages": [{**p, "max_chars": _max_chars(p["text"])} for p in passages[start:start + _PASSAGES_PER_CALL]],
             }
             response = self._create_completion(
                 model=self._model,
@@ -261,6 +294,27 @@ class OpenAIProvider:
                     reason = str(item.get("reason") or "").strip()
                     rewrites[item["id"]] = {"text": item["text"].strip(),
                                             "drop_reason": (reason or "Not relevant to this job") if low else None}
+        # Rewrites that came back too long, or with an outcome the passage doesn't state, get up to two more
+        # tries: the model often ignores those rules the first time. Whatever still breaks them is rejected later.
+        by_id = {p["id"]: p for p in passages}
+        for _ in range(2):
+            redo = [{"id": i, "draft": r["text"], "max_chars": _max_chars(by_id[i]["text"]),
+                     "remove": _added_outcomes(by_id[i]["text"], r["text"]), "facts_from": by_id[i]["text"]}
+                    for i, r in rewrites.items() if i in by_id and _needs_redo(by_id[i]["text"], r["text"])]
+            if not redo:
+                break
+            response = self._create_completion(
+                model=self._model, temperature=0.3, response_format={"type": "json_object"},
+                messages=[{"role": "system", "content": _REDO_SYSTEM_PROMPT}, {"role": "user", "content": json.dumps({"passages": redo})}])
+            self._record_usage(response)
+            if self.last_usage:
+                tokens_in += self.last_usage.tokens_in or 0
+                tokens_out += self.last_usage.tokens_out or 0
+                cost += self.last_usage.estimated_cost or 0
+            data = json.loads(response.choices[0].message.content or "{}")
+            for item in data.get("passages", []):
+                if isinstance(item, dict) and item.get("id") in rewrites and isinstance(item.get("text"), str):
+                    rewrites[item["id"]]["text"] = item["text"].strip()
         self.last_usage = AIUsage(tokens_in=tokens_in, tokens_out=tokens_out, estimated_cost=round(cost, 6))
         return rewrites
 

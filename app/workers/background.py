@@ -17,6 +17,7 @@ from app.core.config.schema import AppConfig
 from app.core.config.store import load_app_config
 from app.core.database.session import SessionLocal
 from app.core.tenancy import system_session
+from app.modules.backups import service as backups
 from app.modules.jobs.pool import service as pool
 from app.modules.usage import quota
 from app.workers.run import scan_members
@@ -25,6 +26,8 @@ logger = logging.getLogger(__name__)
 
 JOB_ID = "job_search_run"
 POOL_JOB_ID = "job_pool_refresh"
+BACKUP_JOB_ID = "daily_backup"
+_BACKUP_OVERDUE_HOURS = 26  # on start-up, back up soon if the last one is older than this
 _MANUAL_JOB_ID = "job_search_run_now"
 
 # The running scheduler under `serve`, so dashboard routes can reschedule it or
@@ -57,6 +60,34 @@ def _pool_tick() -> None:
             pool.sync_all(SessionLocal, max_age_hours=hours)
     except Exception:
         logger.exception("Job pool refresh failed")
+
+
+def _backup_tick() -> None:
+    """The daily backup (app/modules/backups/service.py); failures are logged and shown on Health."""
+    try:
+        backups.create()
+    except Exception:
+        logger.exception("Daily backup failed")
+
+
+def _backup_overdue() -> bool:
+    last = backups.read_status().get("last_success_at")
+    if not last:
+        return True
+    return (datetime.utcnow() - datetime.fromisoformat(last)).total_seconds() > _BACKUP_OVERDUE_HOURS * 3600
+
+
+def trigger_backup_now() -> bool:
+    """Start a backup in the background. False when no scheduler is running."""
+    if _scheduler is None:
+        return False
+    _scheduler.add_job(_backup_tick, id=BACKUP_JOB_ID + "_now", replace_existing=True, next_run_time=datetime.now())
+    return True
+
+
+def next_backup_time() -> datetime | None:
+    job = _scheduler.get_job(BACKUP_JOB_ID) if _scheduler is not None else None
+    return job.next_run_time if job is not None else None
 
 
 def apply_schedule(config: AppConfig) -> None:
@@ -108,6 +139,13 @@ def start_background_scheduler(config: AppConfig, config_path: Path) -> Backgrou
         _pool_tick, "interval", minutes=30, id=POOL_JOB_ID, max_instances=1, coalesce=True,
         next_run_time=datetime.now() + timedelta(minutes=1),
     )
+    backup = backups.BackupSettings()
+    if backup.enabled:
+        scheduler.add_job(_backup_tick, "cron", hour=backup.hour, minute=0, id=BACKUP_JOB_ID, max_instances=1,
+                          coalesce=True, misfire_grace_time=3600)
+        if _backup_overdue():  # the server was off at backup time, or this is the first start
+            scheduler.add_job(_backup_tick, id=BACKUP_JOB_ID + "_catch_up", max_instances=1,
+                              next_run_time=datetime.now() + timedelta(minutes=10))
     scheduler.start()
     _scheduler, _config_path = scheduler, config_path
     return scheduler

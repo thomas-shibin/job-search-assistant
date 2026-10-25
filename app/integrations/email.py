@@ -23,7 +23,7 @@ from app.core.exceptions import IntegrationError
 
 logger = logging.getLogger(__name__)
 
-APP_NAME = "Job Assistant"
+APP_NAME = "Hirlumo"
 
 
 class EmailSettings(BaseSettings):

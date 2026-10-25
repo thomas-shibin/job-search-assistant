@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon, avatar %}
-{% block title %}Companies hiring in Canada - Job Assistant{% endblock %}
+{% block title %}Companies hiring in Canada - Hirlumo{% endblock %}
+{% block description %}Companies hiring in Canada right now, with open roles taken straight from each company's own career site. See who is hiring and how many jobs each has open.{% endblock %}
 {% block content %}
 <header class="page-header">
   <div>
@@ -15,7 +16,7 @@
 </header>
 <div class="company-grid wide">
   {% for c in companies %}
-  <a class="company-card" href="/jobs?{{ {'q': c.label}|urlencode }}" data-auth-open data-reason="Sign in or create a free account to see jobs at {{ c.label }}.">
+  <a class="company-card" href="/jobs?{{ {'q': c.label}|urlencode }}">
     {{ avatar(c.label, "lg") }}
     <strong>{{ c.label }}</strong>
     <small>{{ c.canada_count }} open role{{ "s" if c.canada_count != 1 }} in Canada</small>

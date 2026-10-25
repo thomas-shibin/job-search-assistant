@@ -1,6 +1,6 @@
 # Install playbook — Windows and Linux
 
-How to put Job Assistant on another computer. Each person gets their own copy with
+How to put Hirlumo on another computer. Each person gets their own copy with
 their own resume, settings and API keys — nothing of yours is shared.
 
 **Quick version:** copy the app folder over, then run the installer —
@@ -16,18 +16,18 @@ Pick one:
 **A. A zip from your computer (simplest).** In the project folder on *your* machine:
 
 ```bash
-python scripts/package.py          # -> dist/job-assistant-YYYYMMDD.zip
+python scripts/package.py          # -> dist/hirlumo-YYYYMMDD.zip
 ```
 
 It contains only the app — never your `.env` (keys), settings, database or resumes, and
 it refuses to build if one of your keys would be included. Copy the zip over (USB,
-email, cloud drive) and unzip it somewhere permanent, e.g. `C:\job-assistant` or
-`~/job-assistant`.
+email, cloud drive) and unzip it somewhere permanent, e.g. `C:\hirlumo` or
+`~/hirlumo`.
 
 **B. Docker only, no source code (smallest).** Push the image to Docker Hub, then:
 
 ```bash
-python scripts/package.py --image thomasshibin90/jobfinderapp:0.1   # -> dist/job-assistant-docker-YYYYMMDD.zip
+python scripts/package.py --image thomasshibin90/hirlumo:0.1   # -> dist/hirlumo-docker-YYYYMMDD.zip
 ```
 
 A ~10 KB zip: installers, `docker-compose.yml`, `.env.example` with `APP_IMAGE` set and a
@@ -37,7 +37,7 @@ To update later, change `APP_IMAGE` in `.env` to the new tag and run the install
 **C. From GitHub** (once your latest changes are pushed):
 
 ```bash
-git clone https://github.com/thomas-shibin/job-search-assistant.git job-assistant
+git clone https://github.com/thomas-shibin/job-search-assistant.git hirlumo
 ```
 
 ## 2. Choose how it runs
@@ -66,7 +66,7 @@ Restart Windows, open **Docker Desktop** once and wait until it says it's runnin
 Install the app — double-click **`install.cmd`** in the app folder, or in PowerShell:
 
 ```powershell
-cd C:\job-assistant
+cd C:\hirlumo
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
@@ -82,18 +82,18 @@ winget install -e --id TheDocumentFoundation.LibreOffice    # optional: PDF resu
 Open a **new** PowerShell window (so Python is on PATH), then:
 
 ```powershell
-cd C:\job-assistant
+cd C:\hirlumo
 powershell -ExecutionPolicy Bypass -File install.ps1 -Native
 ```
 
 It creates a virtual environment, installs the packages, sets up the database, adds a
-**Job Assistant** shortcut to the desktop and starts the app. Keep that window open
+**Hirlumo** shortcut to the desktop and starts the app. Keep that window open
 while using the app (minimise it); close it to stop.
 
 <details><summary>Manual native steps (if the script can't run)</summary>
 
 ```powershell
-cd C:\job-assistant
+cd C:\hirlumo
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -e .
 copy .env.example .env          # then open .env in Notepad and add your keys
@@ -119,7 +119,7 @@ sudo usermod -aG docker $USER      # then log out and back in
 Install the app:
 
 ```bash
-cd ~/job-assistant
+cd ~/hirlumo
 ./install.sh                       # options: --port 8080, --no-prompt
 ```
 
@@ -128,7 +128,7 @@ cd ~/job-assistant
 ```bash
 sudo apt install -y python3 python3-venv python3-pip
 sudo apt install -y libreoffice-writer libnotify-bin   # optional: PDF resumes, desktop notifications
-cd ~/job-assistant
+cd ~/hirlumo
 ./install.sh --native
 ```
 
@@ -137,7 +137,7 @@ The app runs in the background (log: `data/server.log`); `./start.sh` starts it 
 <details><summary>Manual native steps (if the script can't run)</summary>
 
 ```bash
-cd ~/job-assistant
+cd ~/hirlumo
 python3 -m venv .venv
 .venv/bin/pip install -e .
 cp .env.example .env               # then add your keys: nano .env
@@ -187,7 +187,7 @@ After editing `.env`, restart the app (below) so it picks the keys up.
 | | Docker (in the app folder) | Native |
 |---|---|---|
 | Open | http://127.0.0.1:8000 | same |
-| Start | `docker compose up -d` (also starts by itself with the computer) | Windows: **Job Assistant** desktop shortcut · Linux: `./start.sh` |
+| Start | `docker compose up -d` (also starts by itself with the computer) | Windows: **Hirlumo** desktop shortcut · Linux: `./start.sh` |
 | Stop | `docker compose down` | Windows: close its window · Linux: `pkill -f "cli.py serve"` |
 | Restart (after editing `.env`) | `docker compose up -d --force-recreate` | stop, then start |
 | Logs | `docker compose logs -f app` | Windows: its window · Linux: `tail -f data/server.log` |
@@ -196,21 +196,21 @@ After editing `.env`, restart the app (below) so it picks the keys up.
 All commands: see "Command reference" in [README.md](README.md).
 
 **Start automatically (native only).** Windows: press `Win+R`, type `shell:startup`,
-copy the **Job Assistant** desktop shortcut into that folder. Linux (systemd):
+copy the **Hirlumo** desktop shortcut into that folder. Linux (systemd):
 
 ```bash
 mkdir -p ~/.config/systemd/user
-cat > ~/.config/systemd/user/job-assistant.service <<EOF
+cat > ~/.config/systemd/user/hirlumo.service <<EOF
 [Unit]
-Description=Job Assistant
+Description=Hirlumo
 [Service]
-WorkingDirectory=$HOME/job-assistant
-ExecStart=$HOME/job-assistant/start.sh
+WorkingDirectory=$HOME/hirlumo
+ExecStart=$HOME/hirlumo/start.sh
 Restart=on-failure
 [Install]
 WantedBy=default.target
 EOF
-systemctl --user enable --now job-assistant
+systemctl --user enable --now hirlumo
 ```
 
 ---
@@ -236,17 +236,43 @@ config/          # starting settings
 
 To restore: install the app as above, stop it, copy them back into the app folder, start it.
 
+### On a server: keep the data outside the app folder (Docker, Linux)
+
+If you update by copying a new version into the folder, a stray `data/` or `config/` in the
+copy could replace the live ones. Move them out, once, from the app folder:
+
+```bash
+sudo ./scripts/move-data.sh            # or: sudo ./scripts/move-data.sh /some/other/place
+```
+
+It stops the app, copies `data/` and `config/` to `/srv/hirlumo`, checks the database copy,
+and makes them owned by a new `hirlumo` account (id 1990) that can't log in, readable by
+nobody else (folders `700`, files `600`). It sets `HIRLUMO_DATA_DIR`, `HIRLUMO_CONFIG_DIR`
+and `APP_UID`/`APP_GID` in `.env.prod`, starts the app as that account and waits until it's
+healthy. The old folders are renamed `data.moved-<date>` and `config.moved-<date>`, never
+deleted; remove them once the site is confirmed working.
+
+From then on the app folder holds only code and `.env.prod`, so copying a new version in
+can't touch members' data. If the data folder is ever missing (a typo in `.env.prod`, or
+`.env.prod` replaced by one without those lines), the app **refuses to start** rather than
+starting on an empty database. To look at the files: `sudo ls /srv/hirlumo/data`.
+
+To send a new version from your computer, `./scripts/deploy.sh` runs the tests, copies only
+the code and build files (never `data/`, `config/` or `.env*`), rebuilds and restarts the
+app on the server, and waits until it's healthy. The server is `DEPLOY_TARGET`
+(`user@host:folder`); `--copy-only` just copies.
+
 ## 9. Uninstall
 
 ```bash
 # Docker: in the app folder
 docker compose down
-docker image rm job-search-assistant
+docker image rm hirlumo
 ```
 
 Then delete the app folder (after backing up `data/` if you want to keep anything). For a
 native Windows install also delete the desktop shortcut; on Linux,
-`systemctl --user disable --now job-assistant` if you set that up.
+`systemctl --user disable --now hirlumo` if you set that up.
 
 ---
 

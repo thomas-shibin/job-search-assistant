@@ -36,16 +36,19 @@ services. There is no separate repository layer, because the tenant-scoped sessi
 
 | Module | Responsibility |
 |---|---|
-| `auth` | Accounts, sign-up/sign-in by email code or password, Google sign-in, sessions, password reset, account deletion; the route guards (`deps.py`) every member route uses |
+| `auth` | Accounts, sign-up/sign-in by email code or password, Google, Facebook and LinkedIn sign-in, sessions, password reset, account deletion; the route guards (`deps.py`) every member route uses |
 | `access` | Roles, permissions and which route needs which (`rbac.py`); feature switches; escalation rules and the audit log (`service.py`); admin pages and `/api/admin` |
 | `jobs` | Job search across the job board and the company-careers job pool, showing only postings whose title matches the typed title, best match first (`relevance.py`: whole words, synonyms such as HR = Human Resources; a job that only mentions the term in its description is left out); smart search, which reads a typed sentence into titles, places and filters and fixes spelling (`query.py` rules, `interpret.py` asking the AI provider only when the rules can't); radius search ("within 25 km of Victoria", `places.py`: distances between Canadian towns from a bundled GeoNames list, the job board's own `distance` for its results); postings and filters, saved jobs, the search-term catalog, ingestion of postings into a user's jobs |
 | `applications` | Tracked jobs: the list, a job's page, the status workflow (`state_machine.py`), application files, retention |
 | `matching` | Keyword scoring, AI requirement extraction and fit assessment, the analyze/tailor workflows |
-| `resumes` | Resume import and editing, the Canadian resume check and converter, tailoring with a truthfulness check, DOCX/PDF output, Quick Tailor |
+| `resumes` | Resume import and editing; versions (`versions.py`: compare any two, go back to any); the Canadian check (`canadian.py`) and ATS readability check (`ats.py`), each finding backed by a source (`check_sources.py`); the converter (`canadian_convert.py`), which makes only the changes the member picks, inside their own Word file (`documents/docx_edit.py` for wording, `documents/docx_layout.py` for tables, text boxes, columns and header contact details); the free public check (`public_check.py`: no account, file held in memory 30 minutes); tailoring with a truthfulness check; DOCX/PDF output; Quick Tailor |
 | `profiles` | Job seeker profile (experience, education, preferences) and the personal Settings page |
 | `alerts` | Watches, alert matching, and sending by email (`email_alerts.py`: after every scan, or a daily or weekly summary, with one-click unsubscribe) and Telegram; Telegram chat linking and bot commands |
-| `usage` | Activity log, hourly limits on searches and AI actions, AI call costs |
-| `admin` | Activity and usage dashboards, per-user limits and suspension, job sources, platform settings, health |
+| `usage` | Activity log, hourly limits on searches and AI actions, AI call costs; the free plan's lifetime allowance per person and the hashed marks that link one person's accounts (`free_plan.py`); the plans shown on `/plans` (`plans.py`) |
+| `help` | The help knowledge base (`articles/*.md`), its Markdown rendering and live numbers (`knowledge.py`), the question matching behind the Help centre search and the chat assistant (`nlp.py`), and the anonymous log of questions asked |
+| `feedback` | The review card (asked once after a few minutes of use; later / never), Contact us messages (kept and emailed to the team with the member as Reply-To), and the admin Feedback & messages page |
+| `admin` | Activity and usage dashboards, per-user limits and suspension, duplicate accounts, job sources, platform settings, health |
+| `backups` | Nightly backups of the database and members' files: consistent SQLite copy, encrypted (`crypto.py`) before it's copied to an S3-compatible bucket (`integrations/object_storage.py`), 7 daily / 4 weekly / 6 monthly kept, restore into a new folder only ([BACKUPS.md](BACKUPS.md)) |
 
 ## Dependency direction
 
@@ -106,11 +109,13 @@ permissions, so granting the admin role tightens an open session at once.
 | Integration | Where | Notes |
 |---|---|---|
 | Adzuna job search | `integrations/job_boards/adzuna.py` | Key-authenticated; descriptions are previews (about 500 characters), so the job pool supplies full text when it has the job |
-| Greenhouse, Lever, Ashby | `integrations/job_boards/*.py` | Public careers-site feeds, read into the shared job pool (`modules/jobs/pool`) |
+| Jooble job search | `integrations/job_boards/jooble.py` | Partner key; the second board, asked only when Adzuna can't answer (not set up, members' daily share used, or every query failed, which skips Adzuna for 10 minutes). Short previews; nothing stored |
+| Greenhouse, Lever, Ashby, SmartRecruiters, Workable | `integrations/job_boards/*.py` | Public careers-site feeds, read into the shared job pool (`modules/jobs/pool`). SmartRecruiters reads only Canadian postings and fetches each description once. `pool/suggested.py` lists checked non-tech Canadian employers to add from Job sources |
 | AI provider | `integrations/ai/` | `AIProvider` interface; OpenAI or a free deterministic mock; every call logged with cost (`usage/ai_calls.py`) |
 | Email | `integrations/email.py` | SMTP, plain text plus optional HTML; without `SMTP_HOST`, messages are saved to `MAIL_OUTBOX_DIR`. Message texts live with their feature (`auth/emails.py`, `alerts/email_alerts.py`) |
 | Telegram | `integrations/telegram.py` | Bot API client; linking and commands are in `modules/alerts` |
-| LibreOffice | `integrations/libreoffice.py` | DOCX -> PDF; failure degrades to DOCX only |
+| LibreOffice | `integrations/libreoffice.py` | DOCX -> PDF with its own settings folder in the temp folder (so it runs as a user with no account entry, as in Docker); failure degrades to DOCX only |
+| Object storage | `integrations/object_storage.py` | Any S3-compatible bucket (Cloudflare R2, Backblaze B2, AWS S3) for backups; only encrypted files are uploaded |
 
 Bundled data: `app/modules/jobs/data/ca_places.tsv` lists Canadian towns and cities of
 500+ people with their coordinates, from GeoNames (CC BY 4.0, credited on the Terms page).
@@ -133,6 +138,8 @@ or the Docker container):
   in the background.
 - **Clean-up**: expired sessions, tokens and email codes, old activity, and job
   retention run after each scan.
+- **Backups** (`modules/backups`): every night at `BACKUP_HOUR`, and 10 minutes after
+  start-up if the last one is over 26 hours old; also on demand from Admin → Health.
 
 There is no task queue. Work that a user waits for (analysis, tailoring) runs in the
 request, behind hourly limits.
@@ -150,15 +157,53 @@ request, behind hourly limits.
 | Truthfulness validation | Yes; a bullet that invents numbers or cites nothing falls back to the original text | |
 | DOCX/PDF generation, address swap | Yes | |
 | Canadian resume check (photo, personal details, dates, spelling, length...) and its fixes | Yes; `resumes/canadian.py`, fixes written into the member's own Word file | |
+| Choosing changes one by one (each line, table or text box), by fix or by resume section | Yes; `canadian.changes` and `documents/docx_layout.preview` list them, `plan(only=...)` and `docx_layout.fix(only=...)` make only those. A PDF's fixes apply whole (the standard layout is rebuilt from content) | |
+| ATS layout fixes: tables, text boxes, columns, header-only contact details | Yes; `resumes/documents/docx_layout.py`, inside the member's Word file | |
+| Resume versions: compare any two, download any, go back to any | Yes; `resumes/versions.py`. Going back makes a version active again; nothing is deleted or renumbered, and new versions are numbered after the highest | |
 | Canadian equivalents of job titles | | Optional, one call per request; added in brackets after the original title, never more senior |
 
 ## Job source policy
 
-Only public, documented APIs are automated: Adzuna, and the careers-site feeds
-companies publish through Greenhouse, Lever and Ashby. Users can also paste any
+Only public, documented APIs are automated: Adzuna, Jooble, and the careers-site feeds
+companies publish through Greenhouse, Lever, Ashby, SmartRecruiters and Workable.
+Job-board results (Adzuna, Jooble) are shown live and cached for an hour at most,
+never copied into the job pool: Adzuna's terms need a licence for commercial use
+and stored or aggregated data, and Jooble's terms come with its key.
+
+Every source follows the same two rules (`modules/jobs/dedupe.py`):
+
+- **Current only.** Job-board ads older than `platform.board_max_job_age_days`
+  (30) are never asked for or shown; boards don't take an ad down when the job is
+  filled. Company-feed jobs older than `platform.pool_max_job_age_days` (60) are
+  hidden, a job a feed stops listing is deleted at its next refresh, and if a feed
+  can't be read for two refreshes (at least a day) its jobs are hidden until it
+  can. Greenhouse jobs are dated by `first_published`, not `updated_at`. A hidden
+  job's page says it's no longer available.
+- **Each job once.** The same company, title and city is one job, whichever
+  source lists it; the company's own feed is kept first, then Adzuna, then Jooble.
+  A posting's own location outranks its company's office list when they disagree. Users can also paste any
 posting themselves. LinkedIn and Indeed are never scraped or scripted; they appear
 only as links the user opens. A compliant future path for LinkedIn jobs is parsing the
 user's own job-alert emails.
+
+## Deployment and where data lives
+
+Production is one Docker container (`docker-compose.yml`) on a home server, reached
+through Cloudflare Tunnel. The container runs as an unprivileged user with no Linux
+capabilities and a read-only filesystem; it can write only to the data and settings
+folders and an in-memory `/tmp`.
+
+- **Data outside the code.** The host folders mounted at `/app/data` and `/app/config`
+  are `HIRLUMO_DATA_DIR` and `HIRLUMO_CONFIG_DIR` (default `./data`, `./config`).
+  `scripts/move-data.sh` moves them to `/srv/hirlumo`, owned by a `hirlumo` account
+  (id 1990) that can't log in, readable by nobody else. The mounts are made with
+  `create_host_path: false`, so a missing folder stops the start instead of starting
+  on an empty database.
+- **Deploying.** `scripts/deploy.sh`, run on the developer's computer, runs the tests,
+  copies an explicit list of code and build files (never data, settings or `.env*`),
+  rebuilds on the server and waits for the health check.
+- **Backups** are described in [BACKUPS.md](BACKUPS.md). Removing the container or image
+  never touches the data: it's a host folder.
 
 ## Future scalability
 
@@ -167,9 +212,14 @@ In order of likely need:
 1. **PostgreSQL** when concurrent writes grow: change `DATABASE_URL` and copy the data.
    Migrations and the ORM are already database-neutral.
 2. **Shared state for multiple processes.** Rate limits, the search cache, remembered
-   search results and per-user quota locks are in-process memory today (in
-   `jobs/search.py`, `jobs/postings.py`, `usage/quota.py` and `auth/ratelimit.py`).
-   Running several app processes needs these moved to the database or a cache first.
+   search results, per-user quota locks, the job-board budget cache and the free
+   check's held files are in-process memory today (in `jobs/search.py`,
+   `jobs/postings.py`, `jobs/service.py`, `usage/quota.py`, `auth/ratelimit.py` and
+   `resumes/public_check.py`). Running several app processes needs these moved to the
+   database, disk or a cache first. The held files come first: memory is capped at 200
+   files or 150 MB, so under load they're dropped before a visitor signs up, and a
+   restart loses them. The plan is encrypted files on disk with a 30-minute lifetime,
+   plus a limit on checks running at once.
 3. **Separate worker process.** The scheduler can run as its own container (it only
    needs the database) once scans compete with web requests for CPU.
 4. **Splitting a module out.** Each module's routes, services and models are already

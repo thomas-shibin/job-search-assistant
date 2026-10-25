@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}My resume - Job Assistant{% endblock %}
+{% block title %}My resume - Hirlumo{% endblock %}
 {% block crumb %}My resume{% endblock %}
 {% block content %}
 <header class="page-header">
@@ -119,10 +119,25 @@
 
     {% if versions | length > 1 %}
     <section class="panel">
-      <div class="panel-head" style="margin-bottom: 0.25rem"><div><h2>History</h2></div></div>
-      <ul class="facts">
+      <div class="panel-head" style="margin-bottom: 0.25rem"><div>
+        <h2>History</h2>
+        <p class="muted">Every change is kept. Compare any version with the one before it, or go back to it.</p>
+      </div></div>
+      <ul class="version-list">
         {% for v in versions %}
-        <li><span>Version {{ v.version }}{% if v.is_active %} <span class="status-badge ok">in use</span>{% endif %}</span><span>{{ v.parsed_at.strftime("%b %d, %Y") }}</span></li>
+        <li>
+          <div><strong>Version {{ v.version }}</strong>{% if v.is_active %} <span class="status-badge ok">in use</span>{% endif %}
+            <span class="muted">{{ v.parsed_at.strftime("%b %d, %Y") }}</span></div>
+          <div class="version-actions">
+            {% if not loop.last %}<a href="/resume/compare?to={{ v.version }}&from={{ versions[loop.index].version }}">Compare</a>{% endif %}
+            <a href="/resume/versions/{{ v.version }}/file" hx-boost="false" download>Download</a>
+            {% if not v.is_active %}
+            <form method="post" action="/resume/versions/{{ v.version }}/use" hx-boost="false">
+              <button type="submit" class="link-button">Use this version</button>
+            </form>
+            {% endif %}
+          </div>
+        </li>
         {% endfor %}
       </ul>
     </section>

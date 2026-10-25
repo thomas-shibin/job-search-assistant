@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Duplicate accounts - Admin - Hirlumo{% endblock %}
+{% macro who(user, account) -%}
+{%- if user %}<a href="/admin/users/{{ user.id }}">{{ user.full_name or "—" }}</a><small class="muted">{{ user.email }}</small>
+{%- else %}<span class="muted">Deleted account</span><small class="muted">deleted {{ account.deleted_at.strftime("%Y-%m-%d") if account.deleted_at else "" }}</small>{% endif %}
+<small class="muted">{{ account.searches_used }} job-board search{{ "es" if account.searches_used != 1 }}, {{ account.ai_used }} resume action{{ "s" if account.ai_used != 1 }} used</small>
+{%- endmacro %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Free plan</p>
+    <h1>Duplicate accounts</h1>
+    <p class="lead">Accounts that look like the same person. A shared email address, phone number or resume links them at once, and they share one free allowance. A name alone only flags them here, because many people share a name.</p>
+  </div>
+</header>
+{% if message %}<div class="flash" role="status">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
+
+<nav class="tabs dup-tabs" aria-label="Which links">
+  {% for key, label in [("review", "To review"), ("shared", "Sharing an allowance"), ("dismissed", "Different people")] %}
+  <a href="/admin/duplicates?show={{ key }}" class="{{ 'active' if show == key }}"{% if show == key %} aria-current="page"{% endif %}>{{ label }} <span class="chip">{{ counts[key] }}</span></a>
+  {% endfor %}
+</nav>
+
+<div class="table-wrap">
+  <table class="job-table">
+    <thead><tr><th>Account</th><th>Looks like</th><th>Why</th><th>Found</th>{% if can("users.update") %}<th>Decision</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for f in flags %}
+      <tr>
+        <td class="dup-who">{{ who(f.user_a, f.a) }}</td>
+        <td class="dup-who">{{ who(f.user_b, f.b) }}</td>
+        <td>{% for r in f.reasons %}<span class="chip">{{ r }}</span> {% endfor %}</td>
+        <td class="nowrap">{{ f.link.created_at.strftime("%Y-%m-%d") }}</td>
+        {% if can("users.update") %}
+        <td>
+          <form method="post" action="/admin/duplicates/{{ f.link.id }}" class="dup-actions">
+            <input type="hidden" name="next" value="/admin/duplicates?show={{ show }}">
+            {% if f.link.status not in ("shared", "confirmed") %}<button type="submit" name="decision" value="same" class="small primary">Same person</button>{% endif %}
+            {% if f.link.status != "dismissed" %}<button type="submit" name="decision" value="different" class="small">Different people</button>{% endif %}
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="empty">Nothing here.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="muted">Only one-way codes are compared: Hirlumo can tell that two accounts share a phone number, not what the number is.</p>
+{% endblock %}

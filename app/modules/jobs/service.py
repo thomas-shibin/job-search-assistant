@@ -10,28 +10,34 @@ modules. Nothing here knows about HTTP.
 from __future__ import annotations
 
 import logging
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.config.schema import GlobalSearchConfig
+from app.core.tenancy import system_session
 from app.integrations.job_boards.adzuna import AdzunaSource
 from app.integrations.job_boards.base import RawJob
-from app.integrations.job_boards.settings import AdzunaSettings
+from app.integrations.job_boards.jooble import JoobleSource
+from app.integrations.job_boards.settings import AdzunaSettings, JoobleSettings
 from app.modules.applications.service import latest_match_analysis
 from app.modules.auth.models import User
-from app.modules.jobs import places, postings, relevance
+from app.modules.jobs import dedupe, places, postings, relevance
 from app.modules.jobs.catalog.store import location_paths
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
 from app.modules.jobs.models import Job, SavedJob
 from app.modules.jobs.pool import service as pool
 from app.modules.jobs.pool.models import PoolJob
 from app.modules.jobs.ranking import best_match_first
-from app.modules.jobs.search import query_pairs, search_jobs
+from app.modules.jobs.search import SCHEDULED_SHARE_OF_DAILY_LIMIT, query_pairs, search_jobs
 from app.modules.matching.fit import latest_assessment
-from app.modules.usage import quota
+from app.modules.usage import free_plan, quota
 from app.modules.usage.models import ActivityEvent, ActivityKind
 from app.shared.terms import split_places, split_terms
 
@@ -42,6 +48,104 @@ POOL_PER_PAGE = 20
 # The longest the Jobs page waits on the job board; queries still running then
 # count as failed, and the page shows what came back (plus the job pool).
 PAGE_SEARCH_DEADLINE_SECONDS = 10.0
+# When every Adzuna query fails (its rate or daily limit, or an outage), searches
+# skip it for this long and ask the second board (Jooble) instead.
+BOARD_PAUSE_SECONDS = 10 * 60
+JOOBLE_MAX_QUERIES = 3  # title x location pairs asked of the second board, per page
+_COUNTRY_NAMES = {"ca": "Canada", "us": "USA", "gb": "UK"}
+_board_paused_until = 0.0
+_board_lock = threading.Lock()
+_BUDGET_CHECK_SECONDS = 60  # how long one count of today's listing requests is reused
+_budget_cache: dict[str, float] = {"at": -1e9, "used": 0.0}
+
+
+def _board_paused() -> bool:
+    return time.monotonic() < _board_paused_until
+
+
+def _pause_board() -> None:
+    global _board_paused_until
+    with _board_lock:
+        _board_paused_until = time.monotonic() + BOARD_PAUSE_SECONDS
+    logger.warning("Job board unavailable: using the second board for %d minutes", BOARD_PAUSE_SECONDS // 60)
+
+
+def reset_board_pause() -> None:
+    global _board_paused_until
+    with _board_lock:
+        _board_paused_until = 0.0
+        _budget_cache.update(at=-1e9, used=0.0)
+
+
+def board_budget(session: Session) -> tuple[int, int]:
+    """(listing requests members' searches made today, UTC; how many they may
+    make): the platform's daily limit less the share scheduled scans keep
+    (search.SCHEDULED_SHARE_OF_DAILY_LIMIT). Past it, searches use the second
+    board and the job pool, so the board's own daily limit is never reached."""
+    limit = quota.platform_limits(session).job_search_daily_limit
+    allowed = limit - int(limit * SCHEDULED_SHARE_OF_DAILY_LIMIT)
+    now = time.monotonic()
+    with _board_lock:
+        fresh = now - _budget_cache["at"] < _BUDGET_CHECK_SECONDS
+        used = int(_budget_cache["used"])
+    if not fresh:
+        midnight = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+        bind = session.get_bind()
+        with system_session(lambda: Session(bind=bind)) as everyone:  # every member's searches
+            used = int(everyone.query(func.coalesce(func.sum(ActivityEvent.provider_calls), 0)).filter(
+                ActivityEvent.created_at >= midnight).scalar() or 0)
+        with _board_lock:
+            _budget_cache.update(at=now, used=float(used))
+    return used, allowed
+
+
+def board_status(session: Session) -> dict:
+    """For Platform -> Job sources: the job boards members' searches use."""
+    used, allowed = board_budget(session)
+    with _board_lock:
+        paused = max(0, int(_board_paused_until - time.monotonic()))
+    first = AdzunaSettings()
+    return {"configured": bool(first.app_id and first.app_key), "used": used, "allowed": allowed,
+            "paused_minutes": (paused + 59) // 60, "second_configured": bool(JoobleSettings().api_key)}
+
+
+def _count_board_requests(requests: int) -> None:
+    """Requests this process just made, until the next count from the database."""
+    with _board_lock:
+        _budget_cache["used"] += requests
+
+
+def _second_board_search(titles: list[str], locations: list[str], keywords: list[str], country: str,
+                         page: int, max_age_days: int | None = None) -> tuple[list[RawJob], bool] | None:
+    """The second job board (Jooble) for the same search, or None when it isn't
+    set up or every query failed. Returns (postings, more pages?)."""
+    settings = JoobleSettings()
+    if not settings.api_key:
+        return None
+    source = JoobleSource(settings.api_key, settings.url)
+    pairs = query_pairs(titles, locations)[:JOOBLE_MAX_QUERIES]
+
+    def run(pair: tuple[str | None, str | None]) -> tuple[list[RawJob], int]:
+        title, location = pair
+        words = " ".join(w for w in [title or "", *keywords] if w)
+        return source.search(words, location or _COUNTRY_NAMES.get(country.lower()), page=page)
+
+    jobs: list[RawJob] = []
+    more = False
+    failed = 0
+    with ThreadPoolExecutor(max_workers=len(pairs)) as workers:
+        for future in [workers.submit(run, pair) for pair in pairs]:
+            try:
+                found, total = future.result()
+            except Exception as exc:
+                failed += 1
+                logger.warning("Second job board search failed: %s", exc)
+                continue
+            jobs += [job for job in found if not dedupe.too_old(job, max_age_days)]
+            more = more or page * max(len(found), 1) < total
+    if failed == len(pairs):
+        return None
+    return dedupe.unique(jobs), more
 
 
 def tracked_by_external_id(session: Session, external_ids: list[str]) -> dict[str, dict]:
@@ -50,7 +154,7 @@ def tracked_by_external_id(session: Session, external_ids: list[str]) -> dict[st
         return {}
     rows = (
         session.query(Job.external_id, Job.id)
-        .filter(Job.source.in_(("adzuna",) + pool.PROVIDERS), Job.external_id.in_(external_ids))
+        .filter(Job.source.in_(("adzuna", "jooble") + pool.PROVIDERS), Job.external_id.in_(external_ids))
         .all()
     )
     tracked = {}
@@ -66,7 +170,7 @@ def tracked_by_external_id(session: Session, external_ids: list[str]) -> dict[st
 
 def search_for_page(
     session: Session, *, titles: list[str], locations: list[str], keywords: list[str], country: str, page: int,
-    radius_km: int | None = None,
+    radius_km: int | None = None, job_board: bool = True,
 ) -> dict:
     """One page of results: the live job-board search across every title x
     location (app/modules/jobs/search.py) merged with the free job pool of
@@ -77,6 +181,8 @@ def search_for_page(
     the user analyzes or tracks it. An empty page past the last real results
     is the "no more results" signal. With `radius_km`, each place that is a town
     or city covers everything within that distance (app/modules/jobs/places.py).
+    `job_board=False` (signed-out visitors): the job pool only, and nothing is
+    looked up in anyone's tracked jobs.
 
     Returns:
         ``{"error", "cards", "page", "has_next", "failed", "queries", "requests",
@@ -91,9 +197,18 @@ def search_for_page(
 
     board_jobs: list[RawJob] = []
     board_error = None
+    platform = quota.platform_limits(session)
+    board_down = False  # every query failed: the page says the board isn't responding
     settings = AdzunaSettings()
-    if not (settings.app_id and settings.app_key):
+    if not job_board:
+        result["queries"] = 0
+    elif not (settings.app_id and settings.app_key):
         logger.error("Job search is not configured (listings provider keys missing)")
+        board_error = "Job search is temporarily unavailable. Please try again later."
+    elif _board_paused():
+        board_error = "Job search is temporarily unavailable. Please try again shortly."
+    elif (budget := board_budget(session))[0] >= budget[1]:
+        logger.info("Job board: members' share of today's listing requests is used up; using the other sources")
         board_error = "Job search is temporarily unavailable. Please try again later."
     else:
         source = AdzunaSource(app_id=settings.app_id, app_key=settings.app_key, country=country, interactive=True)
@@ -101,17 +216,29 @@ def search_for_page(
         try:
             found = search_jobs(source, titles, locations, page=page, per_page=per_query,
                                 keywords=keywords, areas=location_paths(session), radius_km=radius_km,
-                                deadline_seconds=PAGE_SEARCH_DEADLINE_SECONDS)
+                                deadline_seconds=PAGE_SEARCH_DEADLINE_SECONDS,
+                                max_age_days=platform.board_max_job_age_days)
         except Exception:
             logger.exception("Job search failed")
             board_error = "Job search is temporarily unavailable. Please try again shortly."
         else:
+            if found.failed_queries and len(found.failed_queries) >= result["queries"] and not found.jobs:
+                _pause_board()
+                board_down = True
             board_jobs = found.jobs
             # The board returns its best matches first: once a page has nothing
             # relevant, later pages won't either.
             has_more = found.has_next and (not titles or any(
                 relevance.tier(titles, j.title, j.company) >= relevance.RELEVANT for j in board_jobs))
             result.update(has_next=has_more, failed=found.failed_queries, requests=found.requests)
+            _count_board_requests(found.requests)
+
+    if (board_error or board_down) and job_board:  # the second board stands in
+        second = _second_board_search(titles, locations, keywords, country, page, platform.board_max_job_age_days)
+        if second is not None:
+            board_jobs, more = second
+            board_error = None
+            result.update(has_next=more, failed=[])  # `requests` counts the first board's only
 
     try:
         pooled = pool.search_pool(session, titles, locations, keywords, country, page=page, per_page=POOL_PER_PAGE,
@@ -124,7 +251,7 @@ def search_for_page(
         return result
 
     jobs, result["hidden"] = relevant_only(_merge_results(pooled.jobs, board_jobs), titles)
-    tracked = tracked_by_external_id(session, [j.external_id for j in jobs if j.external_id])
+    tracked = tracked_by_external_id(session, [j.external_id for j in jobs if j.external_id]) if job_board else {}
     cards = [{"raw": j, "tracked": tracked.get(j.external_id)} for j in jobs]
     result["cards"] = best_match_first(cards, lambda card: card["tracked"])
     result["has_next"] = result["has_next"] or pooled.has_next
@@ -139,12 +266,10 @@ def _posted_at(job: RawJob) -> float:
 
 
 def _merge_results(pool_jobs: list[RawJob], board_jobs: list[RawJob]) -> list[RawJob]:
-    """Both lists, newest first; a board posting the pool also has (same company
-    and title) is dropped -- the pool's copy has the full description."""
-    in_pool = {(pool.normalize(j.company, company=True), pool.normalize(j.title)) for j in pool_jobs}
-    merged = list(pool_jobs) + [j for j in board_jobs
-                                if (pool.normalize(j.company, company=True), pool.normalize(j.title)) not in in_pool]
-    return sorted(merged, key=_posted_at, reverse=True)
+    """Both lists, newest first, each job once (app/modules/jobs/dedupe.py): a
+    board ad the pool also has (same company, title and city) is dropped -- the
+    company's own feed has the full description and still lists the job."""
+    return sorted(dedupe.unique([*pool_jobs, *board_jobs]), key=_posted_at, reverse=True)
 
 
 def relevant_only(jobs: list[RawJob], titles: list[str]) -> tuple[list[RawJob], int]:
@@ -201,16 +326,43 @@ def limited_search(session: Session, user: User, titles: list[str], locations: l
         current = exc.allowance or quota.allowance(session, user, quota.SEARCH, platform)
         return {"error": str(exc), "limited": True, "cards": [], "page": page, "has_next": False, "failed": [],
                 "queries": 0, "allowance": current, "last_search": _last_search(session, user, fingerprint)}
+    # The free plan's job-board searches: a new search past them shows company
+    # careers-site jobs only. (More pages of a search already counted still reach the boards.)
+    boards = quota.free_standing(session, user, platform, free_plan.SEARCH)
+    boards_used_up = charge.event_id is not None and boards is not None and boards.exhausted
     search = search_for_page(session, titles=titles, locations=locations, keywords=keywords, country=country,
-                             page=page, radius_km=radius_km)
+                             page=page, radius_km=radius_km, job_board=not boards_used_up)
     # Not counted: a search that failed, found nothing for words no title uses,
     # or couldn't reach the job board at all (only the job pool answered).
-    board_down = bool(search.get("failed")) and len(search["failed"]) >= search.get("queries", 1)
+    board_down = (not boards_used_up and bool(search.get("failed"))
+                  and len(search["failed"]) >= search.get("queries", 1))
     failed = bool(search.get("error")) or (free_if_empty and not search["cards"]) or board_down
     quota.settle_search(session, user, charge, provider_calls=search.get("requests", 0), failed=failed,
                         summary=summary, fingerprint=fingerprint, page=page)
+    if charge.event_id is not None and not failed and search.get("requests", 0) > 0:
+        try:
+            free_plan.spend(session, user, free_plan.SEARCH)
+            boards = quota.free_standing(session, user, platform, free_plan.SEARCH)
+        except Exception:
+            session.rollback()
+            logger.exception("Couldn't count a free-plan search for user_id=%s", user.id)
     search["has_next"] = search["has_next"] and page < platform.max_search_pages
     search["allowance"] = charge.allowance
+    search["boards"] = boards
+    if boards_used_up:
+        search["boards_note"] = quota.free_search_note(boards)
+    return search
+
+
+def guest_search(session: Session, titles: list[str], locations: list[str], keywords: list[str], country: str,
+                 page: int, *, radius_km: int | None = None) -> dict:
+    """A signed-out visitor's search: jobs from company career sites (the job
+    pool) only -- the job board's listings, and its request budget, are for
+    members. Nothing is counted or stored."""
+    platform = quota.platform_limits(session)
+    search = search_for_page(session, titles=titles, locations=locations, keywords=keywords, country=country,
+                             page=page, radius_km=radius_km if locations else None, job_board=False)
+    search["has_next"] = search["has_next"] and page < platform.max_search_pages
     return search
 
 
@@ -231,6 +383,11 @@ def picked(values: list[str], split) -> list[str]:
     return list(dict.fromkeys(term for value in values for term in split(value)))
 
 
+def _titles(text: str) -> list[str]:
+    """Typed titles: comma-separated, and "HR and Admin" is two (relevance.split_titles)."""
+    return list(dict.fromkeys(one for term in split_terms(text) for one in relevance.split_titles(term)))
+
+
 def search_terms(session: Session, q: str | None, l: str | None, titles, locations, keywords,
                  country: str | None) -> tuple[list[str], list[str], list[str], str, str | None]:
     """What to search: the boxes as typed (comma-separated), else the
@@ -247,8 +404,8 @@ def search_terms(session: Session, q: str | None, l: str | None, titles, locatio
         config_error = f"Settings are invalid (fix them on the Settings page): {'; '.join(exc.errors)}"
         search_config = GlobalSearchConfig()
     typed = q is not None or l is not None or titles is not None or locations is not None
-    title_list = split_terms(q or "") if q is not None else (
-        picked(titles, split_terms) if titles is not None else ([] if typed else search_config.titles))
+    title_list = _titles(q or "") if q is not None else (
+        picked(titles, _titles) if titles is not None else ([] if typed else search_config.titles))
     location_list = split_places(l or "") if l is not None else (
         picked(locations, split_places) if locations is not None else ([] if typed else search_config.locations))
     keyword_list = picked(keywords, split_terms) if keywords is not None else ([] if typed else search_config.keywords)

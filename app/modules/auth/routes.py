@@ -22,7 +22,7 @@ from app.modules.auth.ratelimit import email_limiter, login_limiter
 from app.modules.auth.service import AuthError
 from app.modules.auth.sessions import client_ip, end_other_sessions, end_session, start_session
 from app.modules.auth.settings import AuthSettings, is_local_host
-from app.modules.profiles.service import after_sign_in
+from app.modules.profiles.service import after_sign_in, fill_from_provider
 from app.web.templating import safe_next, templates
 
 router = APIRouter()
@@ -47,11 +47,16 @@ def _social_reachable(request: Request) -> bool:
     return settings.social_redirect_allowed
 
 
-def _page(request: Request, name: str, context: dict | None = None, status_code: int = 200):
+def social_providers(request: Request) -> dict[str, bool]:
     settings = AuthSettings()
     social = _social_reachable(request)
-    google, facebook = social and settings.provider_enabled("google"), social and settings.provider_enabled("facebook")
-    base = {"google": google, "facebook": facebook, "auth_providers": {"google": google},
+    return {provider: social and settings.provider_enabled(provider) for provider in oauth.PROVIDERS}
+
+
+def _page(request: Request, name: str, context: dict | None = None, status_code: int = 200):
+    providers = social_providers(request)
+    google, facebook = providers["google"], providers["facebook"]
+    base = {"google": google, "facebook": facebook, "auth_providers": providers,
             "password_rules": PASSWORD_RULES}
     return templates.TemplateResponse(request, name, {**base, **(context or {})}, status_code=status_code)
 
@@ -208,6 +213,7 @@ def oauth_callback(request: Request, provider: str, code: str | None = None, sta
         user = service.social_login(session, profile)
     except AuthError as exc:
         return _redirect("/login?" + urlencode({"error": str(exc)}))
+    fill_from_provider(session, user, profile)
     response = _signed_in_redirect(session, request, user, _signed_in_target(session, user, next_path), provider)
     response.delete_cookie(oauth.STATE_COOKIE, path="/auth")
     return response

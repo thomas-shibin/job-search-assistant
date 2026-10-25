@@ -65,6 +65,8 @@ class GreenhouseSource:
             location=location,
             # Greenhouse sends the HTML entity-escaped (&lt;p&gt;): unescape, then strip the tags.
             description=strip_html_tags(html.unescape(posting.get("content") or "")),
-            date_posted=_parse_datetime(posting.get("updated_at")),
+            # When it was first published: `updated_at` changes with any edit, and
+            # would show a months-old job as posted today.
+            date_posted=_parse_datetime(posting.get("first_published") or posting.get("updated_at")),
             raw_payload=posting,
         )

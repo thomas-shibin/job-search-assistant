@@ -1,8 +1,25 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}My profile - Job Assistant{% endblock %}
+{% block title %}My profile - Hirlumo{% endblock %}
 {% macro month(value) %}{{ value.strftime("%Y-%m") if value else "" }}{% endmacro %}
 {% macro span(start, end, current) %}{% if start %}{{ start.strftime("%b %Y") }}{% endif %}{% if start or end or current %} – {% endif %}{% if current %}Present{% elif end %}{{ end.strftime("%b %Y") }}{% endif %}{% endmacro %}
+{% macro linkedin_import() %}
+    <section class="panel linkedin-import" id="linkedin">
+      <div class="panel-head">
+        <div><h2><svg viewBox="0 0 24 24" class="icon brand-icon" aria-hidden="true"><rect width="24" height="24" rx="4" fill="#0A66C2"/><path fill="#fff" d="M7.1 9.4H4.5V19h2.6V9.4ZM5.8 5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm13.7 8.7c0-2.6-.6-4.5-3.6-4.5-1.5 0-2.4.8-2.8 1.5V9.4h-2.5V19h2.6v-4.8c0-1.3.2-2.5 1.8-2.5s1.6 1.5 1.6 2.6V19h2.6l.3-5.3Z"/></svg> Import from LinkedIn</h2>
+        <p>Bring over your jobs, education and skills instead of typing them. Only what's missing is added; nothing you've entered changes.</p></div>
+      </div>
+      <ol class="import-steps">
+        <li><strong>Quickest: your profile PDF.</strong> <a href="https://www.linkedin.com/in/me/" target="_blank" rel="noopener">Open your LinkedIn profile</a>, select <em>More</em> (or <em>Resources</em>), then <em>Save to PDF</em>. It lists your top 3 skills only.</li>
+        <li><strong>Most complete: your LinkedIn data.</strong> <a href="https://www.linkedin.com/mypreferences/d/download-my-data" target="_blank" rel="noopener">Request a copy of your data</a>, choose <em>Want something in particular?</em> and tick <em>Profile</em>, <em>Positions</em>, <em>Education</em> and <em>Skills</em>. LinkedIn emails you when it's ready, usually within the hour. Upload the ZIP as it is.</li>
+      </ol>
+      <form method="post" action="/profile/import-linkedin" enctype="multipart/form-data" hx-boost="false" class="inline-form">
+        <input type="file" name="files" accept=".pdf,.zip,.csv" multiple required aria-label="LinkedIn profile PDF or data export">
+        <button type="submit" class="primary pill">{{ icon("upload") }} Import</button>
+      </form>
+      <p class="field-hint">PDF, ZIP or CSV files, up to 30 MB. Read once to fill your profile, and not kept.</p>
+    </section>
+{% endmacro %}
 {% block content %}
 <header class="page-header">
   <div>
@@ -30,11 +47,12 @@
     <nav class="profile-toc" aria-label="Profile sections">
       <a href="#personal">Personal information</a><a href="#professional">Professional information</a>
       <a href="#preferences">Job preferences</a><a href="#experience">Work experience</a>
-      <a href="#education">Education</a><a href="#resume">Resume</a>
+      <a href="#education">Education</a><a href="#resume">Resume</a><a href="#linkedin">Import from LinkedIn</a>
     </nav>
   </aside>
 
   <div class="profile-main">
+    {% if not experiences %}{{ linkedin_import() }}{% endif %}
     <section class="panel" id="personal">
       <h2>Personal information</h2>
       <form method="post" action="/profile/personal" class="form-grid">
@@ -165,6 +183,7 @@
         <button type="submit" class="primary pill">{{ icon("upload") }} {{ "Upload a new version" if resume else "Upload resume" }}</button>
       </form>
     </section>
+    {% if experiences %}{{ linkedin_import() }}{% endif %}
   </div>
 </div>
 {% endblock %}

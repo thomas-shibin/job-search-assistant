@@ -137,6 +137,19 @@ def require_member(request: Request, user: User = Depends(require_viewer),
     return user
 
 
+def optional_member(request: Request, user: User | None = Depends(current_user),
+                    session: Session = Depends(get_session)) -> User | None:
+    """For pages open to everyone (job search): None when signed out; a
+    signed-in account gets the same checks as `require_member`. A switched-off
+    feature (e.g. job search) is off for visitors too."""
+    if user is None or user.is_guest:
+        feature = rbac.feature_for(route_template(request))
+        if feature and not rbac.feature_on(session, feature):
+            raise FeatureDisabled(_next(request), feature)
+        return None
+    return require_member(request, user, session)
+
+
 def require_admin(request: Request, user: User = Depends(require_member)) -> User:
     if not user.is_admin:
         raise AdminOnly(_next(request))
@@ -156,6 +169,13 @@ def viewer_session(user: User = Depends(require_viewer), session: Session = Depe
 
 def member_session(user: User = Depends(require_member), session: Session = Depends(get_session)) -> Iterator[Session]:
     yield _bound(session, user)
+
+
+def optional_member_session(user: User | None = Depends(optional_member),
+                            session: Session = Depends(get_session)) -> Iterator[Session]:
+    """The member's data only; signed out, a session that refuses everyone's
+    user data (app/core/tenancy.py), so a public page can't show any of it."""
+    yield _bound(session, user) if user is not None else make_strict(session)
 
 
 def admin_session(user: User = Depends(require_admin), session: Session = Depends(get_session)) -> Iterator[Session]:

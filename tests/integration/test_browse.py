@@ -51,7 +51,7 @@ class _FakeAdzunaSource:
         self.app_key = app_key
         self._country = country
 
-    def search_page(self, *, what, where, page, per_page=50, area=(), what_or=None):
+    def search_page(self, *, what, where, page, per_page=50, area=(), what_or=None, filters=None):
         QUERIES.append((what, where, self._country))
         DETAILS.append({"what": what, "where": where, "area": tuple(area), "what_or": what_or})
         return [RESULT_1] if page == 1 else []

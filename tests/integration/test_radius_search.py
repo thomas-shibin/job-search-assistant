@@ -92,7 +92,7 @@ def test_jobs_within_the_radius_are_shown_and_the_board_is_asked_by_distance(sit
 
     assert page.status_code == 200
     assert _shown_locations(page.text) == {"Victoria, BC", "Duncan, British Columbia, Canada", "Remote Canada"}
-    assert ASKED == [{"what": "Registered Nurse", "where": "Victoria, BC", "area": (), "filters": {"distance": "60"}}]
+    assert ASKED == [{"what": "Registered Nurse", "where": "Victoria, BC", "area": (), "filters": {"distance": "60", "max_days_old": "30"}}]
     assert "Within 60 km" in page.text  # the chip
     assert '<option value="60" selected>Within 60 km</option>' in page.text
     assert "radius=60" in page.text  # paging and filters keep the distance
@@ -109,7 +109,7 @@ def test_without_a_radius_the_place_is_matched_by_name_as_before(site):
     page = site.http.get("/jobs", params={"q": "Registered Nurse", "l": "Victoria, BC", "exact": 1})
 
     assert _shown_locations(page.text) == {"Victoria, BC"}
-    assert ASKED[0]["filters"] == {}
+    assert ASKED[0]["filters"] == {"max_days_old": "30"}  # only recent ads, never a radius
     assert "Within" not in page.text.split('class="search-chips"')[1].split("</ul>")[0]
 
 
@@ -149,7 +149,7 @@ def test_the_api_takes_a_radius(site):
     assert response.status_code == 200
     locations = {job["location"] for job in response.json()["results"]}
     assert locations == {"Victoria, BC", "Duncan, British Columbia, Canada", "Remote Canada"}
-    assert ASKED[0]["filters"] == {"distance": "60"}
+    assert ASKED[0]["filters"] == {"distance": "60", "max_days_old": "30"}
 
 
 @pytest.mark.parametrize("radius", ["abc", "0", "-10"])

@@ -139,7 +139,9 @@ def test_contact_tips_and_length():
                                   ("experience", "Experience"), pages=4))
     by_key = {f.key: f for f in findings}
     assert by_key["length"].level == canadian.MUST and "about 4" in by_key["length"].title
-    assert {"location", "address", "phone"} <= set(by_key)
+    assert {"location", "phone"} <= set(by_key)
+    assert "address" not in by_key  # Job Bank's own advice is to list your address
+    assert by_key["phone"].lines == [1]
     assert not by_key["location"].fixable  # nothing to fill in: the member knows where they are
 
 

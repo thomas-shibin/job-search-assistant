@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Quick Tailor - Job Assistant{% endblock %}
+{% block title %}Quick Tailor - Hirlumo{% endblock %}
 {% block crumb %}Quick Tailor{% endblock %}
 {% block content %}
 <header class="page-header">
@@ -8,7 +8,7 @@
     <p class="eyebrow">Resume</p>
     <h1>Quick tailor</h1>
     <p class="lead">Found a job somewhere else? Paste its description and get your resume tailored to it right away.</p>
-    {% if ai_allowance and not ai_allowance.unlimited %}<p class="quota-note">{{ icon("clock") }} Resume actions left this hour: {{ ai_allowance.remaining }} of {{ ai_allowance.limit }}{% if ai_allowance.exhausted and ai_allowance.next_free_at %} (more in {{ ai_allowance.minutes_until_free() }} min){% endif %}</p>{% endif %}
+    {% if ai_allowance and not ai_allowance.unlimited %}<p class="quota-note">{{ icon("clock") }} Resume actions left this hour: {{ ai_allowance.remaining }} of {{ ai_allowance.limit }}{% if ai_allowance.exhausted and ai_allowance.next_free_at %} (more in {{ ai_allowance.minutes_until_free() }} min){% endif %}{% if ai_allowance.free and not ai_allowance.free.unlimited %} &middot; <a href="/plans">Free plan</a>: {{ ai_allowance.free.remaining }} of {{ ai_allowance.free.limit }} left{% endif %}</p>{% endif %}
   </div>
 </header>
 

@@ -1,8 +1,8 @@
 """Build a clean zip of the app to install on another computer:
 
-    python scripts/package.py            # -> dist/job-assistant-YYYYMMDD.zip
-    python scripts/package.py --image thomasshibin90/jobfinderapp:0.1
-                                         # -> dist/job-assistant-docker-YYYYMMDD.zip
+    python scripts/package.py            # -> dist/hirlumo-YYYYMMDD.zip
+    python scripts/package.py --image thomasshibin90/hirlumo:0.1
+                                         # -> dist/hirlumo-docker-YYYYMMDD.zip
 
 The --image package has no source code: just the installers, docker-compose.yml
 (without the build step) and a .env.example with APP_IMAGE set, so Docker pulls
@@ -23,8 +23,8 @@ from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TOP = "job-assistant"  # folder name inside the zip
-NEVER = re.compile(r"(^|/)(\.env|config/config\.yaml|data/.+\.(db|db-journal|docx|pdf|log))$")
+TOP = "hirlumo"  # folder name inside the zip
+NEVER = re.compile(r"(^|/)(\.env|\.env\.prod|config/config\.yaml|data/.+\.(db|db-journal|docx|pdf|log))$")
 # Resumes and other documents never ship -- only the made-up sample resumes the tests use.
 DOCUMENT = re.compile(r"\.(pdf|docx?|odt|rtf)$", re.I)
 SAMPLE_DOCUMENTS = "tests/fixtures/"
@@ -43,11 +43,10 @@ def project_files() -> list[str]:
 
 
 def secrets() -> list[str]:
-    env = ROOT / ".env"
-    if not env.exists():
-        return []
     values = []
-    for line in env.read_text(encoding="utf-8").splitlines():
+    lines = [line for env in (ROOT / ".env", ROOT / ".env.prod") if env.exists()
+             for line in env.read_text(encoding="utf-8").splitlines()]
+    for line in lines:
         key, _, value = line.partition("=")
         key = key.strip()
         is_secret = any(word in key for word in ("KEY", "TOKEN", "SECRET", "PASSWORD")) or key == "ADZUNA_APP_ID"
@@ -59,8 +58,8 @@ def secrets() -> list[str]:
 
 
 # What an --image package ships (Docker only, no source).
-IMAGE_FILES = ("install.sh", "install.ps1", "install.cmd", "config/config.example.yaml")
-IMAGE_README = """Job Assistant (Docker)
+IMAGE_FILES = ("install.sh", "install.ps1", "install.cmd", "config/config.example.yaml", "deploy/Caddyfile")
+IMAGE_README = """Hirlumo (Docker)
 
 1. Install Docker: Windows `winget install -e --id Docker.DockerDesktop` (restart, open it
    once); Ubuntu/Debian `sudo apt install -y docker.io docker-compose-v2`.

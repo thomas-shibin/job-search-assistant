@@ -14,7 +14,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database.base import Base
 from app.core.database.session import get_session
-from app.core.tenancy import system_session
+from app.core.tenancy import system_session, tenant_session
 from app.integrations import email as mailer
 import app.models  # noqa: F401  register all models on Base.metadata
 from app.modules.auth.models import AuthSession, OAuthIdentity, User
@@ -87,14 +87,14 @@ def _user(factory, email) -> User | None:
 
 def test_everything_needs_sign_in(env):
     http, _, _ = env
-    for path in ("/jobs", "/resume", "/settings", "/watchlist", "/jobs/1", "/account", "/profile", "/saved",
-                 "/applications", "/jobs/posting/p1"):
+    for path in ("/resume", "/settings", "/watchlist", "/jobs/1", "/account", "/profile", "/saved",
+                 "/applications", "/jobs/posting/a1"):
         response = http.get(path, follow_redirects=False)
         assert response.status_code == 303 and response.headers["location"].startswith("/login"), path
     assert http.get("/api/jobs").status_code == 401
     assert http.get("/api/profile").status_code == 401
     assert http.get("/api/auth/me").json() == {"authenticated": False}
-    for public in ("/", "/companies", "/resources", "/terms", "/privacy", "/login", "/signup"):
+    for public in ("/", "/jobs", "/companies", "/resources", "/terms", "/privacy", "/login", "/signup"):
         assert http.get(public).status_code == 200, public
     assert http.get("/health").json() == {"status": "ok"}  # liveness stays public
 
@@ -112,8 +112,8 @@ def test_signup_creates_a_verified_account_and_signs_in(env):
 
 
 @pytest.mark.parametrize("password, problem", [
-    ("short-pass", "at least 12"), ("Ann-Lee-12345!", "name or email"), ("Password-1234!", "common"),
-    ("aaaaaaaaaaaaaaa", "different characters"),
+    ("short-1", "at least 8"), ("Password-1234!", "common"), ("12345678", "common"), ("qwerty2024", "common"),
+    ("aaaaaaaaaaaaaaa", "common"),
 ])
 def test_weak_passwords_are_rejected(env, password, problem):
     http, factory, _ = env
@@ -125,6 +125,12 @@ def test_weak_passwords_are_rejected(env, password, problem):
 def test_long_passphrases_need_no_symbols_or_capitals(env):
     http, factory, _ = env
     assert _signup(http, password="correct horse battery staple").status_code == 200
+
+
+@pytest.mark.parametrize("password", ["maple123", "ann-lee-2026", "sunny day"])
+def test_simple_passwords_of_8_or_more_characters_are_fine(env, password):
+    http, factory, _ = env
+    assert _signup(http, password=password).status_code == 200
 
 
 def test_wrong_password_and_lockout(env):
@@ -293,6 +299,32 @@ def test_social_sign_in_needs_https_on_a_domain(env, monkeypatch, public_url, of
     assert ("/auth/google/start" in http.get(f"{public_url}/login").text) is offered
 
 
+@pytest.mark.parametrize("public_url, offered", [("https://hirlumo.com", True), ("http://127.0.0.1:8001", False)])
+def test_sign_up_pop_up_on_every_page_offers_google(env, monkeypatch, public_url, offered):
+    """Sign Up, Save and the guest banner open a pop-up, not /signup: it offers
+    Google too, under the same rule as the sign-in pages."""
+    http, _, _ = env
+    monkeypatch.setenv("PUBLIC_URL", public_url)
+    _social(monkeypatch, ProviderProfile("google", "g-1", "gina@example.com", True, "Gina", "Gee"), any_address=False)
+    for page in ("/", "/jobs", "/companies"):
+        assert ("/auth/google/start" in http.get(f"https://hirlumo.com{page}").text) is offered, page
+
+
+@pytest.mark.parametrize("public_url", ["https://hirlumo.com", "https://www.hirlumo.com"])
+def test_www_and_bare_domain_both_lead_to_the_public_address(env, monkeypatch, public_url):
+    """Both addresses work; everyone lands on PUBLIC_URL's, where sign-in lives."""
+    http, _, _ = env
+    monkeypatch.setenv("PUBLIC_URL", public_url)
+    other = "https://hirlumo.com" if "www." in public_url else "https://www.hirlumo.com"
+    page = http.get(f"{other}/jobs?q=nurse", follow_redirects=False)
+    assert page.status_code == 301 and page.headers["location"] == f"{public_url}/jobs?q=nurse"
+    form = http.post(f"{other}/login", data={}, follow_redirects=False)
+    assert form.status_code == 308 and form.headers["location"] == f"{public_url}/login"
+    assert http.get(f"{public_url}/", follow_redirects=False).status_code == 200
+    assert http.get(f"{other}/health").status_code == 200  # Docker's healthcheck isn't redirected
+    assert http.get("https://evil.example/", follow_redirects=False).status_code == 200  # only www <-> bare
+
+
 def test_reset_link_uses_public_url_not_the_request_address(env, monkeypatch):
     """A forged Host header must not put someone else's site into the email."""
     http, factory, outbox = env
@@ -347,3 +379,162 @@ def test_profile_updates_and_account_deletion(env):
     http.post("/account/delete", data={"confirm_email": "ann.new@example.com"})
     assert _user(factory, "ann.new@example.com") is None
     assert http.get("/settings", follow_redirects=False).status_code == 303
+
+
+# ---- LinkedIn ----------------------------------------------------------------------------
+
+def _linkedin_userinfo(monkeypatch, userinfo: dict, *, token_status: int = 200):
+    """Real oauth._linkedin_profile against a fake LinkedIn (token + userinfo endpoints)."""
+    import httpx
+
+    import app.modules.auth.oauth as oauth
+
+    monkeypatch.setenv("LINKEDIN_CLIENT_ID", "li-id")
+    monkeypatch.setenv("LINKEDIN_CLIENT_SECRET", "li-secret")
+    monkeypatch.setattr(oauth.AuthSettings, "social_redirect_allowed", property(lambda self: True))
+    seen = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/oauth/v2/accessToken":
+            seen["token_form"] = dict(httpx.QueryParams(request.content.decode()))
+            return httpx.Response(token_status, json={"access_token": "li-token", "expires_in": 3600})
+        assert request.headers["authorization"] == "Bearer li-token"
+        return httpx.Response(200, json=userinfo)
+
+    real_complete = oauth.complete
+    monkeypatch.setattr(oauth, "complete", lambda *a, **k: real_complete(
+        *a, **{**k, "client": httpx.Client(transport=httpx.MockTransport(handler))}))
+    return seen
+
+
+def test_linkedin_sign_up_fills_the_country_and_suggests_importing(env, monkeypatch):
+    http, factory, _ = env
+    seen = _linkedin_userinfo(monkeypatch, {
+        "sub": "li-123", "given_name": "Maya", "family_name": "Okafor", "email": "maya@example.com",
+        "email_verified": True, "locale": {"country": "CA", "language": "en"}, "picture": "https://x/y.jpg"})
+    start = http.get("/auth/linkedin/start", follow_redirects=False)
+    assert start.headers["location"].startswith("https://www.linkedin.com/oauth/v2/authorization?")
+    assert parse_qs(urlparse(start.headers["location"]).query)["scope"] == ["openid profile email"]
+    response = _social_login(http, provider="linkedin")
+    assert response.status_code == 303 and response.headers["location"].startswith("/welcome")
+    assert seen["token_form"]["redirect_uri"] == f"{BASE}/auth/linkedin/callback"
+    user = _user(factory, "maya@example.com")
+    assert (user.first_name, user.last_name, user.email_verified) == ("Maya", "Okafor", True)
+    assert "Signed up with LinkedIn?" in http.get(response.headers["location"]).text
+    assert 'value="Canada"' in http.get("/profile").text
+    assert "Signed in with: LinkedIn" in http.get("/account").text
+
+
+@pytest.mark.parametrize("userinfo, error", [
+    ({"sub": "li-1", "name": "Maya Okafor", "email": "maya@example.com"}, "didn't share a verified email"),
+    ({"sub": "li-1", "name": "Maya Okafor", "email": "maya@example.com", "email_verified": False},
+     "didn't share a verified email"),
+    ({"sub": "li-1", "name": "Maya Okafor"}, "didn't share a verified email"),
+])
+def test_linkedin_without_a_verified_email_is_refused(env, monkeypatch, userinfo, error):
+    http, factory, _ = env
+    _linkedin_userinfo(monkeypatch, userinfo)
+    location = _social_login(http, provider="linkedin").headers["location"]
+    assert location.startswith("/login?error=") and "LinkedIn" in parse_qs(urlparse(location).query)["error"][0]
+    assert _user(factory, "maya@example.com") is None
+
+
+def test_linkedin_name_only_and_string_locale(env, monkeypatch):
+    http, factory, _ = env
+    _linkedin_userinfo(monkeypatch, {"sub": "li-9", "name": "Maya van der Berg", "email": "maya@example.com",
+                                     "email_verified": True, "locale": "fr_CA"})
+    _social_login(http, provider="linkedin")
+    user = _user(factory, "maya@example.com")
+    assert (user.first_name, user.last_name) == ("Maya", "van der Berg")
+
+
+def test_linkedin_joins_an_existing_account_and_keeps_its_country(env, monkeypatch):
+    http, factory, _ = env
+    _signup(http, email="maya@example.com")
+    http.post("/profile/personal", data={"first_name": "Ann", "last_name": "Lee", "country": "India", "city": "Pune"})
+    http.post("/logout")
+    _linkedin_userinfo(monkeypatch, {"sub": "li-5", "given_name": "M", "family_name": "O",
+                                     "email": "Maya@Example.com", "email_verified": True, "locale": {"country": "CA"}})
+    assert _social_login(http, provider="linkedin").status_code == 303
+    with system_session(factory) as s:
+        assert s.query(User).count() == 1 and s.query(OAuthIdentity).one().provider == "linkedin"
+    assert 'value="India"' in http.get("/profile").text  # never overwritten
+
+
+def test_linkedin_errors_are_friendly(env, monkeypatch):
+    http, _, _ = env
+    _linkedin_userinfo(monkeypatch, {}, token_status=400)  # e.g. the code was already used (back button)
+    location = _social_login(http, provider="linkedin").headers["location"]
+    assert "Couldn't sign you in with LinkedIn right now" in parse_qs(urlparse(location).query)["error"][0]
+    # Cancelled on LinkedIn's page: it returns an error and no code.
+    start = http.get("/auth/linkedin/start", follow_redirects=False)
+    state = parse_qs(urlparse(start.headers["location"]).query)["state"][0]
+    cancelled = http.get("/auth/linkedin/callback", params={"error": "user_cancelled_login", "state": state},
+                         follow_redirects=False)
+    assert "cancelled" in parse_qs(urlparse(cancelled.headers["location"]).query)["error"][0]
+    # Not configured: no button and the start link explains.
+    monkeypatch.delenv("LINKEDIN_CLIENT_ID")
+    assert "/auth/linkedin/start" not in http.get("/login").text
+    assert "/login?error=" in http.get("/auth/linkedin/start", follow_redirects=False).headers["location"]
+
+
+def test_every_configured_provider_has_a_button_in_the_pop_up_and_pages(env, monkeypatch):
+    http, _, _ = env
+    monkeypatch.setenv("PUBLIC_URL", "https://hirlumo.com")
+    for name in ("GOOGLE", "FACEBOOK", "LINKEDIN"):
+        monkeypatch.setenv(f"{name}_CLIENT_ID", "id")
+        monkeypatch.setenv(f"{name}_CLIENT_SECRET", "secret")
+    for page in ("/", "/login", "/signup"):
+        html = http.get(f"https://hirlumo.com{page}").text
+        assert all(f'data-social="{p}"' in html for p in ("google", "linkedin", "facebook")), page
+        assert html.index("Continue with Google") < html.index("Continue with LinkedIn") < html.index(
+            "Continue with Facebook")
+    monkeypatch.setenv("FACEBOOK_CLIENT_SECRET", "")
+    html = http.get("https://hirlumo.com/").text
+    assert 'data-social="facebook"' not in html and 'data-social="linkedin"' in html
+
+
+def test_importing_linkedin_into_the_profile(env):
+    from pathlib import Path
+
+    from app.modules.profiles.models import JobSeekerProfile, ProfileEducation, ProfileExperience
+
+    http, factory, _ = env
+    _signup(http)
+    # Something the member typed themselves: kept, and not duplicated by the import.
+    http.post("/profile/professional", data={"headline": "My own headline", "skills": "Excel, SQL"})
+    http.post("/profile/experience", data={"job_title": "Junior analyst", "company": "maple grocers",
+                                           "start_date": "2017-06"})
+    pdf = (Path(__file__).resolve().parents[1] / "fixtures" / "linkedin_profile_sample.pdf").read_bytes()
+    response = http.post("/profile/import-linkedin", files=[("files", ("Profile.pdf", pdf, "application/pdf"))],
+                         follow_redirects=False)
+    assert response.status_code == 303
+    message = parse_qs(urlparse(response.headers["location"]).query)["msg"][0]
+    assert message.startswith("Imported from LinkedIn: 2 jobs; 2 schools; 2 skills;")
+    user = _user(factory, "ann@example.com")
+    with tenant_session(factory, user.id) as s:
+        profile = s.query(JobSeekerProfile).one()
+        assert profile.headline == "My own headline"
+        assert profile.skills == ["Excel", "SQL", "Power BI", "Stakeholder Management"]
+        assert (profile.current_title, profile.city, profile.province, profile.country) == (
+            "Senior Data Analyst", "Vancouver", "British Columbia", "Canada")
+        assert profile.years_experience >= 9
+        assert s.query(ProfileExperience).count() == 3 and s.query(ProfileEducation).count() == 2
+    # The same file again changes nothing.
+    again = http.post("/profile/import-linkedin", files=[("files", ("Profile.pdf", pdf, "application/pdf"))],
+                      follow_redirects=False)
+    assert "already has everything" in parse_qs(urlparse(again.headers["location"]).query)["msg"][0]
+    with tenant_session(factory, user.id) as s:
+        assert s.query(ProfileExperience).count() == 3
+
+
+def test_linkedin_import_errors_and_access(env):
+    http, _, _ = env
+    assert http.post("/profile/import-linkedin", files=[("files", ("x.pdf", b"%PDF", "application/pdf"))],
+                     follow_redirects=False).headers["location"].startswith("/login")
+    _signup(http)
+    bad = http.post("/profile/import-linkedin", files=[("files", ("cat.jpg", b"\xff\xd8\xff", "image/jpeg"))],
+                    follow_redirects=False)
+    assert "Upload the PDF of your LinkedIn profile" in parse_qs(urlparse(bad.headers["location"]).query)["error"][0]
+    none = http.post("/profile/import-linkedin", follow_redirects=False)
+    assert "Choose your LinkedIn" in parse_qs(urlparse(none.headers["location"]).query)["error"][0]

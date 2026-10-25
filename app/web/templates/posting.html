@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
 {% from "_job_detail.html" import job_detail with context %}
-{% block title %}{{ p.title }} at {{ p.company }} - Job Assistant{% endblock %}
+{% block title %}{{ p.title }} at {{ p.company }}{% if p.location %} - {{ p.location|truncate(40, true, "") }}{% endif %} | Hirlumo{% endblock %}
+{% block description %}{{ p.company }} is hiring a {{ p.title }}{% if p.location %} in {{ p.location|truncate(60, true, "") }}{% endif %}{% if p.salary_text %} ({{ p.salary_text }}){% endif %}. {{ p.snippet|truncate(110) }}{% endblock %}
+{% block structured_data %}{% for item in structured_data(p) %}<script type="application/ld+json">{{ item|tojson }}</script>{% endfor %}{% endblock %}
 {% block content %}
 <a class="back-link" href="/jobs">{{ icon("back") }} Search jobs</a>
 <section class="panel posting-page">

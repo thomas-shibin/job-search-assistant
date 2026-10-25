@@ -320,3 +320,62 @@ def test_page_search_stops_waiting_at_the_deadline():
     assert time.monotonic() - started < 2
     assert [job.title for job in found.jobs] == ["Fast"]
     assert found.failed_queries == ["Slow"]
+
+
+def test_smartrecruiters_reads_one_countrys_postings_and_only_new_descriptions():
+    from app.integrations.job_boards.smartrecruiters import SmartRecruitersSource
+
+    asked = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.path + ("?" + request.url.query.decode() if request.url.query else ""))
+        if request.url.path.endswith("/postings"):
+            return httpx.Response(200, json={"totalFound": 2, "content": [
+                {"id": "11", "name": "Office Administrator ", "company": {"name": "Acme Foods"},
+                 "releasedDate": "2026-10-20T10:00:00.000Z", "typeOfEmployment": {"label": "Full-time"},
+                 "location": {"city": "Mississauga", "region": "ON", "country": "ca", "remote": False}},
+                {"id": "12", "name": "Driver", "company": {"name": "Acme Foods"},
+                 "location": {"city": "Laval", "region": "QC", "country": "ca", "remote": True}},
+            ]})
+        return httpx.Response(200, json={"postingUrl": "https://jobs.smartrecruiters.com/Acme/11-office-administrator",
+                                         "jobAd": {"sections": {"jobDescription": {"text": "<p>Run the <b>office</b>.</p>"},
+                                                                "qualifications": {"text": "<ul><li>2 years</li></ul>"}}}})
+
+    source = SmartRecruitersSource("Acme", known={"12"}, client=httpx.Client(transport=httpx.MockTransport(handler)))
+    jobs = source.discover_jobs(None)
+
+    assert "country=ca" in asked[0]
+    assert asked[1:] == ["/v1/companies/Acme/postings/11"]  # 12's description is already known
+    first, second = jobs
+    assert (first.title, first.company, first.location, first.employment_type) == (
+        "Office Administrator", "Acme Foods", "Mississauga, ON", "Full-time")
+    assert first.description == "Run the office.\n\n2 years"
+    assert first.source_url == "https://jobs.smartrecruiters.com/Acme/11-office-administrator"
+    assert second.description == "" and second.location == "Laval, QC (Remote)"
+    assert second.source_url == "https://jobs.smartrecruiters.com/Acme/12"
+
+
+def test_workable_reads_every_job_with_its_description():
+    from app.integrations.job_boards.workable import WorkableSource
+
+    payload = {"name": "Maple Builders", "jobs": [
+        {"title": "Administrative Assistant / Receptionist", "shortcode": "958B", "employment_type": "Full-time",
+         "telecommuting": False, "url": "https://apply.workable.com/j/958B", "published_on": "2026-07-14",
+         "country": "Canada", "city": "Burnaby", "state": "British Columbia",
+         "locations": [{"country": "Canada", "countryCode": "CA", "city": "Burnaby", "region": "British Columbia"}],
+         "description": "<p>Greet visitors &amp; book meetings.</p>"},
+    ]}
+    jobs = WorkableSource("maple-builders", client=_client_with_response(payload)).discover_jobs(None)
+
+    job = jobs[0]
+    assert (job.source, job.external_id, job.company) == ("workable", "958B", "Maple Builders")
+    assert job.location == "Burnaby, British Columbia, Canada"
+    assert job.description == "Greet visitors & book meetings."
+    assert job.date_posted.isoformat().startswith("2026-07-14")
+
+
+def test_greenhouse_dates_a_job_by_when_it_was_first_published_not_its_last_edit():
+    raw = GreenhouseSource("acme")._to_raw_job({"id": 1, "title": "T", "absolute_url": "u",
+                                               "first_published": "2026-08-18T06:19:46-04:00",
+                                               "updated_at": "2026-10-21T14:53:01-04:00"})
+    assert raw.date_posted.date().isoformat() == "2026-08-18"

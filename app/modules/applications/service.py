@@ -157,7 +157,10 @@ ADZUNA_PREVIEW_CHARS = 500
 
 
 def is_description_preview(job: Job) -> bool:
-    """True when `job.description` is (probably) Adzuna's cut-off preview."""
+    """True when `job.description` is (probably) a job board's cut-off preview:
+    Adzuna's 500 characters, or the snippet the second board (Jooble) shares."""
+    if job.source == "jooble":
+        return True
     return job.source == "adzuna" and len(job.description or "") >= ADZUNA_PREVIEW_CHARS - 10
 
 

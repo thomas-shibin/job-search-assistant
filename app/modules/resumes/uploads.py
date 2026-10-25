@@ -16,9 +16,11 @@ from app.core.config.loader import ConfigError
 from app.core.config.store import save_section
 from app.core.paths import PROJECT_ROOT
 from app.core.tenancy import require_tenant
+from app.modules.resumes import canadian
 from app.modules.resumes.models import CandidateProfile
 from app.modules.resumes.parser import ImportResult, import_resume
-from app.modules.usage import quota
+from app.modules.auth.models import User
+from app.modules.usage import free_plan, quota
 from app.modules.usage.models import ActivityKind
 from app.shared.filenames import sanitize_filename
 
@@ -58,6 +60,16 @@ def import_resume_file(session: Session, filename: str, data: bytes, *, force: b
     # Relative to the project when possible, so the same database works for the
     # native install and Docker (/app) alike.
     stored_path = dest_path.relative_to(PROJECT_ROOT) if dest_path.is_relative_to(PROJECT_ROOT) else dest_path
+    text = ""
+    try:  # a health card or a letter isn't a resume: every check would pass it as one
+        doc = canadian.read(dest_path)
+        text = "\n".join(line.text for line in doc.lines)
+        looks_right = canadian.evidence(doc).is_resume
+    except Exception:
+        looks_right = True  # can't be read here: the import below says so
+    if not looks_right:
+        dest_path.unlink(missing_ok=True)
+        return None, canadian.NOT_A_RESUME
     try:
         result = import_resume(session, stored_path if stored_path.exists() else dest_path, force=force)
     except Exception as exc:  # unreadable/corrupt file
@@ -74,6 +86,10 @@ def import_resume_file(session: Session, filename: str, data: bytes, *, force: b
             pass
     if result.created and record:
         quota.record(session, require_tenant(session), ActivityKind.RESUME_UPLOAD, f"Version {result.profile.version}")
+    user = session.get(User, require_tenant(session))
+    if user is not None:  # the free plan finds one person's accounts by their resume
+        free_plan.note_resume(session, user, text, text_hash=result.profile.source_hash,
+                              full_name=result.profile.full_name)
     return result, None
 
 

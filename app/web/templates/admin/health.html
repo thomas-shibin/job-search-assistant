@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Health - Job Assistant{% endblock %}
+{% block title %}Health - Hirlumo{% endblock %}
 {% block crumb %}Health{% endblock %}
 {% block content %}
 {% include "admin/_nav.html" %}
@@ -11,7 +11,11 @@
     <p class="lead">{{ {"ok": "All systems OK", "degraded": "Running with warnings", "down": "Down"}[report.status] }}.
       Also on Telegram: send <code>/health</code> to the bot from your linked chat. JSON: <a href="/admin/health.json">/admin/health.json</a></p>
   </div>
+  <form method="post" action="/admin/backup-now">
+    <button type="submit">{{ icon("refresh") }} Back up now</button>
+  </form>
 </header>
+{% if message %}<div class="flash" role="status">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
 <section class="panel flush">
   <div class="table-wrap">
     <table class="job-table">

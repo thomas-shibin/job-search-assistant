@@ -37,7 +37,7 @@ class _FakeBoard:
     def __init__(self, app_id, app_key, country, **_):
         pass
 
-    def search_page(self, *, what, where, page, per_page=50, area=(), what_or=None):
+    def search_page(self, *, what, where, page, per_page=50, area=(), what_or=None, filters=None):
         ASKED.append(what)
         if _FakeBoard.down:
             raise RuntimeError("HTTP 503")
@@ -282,3 +282,57 @@ def test_when_the_job_board_is_down_the_page_says_so_and_the_search_is_free(site
     assert "this search wasn't counted" in page.text
     assert "No jobs found" not in page.text and "No jobs match" not in page.text
     assert _counted_searches(site) == 0
+
+
+class _FakeSecondBoard:
+    asked: list[tuple[str, str | None]] = []
+
+    def __init__(self, api_key, base_url):
+        pass
+
+    def search(self, keywords, location=None, page=1):
+        _FakeSecondBoard.asked.append((keywords, location))
+        job = RawJob(source="jooble", external_id="j1", source_url="https://example.org/j1", company="Maple Dental",
+                     title="Human Resources Coordinator", location="Vancouver, BC", description="A short preview.")
+        return [job], 1
+
+
+def test_when_the_job_board_is_down_the_second_board_answers_and_stands_in_for_a_while(site, monkeypatch):
+    from app.modules.jobs import service as jobs_service
+
+    monkeypatch.setattr(jobs_service, "JoobleSettings", lambda: SimpleNamespace(api_key="key", url="https://x/"))
+    monkeypatch.setattr(jobs_service, "JoobleSource", _FakeSecondBoard)
+    _FakeSecondBoard.asked = []
+    _FakeBoard.down = True
+
+    page = site.http.get("/jobs", params={"q": "Human resource", "l": "Vancouver, BC", "exact": 1})
+
+    assert "Human Resources Coordinator" in page.text and "Maple Dental" in page.text
+    assert "isn't responding" not in page.text
+    assert _FakeSecondBoard.asked == [("Human resource", "Vancouver, BC")]
+    asked_first = len(ASKED)
+    site.http.get("/jobs", params={"q": "Recruiter", "l": "Vancouver, BC", "exact": 1})
+    assert len(ASKED) == asked_first  # the first board is skipped while it's paused
+    assert len(_FakeSecondBoard.asked) == 2
+
+
+def test_members_searches_stop_asking_the_board_when_todays_share_is_used(site, monkeypatch):
+    from app.modules.jobs import service as jobs_service
+
+    FOUND["Recruiter"] = [RawJob(source="adzuna", external_id="a1", source_url="https://example.org/a1",
+                                 company="Acme", title="Recruiter", location="Vancouver, BC", description="x")]
+    site.http.get("/jobs", params={"q": "Recruiter", "l": "Vancouver, BC", "exact": 1})
+    assert ASKED == ["Recruiter"]
+    with site.db() as s:  # members' searches have made 100 requests today: their share of the default 250
+        s.query(ActivityEvent).update({ActivityEvent.provider_calls: 100})
+        s.commit()
+    jobs_service.reset_board_pause()  # count again now
+
+    monkeypatch.setattr(jobs_service, "JoobleSettings", lambda: SimpleNamespace(api_key="key", url="https://x/"))
+    monkeypatch.setattr(jobs_service, "JoobleSource", _FakeSecondBoard)
+    _FakeSecondBoard.asked = []
+    page = site.http.get("/jobs", params={"q": "Human resource", "l": "Vancouver, BC", "exact": 1})
+
+    assert ASKED == ["Recruiter"]  # the first board wasn't asked
+    assert "Human Resources Coordinator" in page.text  # the second board answered
+    assert jobs_service.board_budget(site.db()) == (100, 100)

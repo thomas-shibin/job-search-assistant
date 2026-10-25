@@ -28,13 +28,16 @@ from app.modules.auth.deps import admin_session, require_admin
 from app.modules.auth.models import Role, User
 from app.modules.jobs.catalog.scan import scan_status, start_background_scan
 from app.modules.jobs.catalog.store import counts as catalog_counts
+from app.modules.jobs import service as job_search
 from app.modules.jobs.pool import service as pool
 from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.usage import free_plan
 from app.modules.usage.ai_calls import AICallLog
+from app.modules.usage.free_plan_models import AccountLink
 from app.modules.usage.costs import ai_cost_summary
 from app.modules.usage.models import ActivityKind
 from app.web.forms import parse_form, section_form
-from app.web.templating import templates
+from app.web.templating import safe_next, templates
 from app.workers import background
 
 router = APIRouter(prefix="/admin")
@@ -146,8 +149,19 @@ def usage(request: Request, session: Session = Depends(admin_session)):
 
 
 @router.get("/health")
-def health_page(request: Request, session: Session = Depends(admin_session)):
-    return templates.TemplateResponse(request, "admin/health.html", {"report": check_health(session, DEFAULT_CONFIG_PATH)})
+def health_page(request: Request, msg: str | None = None, session: Session = Depends(admin_session)):
+    return templates.TemplateResponse(request, "admin/health.html", {"report": check_health(session, DEFAULT_CONFIG_PATH),
+                                                                     "message": msg})
+
+
+@router.post("/backup-now")
+def backup_now(request: Request, session: Session = Depends(admin_session), admin: User = Depends(require_admin)):
+    if not background.trigger_backup_now():
+        return _redirect("/admin/health", msg="Backups run with the server (cli.py serve); "
+                                              "here, run: cli.py backup")
+    access.audit(session, admin, "backup.run", "backup", None, None, None, request)
+    session.commit()
+    return _redirect("/admin/health", msg="Backing up in the background -- reload in a minute.")
 
 
 @router.get("/health.json")
@@ -187,7 +201,19 @@ def user_page(request: Request, user_id: int, days: int = 30, kind: str | None =
         "ranges": activity_data.RANGES, "labels": ActivityKind.LABELS, "message": msg, "error": error,
         "is_self": user.id == admin.id, "roles": _role_choices(session, admin, user),
         "manage_problem": access.manageable(session, admin, user),
+        "free": _free_view(session, user),
     })
+
+
+def _free_view(session: Session, user: User) -> dict:
+    """The user's free-plan allowance and the accounts it's shared with or flagged against."""
+    platform = activity_data.quota.platform_limits(session)
+    standings = [("Job-board searches", free_plan.standing(session, user, platform.free_searches_total,
+                                                           free_plan.SEARCH)),
+                 ("Resume actions", free_plan.standing(session, user, platform.free_ai_actions_total))]
+    session.commit()
+    return {"standings": standings, "default": platform.free_ai_actions_total,
+            "search_default": platform.free_searches_total, "links": free_plan.links_of(session, user.id)}
 
 
 def _role_choices(session: Session, admin: User, user: User) -> list[dict]:
@@ -209,19 +235,58 @@ def _limit_value(raw: str) -> int | None:
 
 @router.post("/users/{user_id}/limits")
 def set_user_limits(request: Request, user_id: int, search_limit: str = Form(""), ai_limit: str = Form(""),
+                    ai_total_limit: str = Form(""), search_total_limit: str = Form(""),
                     session: Session = Depends(admin_session), admin: User = Depends(require_admin)):
     user = _target(session, user_id)
-    old = {"search": user.search_limit_per_hour, "ai": user.ai_limit_per_hour}
+    old = {"search": user.search_limit_per_hour, "ai": user.ai_limit_per_hour, "ai_total": user.ai_total_limit,
+           "search_total": user.search_total_limit}
     try:
         user.search_limit_per_hour = _limit_value(search_limit)
         user.ai_limit_per_hour = _limit_value(ai_limit)
+        user.ai_total_limit = _limit_value(ai_total_limit)
+        user.search_total_limit = _limit_value(search_total_limit)
     except ValueError:
         return _redirect(f"/admin/users/{user_id}", error="Limits must be whole numbers from 0 to 10000, or blank.")
-    new = {"search": user.search_limit_per_hour, "ai": user.ai_limit_per_hour}
+    new = {"search": user.search_limit_per_hour, "ai": user.ai_limit_per_hour, "ai_total": user.ai_total_limit,
+           "search_total": user.search_total_limit}
     if old != new:
         access.audit(session, admin, "user.limits.update", "user", user.id, old, new, request)
     session.commit()
     return _redirect(f"/admin/users/{user_id}", msg="Limits saved.")
+
+
+# ---- the free plan: accounts that look like the same person ------------------------------
+
+@router.get("/duplicates")
+def duplicates_page(request: Request, msg: str | None = None, show: str = "review",
+                    session: Session = Depends(admin_session)):
+    statuses = {"review": (free_plan.REVIEW,), "shared": free_plan.SHARING,
+                "dismissed": (free_plan.DISMISSED,)}.get(show, (free_plan.REVIEW,))
+    counts = dict(session.query(AccountLink.status, func.count(AccountLink.id)).group_by(AccountLink.status).all())
+    return templates.TemplateResponse(request, "admin/duplicates.html", {
+        "flags": free_plan.flags(session, statuses), "show": show, "message": msg,
+        "counts": {"review": counts.get(free_plan.REVIEW, 0),
+                   "shared": counts.get(free_plan.SHARED, 0) + counts.get(free_plan.CONFIRMED, 0),
+                   "dismissed": counts.get(free_plan.DISMISSED, 0)},
+    })
+
+
+@router.post("/duplicates/{link_id}")
+def review_duplicate(request: Request, link_id: int, decision: str = Form(...), next: str = Form("/admin/duplicates"),
+                     session: Session = Depends(admin_session), admin: User = Depends(require_admin)):
+    if decision not in ("same", "different"):
+        raise HTTPException(status_code=400, detail="Unknown decision")
+    link = session.get(AccountLink, link_id)
+    if link is None:
+        raise HTTPException(status_code=404, detail="No such link")
+    old = {"status": link.status}
+    free_plan.review(session, link_id, same_person=decision == "same", admin=admin)
+    access.audit(session, admin, "free_plan.link.review", "free_plan_link", link.id, old, {"status": link.status},
+                 request)
+    session.commit()
+    message = ("Marked as the same person: these accounts share one free allowance." if decision == "same"
+               else "Marked as different people: these accounts keep their own allowances.")
+    return _redirect(safe_next(next, "/admin/duplicates"), msg=message)
 
 
 @router.post("/users/{user_id}/suspend")
@@ -262,7 +327,8 @@ def sources_page(request: Request, msg: str | None = None, error: str | None = N
     companies = query.order_by(PoolCompany.enabled.desc(), PoolCompany.canada_count.desc(), PoolCompany.name).all()
     return templates.TemplateResponse(request, "admin/sources.html", {
         "companies": companies, "totals": pool.totals(session), "status": pool.sync_status(), "q": q,
-        "providers": pool.PROVIDER_LABELS, "message": msg, "error": error,
+        "providers": pool.PROVIDER_LABELS, "message": msg, "error": error, "suggested": pool.suggestions(session),
+        "boards": job_search.board_status(session),
         "refresh_hours": activity_data.quota.platform_limits(session).pool_refresh_hours,
     })
 
@@ -320,6 +386,19 @@ def delete_source(request: Request, company_id: int, session: Session = Depends(
     session.delete(company)
     session.commit()
     return _redirect("/admin/sources", msg=f"Removed {label} and its postings. Jobs members already track are kept.")
+
+
+@router.post("/sources/add-suggested")
+def add_suggested_sources(request: Request, session: Session = Depends(admin_session),
+                          admin: User = Depends(require_admin)):
+    count = len(pool.suggestions(session))
+    if not count:
+        return _redirect("/admin/sources", msg="Every suggested employer is already in the list.")
+    if not pool.start_adding_suggested(SessionLocal):
+        return _redirect("/admin/sources", msg="A refresh is already running -- try again when it's done.")
+    access.audit(session, admin, "source.add_suggested", "job_source", None, None, {"count": count}, request)
+    session.commit()
+    return _redirect("/admin/sources", msg=f"Adding {count} employers in the background -- reload in a minute or two.")
 
 
 @router.post("/sources/refresh-all")

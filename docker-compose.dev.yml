@@ -1,0 +1,37 @@
+# Development on this computer: http://127.0.0.1:8001 (APP_PORT in .env), built
+# from the source here, settings from .env. Every address the app gives out --
+# sign-in callbacks, email links, the sitemap -- points at 127.0.0.1.
+#   docker compose -f docker-compose.dev.yml up -d --build
+#   docker compose -f docker-compose.dev.yml logs -f app
+#   docker compose -f docker-compose.dev.yml down
+# It uses the same data/ folder as production compose; run one at a time.
+name: hirlumo-dev
+
+services:
+  app:
+    image: hirlumo:dev
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    user: "${APP_UID:-1000}:${APP_GID:-1000}"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m,mode=1777
+    environment:
+      PUBLIC_URL: http://127.0.0.1:${APP_PORT:-8001}
+      DATABASE_URL: sqlite:////app/data/job_assistant.db
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+    # This computer only.
+    ports:
+      - "127.0.0.1:${APP_PORT:-8001}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

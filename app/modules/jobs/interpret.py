@@ -7,7 +7,9 @@ provider is asked only when the rules can't read the search.
 - The provider is asked only when all of these hold:
   - words are left that no job title uses and spelling can't fix;
   - `ai.search_assist` is on and a real provider is configured;
-  - the member has made fewer than AI_READS_PER_HOUR such calls this hour.
+  - the member has made fewer than AI_READS_PER_HOUR such calls this hour;
+  - the member has resume actions left on the free plan (each reading counts
+    as one: every paid analysis call does).
   After that limit, the rules are used alone.
 - Answers are kept in memory for a day, so the same words cost once. Each
   call is logged with its cost (AICallLog, operation "search_interpret"), and
@@ -38,6 +40,7 @@ from app.modules.jobs.places import parse_radius
 from app.modules.jobs.catalog.models import LocationType, SearchTerm, TermKind
 from app.modules.jobs.pool.models import PoolJob
 from app.modules.usage.ai_calls import AICallLog
+from app.modules.usage import free_plan, quota
 from app.modules.usage.quota import utcnow
 from app.shared.terms import normalize_term
 
@@ -88,11 +91,12 @@ def vocabulary(session: Session) -> query.Vocabulary:
     return built
 
 
-def interpret(session: Session, user: User, text: str) -> Interpretation:
-    """Read `text`; ask the provider only for what the rules couldn't read."""
+def interpret(session: Session, user: User | None, text: str) -> Interpretation:
+    """Read `text`; ask the provider only for what the rules couldn't read
+    (never for a signed-out visitor: the rules' reading is used)."""
     vocab = vocabulary(session)
     reading = query.read(text, vocab)
-    if not reading.unknown:
+    if not reading.unknown or user is None:
         return Interpretation(reading)
     answer = _ask_provider(session, user, text)
     if answer is None:
@@ -155,6 +159,9 @@ def _ask_provider(session: Session, user: User, text: str) -> SearchInterpretati
             return kept[1]
     if _reads_this_hour(session, user) >= AI_READS_PER_HOUR:
         return None
+    standing = quota.free_standing(session, user)
+    if standing is not None and standing.exhausted:
+        return None  # the free plan's paid calls are used up: the rules' reading is used
     try:
         provider = build_ai_provider(config, AISettings())
         answer = provider.interpret_search(text[:MAX_TEXT])
@@ -170,6 +177,11 @@ def _ask_provider(session: Session, user: User, text: str) -> SearchInterpretati
         estimated_cost=usage.estimated_cost if usage else None, cache_hit=False,
     ))
     session.commit()
+    try:
+        free_plan.spend(session, user)
+    except Exception:
+        session.rollback()
+        logger.exception("Couldn't count a search reading for user_id=%s", user.id)
     if answer is not None:
         with _lock:
             _answers[key] = (time.monotonic(), answer)

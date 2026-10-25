@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 from app.core.config.current import user_config
 from app.core.config.loader import ConfigError
 from app.core.config.store import save_section
+from app.core.tenancy import tenant_of
 from app.modules.access import rbac
-from app.modules.auth.deps import member_session, require_member
+from app.modules.auth.deps import member_session, optional_member, optional_member_session, require_member
 from app.modules.auth.models import User
 from app.modules.jobs import interpret, places, postings
 from app.modules.jobs import service as jobs
@@ -54,11 +55,16 @@ def jobs_page(
     fixed: list[str] | None = Query(None),
     msg: str | None = None,
     error: str | None = None,
-    session: Session = Depends(member_session),
-    user: User = Depends(require_member),
+    session: Session = Depends(optional_member_session),
+    user: User | None = Depends(optional_member),
 ):
     """Job search results: filters on the left, results in the middle, the
     selected job's details on the right (full screen on phones).
+
+    Open to everyone: signed out, the results are jobs from company career
+    sites only (`jobs.guest_search`), with no search limit to count, nothing
+    remembered, and smart search reading by its rules alone (no AI). Members
+    also get the job board's listings.
 
     Only the search terms (what / where / country) make a new search -- which
     counts toward the hourly limit. Filters narrow what's already been found,
@@ -99,10 +105,14 @@ def jobs_page(
     query_string = terms.url({}).split("?", 1)[1]
     # Words no job title uses (a typo nothing could fix, or nonsense): an empty
     # result isn't counted, and the words aren't kept as suggestions.
-    search = jobs.limited_search(session, user, title_list, location_list, keyword_list, country, page, query_string,
-                                 free_if_empty=unknown_words, radius_km=terms.radius_km)
-    if search["cards"] or not unknown_words:
-        remember_user_terms(session, title=title_list, location=location_list, keyword=keyword_list)
+    if user is None:
+        search = jobs.guest_search(session, title_list, location_list, keyword_list, country, page,
+                                   radius_km=terms.radius_km)
+    else:
+        search = jobs.limited_search(session, user, title_list, location_list, keyword_list, country, page,
+                                     query_string, free_if_empty=unknown_words, radius_km=terms.radius_km)
+        if search["cards"] or not unknown_words:
+            remember_user_terms(session, title=title_list, location=location_list, keyword=keyword_list)
     return _results(request, session, terms, filters=filters, search=search, typed=typed, fixed=fixed or [],
                     view=view, error=config_error or error, message=msg)
 
@@ -191,7 +201,8 @@ def _results(request: Request, session: Session, terms: SearchTerms, *, filters:
         tracked[posting.ref] = card["tracked"]
     postings.remember(found)
     shown = [p for p in found if filters.matches(p)]
-    saved = jobs.saved_job_keys(session)
+    guest = tenant_of(session) is None
+    saved = {} if guest else jobs.saved_job_keys(session)
     selected = next((p for p in shown if p.ref == view), shown[0] if shown else None)
 
     corrections = [tuple(pair.split(">", 1)) for pair in fixed if ">" in pair][:10]
@@ -201,7 +212,7 @@ def _results(request: Request, session: Session, terms: SearchTerms, *, filters:
         "saved": {p.ref: saved.get((p.source, p.external_id)) for p in shown}, "selected": selected,
         "filters": filters, "q": terms.q, "l": terms.l, "country": terms.country, "radius": terms.radius_km,
         "radius_choices": radius_choices, "keywords": list(terms.keywords), "page_base": terms.url(filters),
-        "error": error, "message": message, "has_resume": active_candidate(session) is not None,
+        "error": error, "message": message, "has_resume": not guest and active_candidate(session) is not None, "guest": guest,
         "workplaces": postings.WORKPLACES, "employment_types": postings.EMPLOYMENT_TYPES,
         "levels": postings.EXPERIENCE_LEVELS, "date_ranges": postings.DATE_RANGES, "salaries": _SALARIES,
         "chips": _chips(terms, filters),
@@ -213,19 +224,26 @@ def _results(request: Request, session: Session, terms: SearchTerms, *, filters:
 
 
 @router.get("/jobs/posting/{ref}")
-def posting_page(request: Request, ref: str, session: Session = Depends(member_session)):
+def posting_page(request: Request, ref: str, session: Session = Depends(optional_member_session),
+                 user: User | None = Depends(optional_member)):
     """One search result on its own page (links from the landing page, and
-    the no-script fallback for "View details")."""
+    the no-script fallback for "View details"). Open to everyone, like /jobs --
+    but a job board listing (ref "a...") is for members only."""
+    if user is None and not ref.startswith("p"):
+        return RedirectResponse(url="/login?" + urlencode({"next": f"/jobs/posting/{ref}"}), status_code=303)
     posting = postings.get(session, ref)
     if posting is None:
         return RedirectResponse(url="/jobs?" + urlencode({"error": "That job is no longer available. Try a new search."}),
                                 status_code=303)
+    if user is None:
+        return templates.TemplateResponse(request, "posting.html", {
+            "p": posting, "tracked": None, "saved_job_id": None, "has_resume": False, "guest": True})
     tracked = jobs.tracked_by_external_id(session, [posting.external_id] if posting.external_id else [])
     saved = jobs.saved_job_keys(session)
     return templates.TemplateResponse(request, "posting.html", {
         "p": posting, "tracked": tracked.get(posting.external_id), "saved_job_id": saved.get((posting.source,
                                                                                                posting.external_id)),
-        "has_resume": active_candidate(session) is not None})
+        "has_resume": active_candidate(session) is not None, "guest": False})
 
 
 # ---- saved jobs ------------------------------------------------------------------------

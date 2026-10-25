@@ -4,16 +4,18 @@ employers, and the fixes that can be made without changing what it claims.
 Deterministic and free (no AI): it reads the resume's own lines and finds
 - a photo, and personal details Canadian employers don't ask for (date of
   birth, marital status, nationality, religion, family, ID numbers...) --
-  human-rights law keeps hiring from depending on them, so many employers
-  set such resumes aside;
+  human-rights guidance tells employers not to ask for them;
 - a declaration ("I hereby declare...") and listed references;
 - dates written as numbers ("03/2019", "05/04/2019"), which read differently
   in different countries;
 - British or American spelling where Canadian spelling differs (colour,
   centre, travelled; but organize, analyze);
 - high school listed next to a degree, unfamiliar grading, a missing city and
-  province, a full street address, a foreign phone number, an objective in
-  place of a summary, and length.
+  province, a foreign phone number, an objective in place of a summary, and
+  length.
+
+Each finding's source and what it costs the job seeker are in
+app/modules/resumes/check_sources.py; a rule with no official source says so.
 
 `check()` turns these into `Finding`s for the page; `plan()` turns the ones the
 member chose into line edits (`Plan`), which app/modules/resumes/canadian_convert.py
@@ -31,6 +33,7 @@ from pathlib import Path
 
 from docx import Document
 
+from app.modules.resumes.check_sources import Basis, basis
 from app.modules.resumes.documents.docx_edit import PHOTO_MIN_INCHES, iter_paragraphs, _photo_runs
 from app.modules.resumes.parser import _extract_pdf_lines, _match_section_key
 
@@ -433,17 +436,21 @@ class Finding:
     examples: list[str] = field(default_factory=list)
     fix_label: str | None = None  # what fixing it does; None: advice only
     unclear: list[str] = field(default_factory=list)  # parts the fix leaves for the member
+    lines: list[int] = field(default_factory=list)  # the resume lines it's about (indexes into doc.lines)
 
     @property
     def fixable(self) -> bool:
         return self.fix_label is not None
 
+    @property
+    def basis(self) -> Basis | None:
+        """Where the rule comes from and what the problem costs (check_sources.py)."""
+        return basis(self.key)
+
 
 _PROVINCE = re.compile(r"\b(?:AB|BC|MB|NB|NL|NS|NT|NU|ON|PE|PEI|QC|SK|YT)\b|(?i:\b(?:canada|alberta|british\s+columbia"
                        r"|manitoba|new\s+brunswick|newfoundland|nova\s+scotia|northwest\s+territories|nunavut"
                        r"|ontario|prince\s+edward\s+island|qu[ée]bec|saskatchewan|yukon)\b)")
-_STREET = re.compile(r"(?i)\b\d{1,6}[A-Za-z]?\s+(?:[\w.'-]+\s+){0,4}(?:street|st|avenue|ave|road|rd|drive|dr|boulevard"
-                     r"|blvd|lane|ln|way|court|ct|crescent|cres|place|pl|terrace|highway|hwy)\b\.?")
 _FOREIGN_PHONE = re.compile(r"\+(?!1\b|1[\s(.-])\d{1,3}[\s(.-]*\d")
 _GRADES = re.compile(r"(?i)\b(?:c?gpa|cpi|sgpa)\b[^.\n]{0,15}\d+(?:\.\d+)?\s*/\s*10\b|\b\d{2}(?:\.\d+)?\s*%|\bpercentage\b"
                      r"|\b(?:first|second)\s+class\b|\bdistinction\b")
@@ -472,7 +479,7 @@ def check(doc: ResumeDocument) -> list[Finding]:
         findings.append(Finding(
             PHOTO, MUST, "Remove the photo",
             "Canadian resumes don't include a photo. Employers avoid anything that could suggest bias "
-            "based on appearance, age or ethnicity, and many set such resumes aside.",
+            "based on appearance, age or ethnicity.",
             fix_label="Remove the photo"))
 
     edits, kinds = _personal_edits(lines)
@@ -483,7 +490,7 @@ def check(doc: ResumeDocument) -> list[Finding]:
             "these, so employers don't ask for them, and a resume that includes them looks out of place. "
             "Your name, city, phone, email and LinkedIn are enough.",
             _examples([lines[i].text for i in edits if not lines[i].heading]),
-            fix_label="Remove these details"))
+            fix_label="Remove these details", lines=sorted(edits)))
 
     edits = _declaration_edits(lines)
     if edits:
@@ -491,7 +498,7 @@ def check(doc: ResumeDocument) -> list[Finding]:
             DECLARATION, SHOULD, "Remove the declaration",
             "A signed declaration (\"I hereby declare that the above information is true\"), with place, date "
             "and signature, isn't used in Canada. Submitting the resume already says it's accurate.",
-            _examples([lines[i].text for i in edits]), fix_label="Remove the declaration"))
+            _examples([lines[i].text for i in edits]), fix_label="Remove the declaration", lines=sorted(edits)))
 
     edits, listed = _reference_edits(lines)
     if edits:
@@ -501,7 +508,7 @@ def check(doc: ResumeDocument) -> list[Finding]:
             ("Keep your referees' names and contact details for when an employer asks, usually after an "
              "interview. That protects their privacy and saves room.") if listed else
             "Employers in Canada assume you'll provide references when asked, so the line only takes up room.",
-            _examples([lines[i].text for i in edits]), fix_label="Remove them"))
+            _examples([lines[i].text for i in edits]), fix_label="Remove them", lines=sorted(edits)))
 
     edits = _high_school_edits(lines)
     if edits:
@@ -509,36 +516,42 @@ def check(doc: ResumeDocument) -> list[Finding]:
             HIGH_SCHOOL, SHOULD, "Leave out high school",
             "Once you have a college or university credential, Canadian resumes list only that. High-school "
             "results take room without telling employers anything new.",
-            _examples([lines[i].text for i in edits]), fix_label="Remove high school"))
+            _examples([lines[i].text for i in edits]), fix_label="Remove high school", lines=sorted(edits)))
 
     leaving = {i for i, value in _personal_edits(lines)[0].items() if value is None}
     leaving |= set(_declaration_edits(lines)) | set(_reference_edits(lines)[0]) | set(_high_school_edits(lines))
     names = month_style(lines)
-    changed, unclear = [], []
+    changed, unclear, dated = [], [], []
     for i, line in enumerate(lines):
         if line.section == "header" or i in leaving:
             continue
         _, line_changed, line_unclear = redate(line.text, names)
         changed += [f"{old} → {new}" for old, new in line_changed]
         unclear += line_unclear
+        if line_changed or line_unclear:
+            dated.append(i)
     if changed or unclear:
         findings.append(Finding(
             DATES, SHOULD, "Write dates as month and year",
             "Dates in numbers read differently from country to country (is 05/04/2019 April or May?). "
             f"Canadian resumes use the month's name and the year, like \"{names[2]} 2019\".",
             _examples(changed), fix_label="Change the dates" if changed else None,
-            unclear=list(dict.fromkeys(unclear))))
+            unclear=list(dict.fromkeys(unclear)), lines=dated))
 
-    spelled = []
+    spelled, respelled = [], []
     for i, line in enumerate(lines):
         if line.section != "header" and i not in leaving:
-            spelled += [f"{old} → {new}" for old, new in respell(line.text)[1]]
+            words = respell(line.text)[1]
+            spelled += [f"{old} → {new}" for old, new in words]
+            if words:
+                respelled.append(i)
     if spelled:
+        # A tip, not "should fix": the Language Portal of Canada says there's no single Canadian standard.
         findings.append(Finding(
-            SPELLING, SHOULD, "Use Canadian spelling",
+            SPELLING, TIP, "Use Canadian spelling",
             "Canadian spelling mixes British and American: colour, centre, travelled and licence, "
             "but organize, analyze and program. Employers notice, especially for writing-heavy roles.",
-            _examples(spelled), fix_label="Change the spelling"))
+            _examples(spelled), fix_label="Change the spelling", lines=respelled))
 
     if doc.pages >= 3:
         findings.append(Finding(
@@ -548,44 +561,42 @@ def check(doc: ResumeDocument) -> list[Finding]:
             "points that don't relate to the jobs you want. Tailoring for a job lets you drop points per application."))
 
     header = [line.text for line in lines if line.section == "header"]
+    header_at = [i for i, line in enumerate(lines) if line.section == "header"]
     if header and not any(_PROVINCE.search(text) for text in header):
         findings.append(Finding(
             "location", SHOULD, "Add your city and province",
             "Employers and their screening software look for where you are. Put your city and province under "
             "your name (\"Toronto, ON\"). If you're moving, say so: \"Relocating to Calgary, AB in May 2027\"."))
-    streets = [text for text in header if _STREET.search(text)]
-    if streets:
-        findings.append(Finding(
-            "address", TIP, "Your city and province are enough",
-            "A full street address isn't needed on a Canadian resume and shares more than you have to.",
-            _examples(streets)))
-    phones = [text for text in header if _FOREIGN_PHONE.search(text)]
+    # No street-address finding: Job Bank's own advice is to list your address.
+    phones = [i for i in header_at if _FOREIGN_PHONE.search(lines[i].text)]
     if phones:
         findings.append(Finding(
             "phone", TIP, "Add a Canadian phone number",
             "Employers rarely call international numbers. If you have a Canadian number, list it first; if "
-            "not, a free Canadian number you can answer helps.", _examples(phones)))
+            "not, a free Canadian number you can answer helps.", _examples([lines[i].text for i in phones]),
+            lines=phones))
 
-    education = [line.text for i, line in enumerate(lines)
-                 if line.section == "education" and not line.heading and i not in leaving]
-    grades = [text for text in education if _GRADES.search(text)]
-    foreign = [text for text in education if _FOREIGN_DEGREE.search(text)]
+    education_at = [i for i, line in enumerate(lines)
+                    if line.section == "education" and not line.heading and i not in leaving]
+    grades = [lines[i].text for i in education_at if _GRADES.search(lines[i].text)]
+    foreign = [lines[i].text for i in education_at if _FOREIGN_DEGREE.search(lines[i].text)]
     if grades or foreign:
         findings.append(Finding(
             "credentials", TIP, "Help employers understand your education",
             "Canadian employers may not know degrees from other countries or grades out of 10 or in percent. "
             "If you've had your credentials assessed (for example by WES), add the result, such as \"Bachelor's "
             "degree (WES: equivalent to a Canadian four-year bachelor's)\". Leave grades out unless they're a "
-            "real strength.", _examples(foreign + grades)))
+            "real strength.", _examples(foreign + grades),
+            lines=[i for i in education_at if _GRADES.search(lines[i].text) or _FOREIGN_DEGREE.search(lines[i].text)]))
 
-    objective = any(line.heading and line.section == "objective" for line in lines) or any(
-        _OBJECTIVE_WORDS.search(line.text) for line in lines if line.section in ("objective", "summary"))
+    objective = [i for i, line in enumerate(lines) if line.heading and line.section == "objective"
+                 or line.section in ("objective", "summary") and _OBJECTIVE_WORDS.search(line.text)]
     if objective:
         findings.append(Finding(
             "objective", TIP, "Replace the objective with a summary",
             "Instead of what you're looking for (\"seeking a challenging position...\"), write two or three lines "
             "on what you offer: your field, years of experience and strongest skills. You can do this on the "
-            "Edit resume page."))
+            "Edit resume page.", lines=objective))
 
     order = {level: n for n, level in enumerate(LEVELS)}
     return sorted(findings, key=lambda f: order[f.level])
@@ -605,31 +616,38 @@ def _count(n: int, word: str) -> str:
     return f"{n} {word}{'s' if n != 1 else ''}"
 
 
-def plan(doc: ResumeDocument, chosen: set[str], titles: dict[str, str] | None = None) -> Plan:
+def plan(doc: ResumeDocument, chosen: set[str], titles: dict[str, str] | None = None,
+         only: dict[str, set[int]] | None = None) -> Plan:
     """The edits for the fixes in `chosen` (keys from FIXES), plus each job title
-    in `titles` followed by its Canadian equivalent: "Executive - HR (HR Coordinator)"."""
+    in `titles` followed by its Canadian equivalent: "Executive - HR (HR Coordinator)".
+    `only` limits a fix to some lines ({key: line indexes}; the photo is line -1),
+    for a member who picked the changes one by one; a key not in it changes every line."""
     lines = doc.lines
     result = Plan(edits={})
     text = {i: line.text for i, line in enumerate(lines)}
+    only = only or {}
 
-    def apply(edits: dict[int, str | None]) -> int:
+    def allowed(key: str, i: int) -> bool:
+        return key in chosen and (key not in only or i in only[key])
+
+    def apply(key: str, edits: dict[int, str | None]) -> int:
         n = 0
         for i, value in edits.items():
-            if text.get(i) is not None:
+            if text.get(i) is not None and allowed(key, i):
                 text[i] = value
                 n += 1
         return n
 
-    if PHOTO in chosen and doc.photos:
+    if allowed(PHOTO, -1) and doc.photos:
         result.photos = True
         result.done.append("removed the photo")
-    if PERSONAL in chosen and (n := apply(_personal_edits(lines)[0])):
+    if (n := apply(PERSONAL, _personal_edits(lines)[0])):
         result.done.append(f"removed personal details from {_count(n, 'line')}")
-    if DECLARATION in chosen and apply(_declaration_edits(lines)):
+    if apply(DECLARATION, _declaration_edits(lines)):
         result.done.append("removed the declaration")
-    if REFERENCES in chosen and apply(_reference_edits(lines)[0]):
+    if apply(REFERENCES, _reference_edits(lines)[0]):
         result.done.append("removed the references")
-    if HIGH_SCHOOL in chosen and apply(_high_school_edits(lines)):
+    if apply(HIGH_SCHOOL, _high_school_edits(lines)):
         result.done.append("removed high school")
 
     names = month_style(lines)
@@ -637,10 +655,10 @@ def plan(doc: ResumeDocument, chosen: set[str], titles: dict[str, str] | None = 
     for i, line in enumerate(lines):
         if text[i] is None or line.section == "header":
             continue
-        if DATES in chosen:
+        if allowed(DATES, i):
             text[i], changed, _ = redate(text[i], names)
             dates += len(changed)
-        if SPELLING in chosen:
+        if allowed(SPELLING, i):
             text[i], changed = respell(text[i])
             words += len(changed)
     if dates:
@@ -663,3 +681,91 @@ def plan(doc: ResumeDocument, chosen: set[str], titles: dict[str, str] | None = 
 
     result.edits = {i: value for i, value in text.items() if value != lines[i].text}
     return result
+
+
+# ---- each change, for choosing them one by one -----------------------------------------------------
+
+TOP = "Top of the page"
+
+
+@dataclass
+class Change:
+    key: str  # the fix it belongs to
+    line: int  # its line index (-1: the photo)
+    before: str
+    after: str | None  # None: taken out
+    section: str  # the heading it's under, as the resume words it
+
+
+def headings(doc: ResumeDocument) -> list[str]:
+    """For each line, the heading it sits under ("Work Experience"), or TOP."""
+    out, current = [], TOP
+    for line in doc.lines:
+        if line.heading and line.section != "header":
+            current = line.text.strip().rstrip(":")
+        out.append(TOP if line.section == "header" else current)
+    return out
+
+
+def changes(doc: ResumeDocument) -> dict[str, list[Change]]:
+    """Every change each fix would make, line by line: what the page shows
+    before anything is changed, so the member can choose."""
+    under = headings(doc)
+    out: dict[str, list[Change]] = {}
+    if doc.photos:
+        out[PHOTO] = [Change(PHOTO, -1, "Your photo", None, TOP)]
+    for key in FIXES:
+        if key == PHOTO:
+            continue
+        edits = plan(doc, {key}).edits
+        if edits:
+            out[key] = [Change(key, i, doc.lines[i].text, new, under[i]) for i, new in sorted(edits.items())]
+    return out
+
+
+# ---- is it a resume at all? ---------------------------------------------------------------------
+# The checks look for problems, so a file with no resume in it (a health card, a
+# letter, a form) would have none and score as ready. It's checked first instead.
+
+CORE_SECTIONS = {"summary", "objective", "experience", "education", "skills", "certifications", "projects"}
+_RANGE_END = r"(?:(?:19|20)\d{2}|present|current|now|today|date)"
+_RANGE = re.compile(rf"(?i)\b(?:[a-z]{{3,9}}\.?\s+)?(?:\d{{1,2}}/)?(?:19|20)\d{{2}}\s*(?:[-–—]|to)\s*"
+                    rf"(?:[a-z]{{3,9}}\.?\s+)?(?:\d{{1,2}}/)?{_RANGE_END}\b")
+_EMAIL_TEXT = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_PHONE_TEXT = re.compile(r"(?:\+?\d[\s().-]*){10,15}")
+MIN_RESUME_WORDS = 30
+# Headings a job posting has and a resume doesn't: a posting also has Skills and
+# Qualifications, but never date ranges for jobs held.
+_POSTING = re.compile(r"(?i)^(?:key\s+)?(?:responsibilities|requirements|what you['’]ll do|what you will do|"
+                      r"about the (?:role|job|position|team|company)|about us|who you are|what we offer|"
+                      r"what you['’]ll bring|benefits|perks|how to apply|nice to have|must have|"
+                      r"job description|job summary|duties)\s*:?$")
+
+NOT_A_RESUME = ("This doesn't look like a resume, so it wasn't checked. A resume has parts like Experience, "
+                "Education or Skills, with dates for each job, and that's what the check looks for. If this is "
+                "your resume, give each part its own heading line (for example \"Work Experience\" or "
+                "\"Education\") and try again.")
+
+
+@dataclass
+class Evidence:
+    words: int
+    sections: set[str]  # the core resume sections it has a heading for
+    ranges: int  # date ranges, like "Jan 2020 - Present" or "2016 – 2019"
+    contact: bool  # an email address or phone number
+    posting: int = 0  # job-posting headings ("Responsibilities", "How to apply")
+
+    @property
+    def is_resume(self) -> bool:
+        if self.words < MIN_RESUME_WORDS or (self.posting >= 2 and self.ranges == 0):
+            return False
+        core = len(self.sections)
+        return core >= 2 or (core == 1 and (self.ranges >= 1 or self.contact)) or (self.ranges >= 2 and self.contact)
+
+
+def evidence(doc: ResumeDocument) -> Evidence:
+    text = "\n".join(line.text for line in doc.lines)
+    sections = {line.section for line in doc.lines if line.heading and line.section in CORE_SECTIONS}
+    posting = sum(1 for line in doc.lines if _POSTING.match(line.text.strip()))
+    return Evidence(len(text.split()), sections, len(_RANGE.findall(text)),
+                    bool(_EMAIL_TEXT.search(text) or _PHONE_TEXT.search(text)), posting)

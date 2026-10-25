@@ -26,7 +26,7 @@ managed at **Admin dashboard > Roles & permissions** and **Users**.
   `{"error": {"code": "forbidden"}}` from `/api`). Users who can't open the
   admin area get a plain 404 for admin pages.
 - **Menus and buttons** are built from the same rules (`can()`,
-  `can_route()` and `feature()` in templates; `window.jobAssistant.access`
+  `can_route()` and `feature()` in templates; `window.hirlumo.access`
   in `app.js`). They are for convenience only; the server checks every request.
 - **Feature switches** (Admin dashboard > Features) turn an optional feature
   off for everyone: job search, saved jobs, application tracking, job alerts,
@@ -164,10 +164,9 @@ plain `/login` form without JavaScript), or with Google.
   - codes never appear in API responses or logs.
 - **Passwords:**
   - Argon2id hashes;
-  - at least 12 characters, with no character-class rules, so passphrases
-    and password managers work;
-  - common words, your name or email, and too few different characters are
-    refused;
+  - at least 8 characters, with no character-class rules (Google's and
+    NIST SP 800-63B's bar), so passphrases and password managers work;
+  - common passwords ("password123", "12345678", "qwerty2024") are refused;
   - 5 wrong attempts lock the account for 15 minutes.
 - **Password reset:** a single-use link that expires in 1 hour. Resetting
   signs out every browser. The answer is the same whether or not the
@@ -204,9 +203,13 @@ pages. Errors are logged on the server, and users see a neutral message.
    - `ADMIN_EMAILS`;
    - `SMTP_*`: needed for confirmation and reset emails and job alert emails on a real server;
    - `MAIL_POSTAL_ADDRESS`: your mailing address, which job alert emails must carry (CASL);
-   - `GOOGLE_*` and `FACEBOOK_*`: optional. Register
-     `<PUBLIC_URL>/auth/google/callback` and `<PUBLIC_URL>/auth/facebook/callback`
-     as redirect URIs. Facebook requires https.
+   - `GOOGLE_*`, `FACEBOOK_*` and `LINKEDIN_*`: optional. Register
+     `<PUBLIC_URL>/auth/google/callback`, `<PUBLIC_URL>/auth/facebook/callback` and
+     `<PUBLIC_URL>/auth/linkedin/callback` as redirect URIs. All three require https
+     on a domain. LinkedIn sign-in ("Sign In with LinkedIn using OpenID Connect")
+     shares name, email and country only; work history, education and skills come
+     from the member's own LinkedIn PDF or data export, imported on the Profile page
+     (`app/modules/profiles/linkedin.py`).
 2. `alembic upgrade head`. On an existing single-user install, the upgrade gives
    all existing data to one owner account (an admin):
    - with `ADMIN_EMAILS` set, it uses the first address there, confirmed;

@@ -12,6 +12,10 @@ Two limits, each a sliding one-hour window counted from `ActivityEvent` rows
   re-tailor and Quick Tailor. An action counts only when it actually made a
   paid analysis call -- answers served from cache are free.
 
+On top of the hourly limit, resume actions count toward the free plan's
+lifetime allowance (free_plan.py), shared by every account found to belong to
+the same person.
+
 Admins are unlimited. An admin can override either limit for one user
 (`User.search_limit_per_hour` / `User.ai_limit_per_hour`), including 0 to
 block it. Each user's checks run under a per-user lock, so a burst of
@@ -38,6 +42,8 @@ from app.core.config.models import AppSetting
 from app.core.config.schema import PlatformConfig
 from app.core.exceptions import AppError
 from app.modules.auth.models import User
+from app.modules.usage import free_plan
+from app.modules.usage.plans import CONTACT_EMAIL
 from app.modules.usage.ai_calls import AICallLog
 from app.modules.usage.models import ActivityEvent, ActivityKind
 
@@ -60,6 +66,7 @@ class Allowance:
     limit: int | None  # None: unlimited
     used: int
     next_free_at: datetime | None = None  # when the next one frees up (None: never, or not exhausted)
+    free: "free_plan.Standing | None" = None  # resume actions: what's left of the free plan's lifetime allowance
 
     @property
     def unlimited(self) -> bool:
@@ -124,8 +131,19 @@ def allowance(session: Session, user: User, kind: str, platform: PlatformConfig 
 
 
 def ai_allowance_for(session: Session, user: User | None) -> Allowance | None:
-    """The signed-in user's resume-action allowance for display (None when signed out)."""
-    return allowance(session, user, AI) if user is not None else None
+    """The signed-in user's resume-action allowance for display (None when signed out),
+    with the free plan's lifetime allowance in `.free`."""
+    if user is None:
+        return None
+    platform = platform_limits(session)
+    result = allowance(session, user, AI, platform)
+    try:
+        result.free = free_standing(session, user, platform)
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("Couldn't read the free-plan allowance for user_id=%s", user.id)
+    return result
 
 
 def record(session: Session, user_id: int, kind: str, summary: str | None = None, *, ref: str | None = None,
@@ -252,14 +270,46 @@ def settle_search(session: Session, user: User, charge: SearchCharge, *, provide
 
 # ---- resume actions (paid analysis calls) ------------------------------------------
 
-def _paid_calls(session: Session, user_id: int) -> int:
+def paid_calls(session: Session, user_id: int) -> int:
+    """The paid analysis calls an account has made (answers from cache aren't)."""
     return session.query(func.count(AICallLog.id)).filter(
         AICallLog.user_id == user_id, AICallLog.cache_hit.is_(False)
     ).scalar() or 0
 
 
+def free_standing(session: Session, user: User | None, platform: PlatformConfig | None = None,
+                  kind: str = free_plan.AI) -> free_plan.Standing | None:
+    """What's left of one of the free plan's lifetime allowances (None when signed out)."""
+    if user is None:
+        return None
+    platform = platform or platform_limits(session)
+    default = platform.free_ai_actions_total if kind == free_plan.AI else platform.free_searches_total
+    return free_plan.standing(session, user, default, kind)
+
+
+def _free_message(standing: free_plan.Standing) -> str:
+    if standing.limit == 0:
+        return (f"Match analyses and tailored resumes aren't included in your plan. To ask for them, email "
+                f"{CONTACT_EMAIL}.")
+    return (f"You've used the {standing.limit} resume actions (match analyses and tailored resumes) included "
+            "in the free plan. Job search, saved jobs, tracking and the resume check stay free. "
+            f"Need more while Hirlumo is in beta? Email {CONTACT_EMAIL} and tell us what you're working on.")
+
+
+def free_search_note(standing: free_plan.Standing) -> str:
+    """Shown on results when the free plan's job-board searches are used up."""
+    return (f"You've used the {standing.limit} job-board searches included in the free plan, so these results "
+            "are from company careers sites only. Need more while Hirlumo is in beta? Email "
+            f"{CONTACT_EMAIL}.")
+
+
 def check_ai(session: Session, user: User, platform: PlatformConfig | None = None) -> Allowance:
-    """The current resume-action allowance; raises `LimitReached` when it's used up."""
+    """The current resume-action allowance; raises `LimitReached` when the hour's
+    or the free plan's is used up."""
+    platform = platform or platform_limits(session)
+    standing = free_standing(session, user, platform)
+    if standing is not None and standing.exhausted:
+        raise LimitReached(_free_message(standing))
     current = allowance(session, user, AI, platform)
     if current.exhausted:
         raise LimitReached(_ai_message(current), current)
@@ -278,20 +328,25 @@ def ai_action(session: Session, user: User, kind: str, summary: str | None = Non
             record(session, user.id, ActivityKind.LIMIT_HIT, f"Resume-action limit: {summary or ''}".strip(),
                    meta={"limit": AI, "job_id": job_id})
             raise
-        before = _paid_calls(session, user.id)
+        before = paid_calls(session, user.id)
         try:
             yield
         finally:
             try:
-                made = _paid_calls(session, user.id) - before
+                made = paid_calls(session, user.id) - before
             except Exception:  # the action left the session failed: start clean
                 session.rollback()
                 try:
-                    made = _paid_calls(session, user.id) - before
+                    made = paid_calls(session, user.id) - before
                 except Exception:
                     made = 0
             if made > 0:
                 record(session, user.id, kind, summary, meta={"job_id": job_id} if job_id else None, ai_calls=made)
+                try:
+                    free_plan.spend(session, user)
+                except Exception:
+                    session.rollback()
+                    logger.exception("Couldn't count a free-plan resume action for user_id=%s", user.id)
 
 
 def job_label(job) -> str:

@@ -1,18 +1,37 @@
 <!doctype html>
 {% from "_icons.html" import icon %}
-{% set theme = request.cookies.get("theme") if request is defined else none %}
+{% set picked = request.cookies.get("theme") if request is defined else none %}
+{% set theme = picked if picked in ("light", "dark", "system") else default_theme() %}
 <html lang="en"{% if theme in ("light", "dark") %} data-theme="{{ theme }}"{% endif %}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Job Assistant{% endblock %}</title>
-  <meta name="description" content="{% block description %}Search jobs from job boards and company career sites across Canada, see how well each one fits you, and apply with a resume tailored to the role.{% endblock %}">
+  <title>{% block title %}Hirlumo{% endblock %}</title>
+  <meta name="description" content="{% block description %}Search jobs in Canada from job boards and company career sites, see your match score for each role, and apply with an AI-tailored resume in Canadian format. Free to start.{% endblock %}">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="{{ static_url("style.css") }}">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232453d4'/%3E%3Cpath d='M9 12h14v10H9z M13 12V9h6v3' fill='none' stroke='white' stroke-width='2.2' stroke-linejoin='round'/%3E%3C/svg%3E">
-  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <link rel="icon" href="{{ static_url("brand/favicon.svg") }}" type="image/svg+xml">
+  <link rel="icon" href="{{ static_url("brand/icon-192.png") }}" type="image/png" sizes="192x192">
+  <link rel="apple-touch-icon" href="{{ static_url("brand/apple-touch-icon.png") }}">
+  <link rel="manifest" href="{{ static_url("brand/site.webmanifest") }}">
+  {% set page_seo = seo() %}
+  {% if page_seo.index %}<link rel="canonical" href="{{ page_seo.canonical }}">{% else %}<meta name="robots" content="noindex, follow">{% endif %}
+  {% for name, value in page_seo.verify.items() %}<meta name="{{ name }}" content="{{ value }}">
+  {% endfor %}
+  <meta name="theme-color" content="#2453d4">
+  <meta property="og:site_name" content="Hirlumo">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{{ self.title() }}">
+  <meta property="og:description" content="{{ self.description() }}">
+  {% if page_seo.canonical %}<meta property="og:url" content="{{ page_seo.canonical }}">{% endif %}
+  <meta property="og:locale" content="en_CA">
+  <meta property="og:image" content="{{ public_url() }}/static/brand/og-image.png">
+  <meta property="og:image:alt" content="Hirlumo: jobs in Canada, matched to your experience">
+  <meta name="twitter:card" content="summary_large_image">
+  {% block structured_data %}{% endblock %}
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
   <script src="{{ static_url("tagpicker.js") }}" defer></script>
   <script src="{{ static_url("app.js") }}" defer></script>
 </head>
@@ -24,16 +43,16 @@
   <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <div class="site-header-inner">
-      <a class="site-logo" href="/" aria-label="Job Assistant home">
-        <span class="site-logo-mark">{{ icon("briefcase") }}</span><span>Job Assistant</span>
+      <a class="site-logo" href="/" aria-label="Hirlumo home">
+        <img class="site-logo-mark" src="{{ static_url("brand/mark.svg") }}" alt="" width="32" height="32"><span>Hirlumo</span>
       </a>
       {% macro top_link(href, label, match) %}
         {% set active = path.startswith(match) %}
         <a href="{{ href }}" class="{{ 'active' if active }}"{% if active %} aria-current="page"{% endif %}>{{ label }}</a>
       {% endmacro %}
       <nav class="site-nav" aria-label="Main">
-        {% if signed_in %}{% if can_route("/jobs") %}{{ top_link("/jobs", "Find Jobs", "/jobs") }}{% endif %}{% else %}
-        <a href="/jobs" data-auth-open data-next="/jobs">Find Jobs</a>{% endif %}
+        {% if not signed_in or can_route("/jobs") %}{{ top_link("/jobs", "Find Jobs", "/jobs") }}{% endif %}
+        {% if signed_in and can_route("/resume/canadian") %}{{ top_link("/resume/canadian", "Resume Check", "/resume/canadian") }}{% else %}{{ top_link("/canadian-resume-check", "Resume Check", "/canadian-resume-check") }}{% endif %}
         {{ top_link("/companies", "Companies", "/companies") }}
         {{ top_link("/resources", "Career Resources", "/resources") }}
       </nav>
@@ -63,6 +82,10 @@
               {% if items %}{% if not loop.first %}<hr>{% endif %}
               {% for href, label, ic in items %}<a role="menuitem" href="{{ href }}">{{ icon(ic) }} {{ label }}</a>{% endfor %}
               {% endif %}{% endfor %}
+              <hr><a role="menuitem" href="/plans">{{ icon("coins") }} Plan &amp; usage</a>
+              {% if nav_user.email_verified %}<button type="button" role="menuitem" class="menu-button" data-review-open>{{ icon("star") }} Rate Hirlumo</button>{% endif %}
+              <a role="menuitem" href="/help">{{ icon("help") }} Help centre</a>
+              <a role="menuitem" href="/contact">{{ icon("mail") }} Contact us</a>
               {% if can_route("/admin") %}
               <hr><a role="menuitem" href="/admin">{{ icon("grid") }} Admin dashboard</a>
               {% endif %}
@@ -79,9 +102,10 @@
         <details class="mobile-menu" data-dropdown>
           <summary aria-label="Menu">{{ icon("menu") }}</summary>
           <div class="menu-panel">
-            {% if signed_in %}{% if can_route("/jobs") %}<a href="/jobs">Find Jobs</a>{% endif %}{% else %}<a href="/jobs" data-auth-open data-next="/jobs">Find Jobs</a>{% endif %}
+            {% if not signed_in or can_route("/jobs") %}<a href="/jobs">Find Jobs</a>{% endif %}
             <a href="/companies">Companies</a>
             <a href="/resources">Career Resources</a>
+            <a href="/help">Help centre</a>
             {% if not signed_in %}<hr><a href="/login">Log In</a><a href="/signup">Sign Up</a>{% endif %}
             {# Small phones: the theme button leaves the header to make room, so it's here. #}
             <div class="mobile-theme" role="group" aria-label="Theme">
@@ -107,17 +131,17 @@
   <footer class="site-footer">
     <div class="site-footer-inner">
       <div class="footer-brand">
-        <a class="site-logo" href="/"><span class="site-logo-mark">{{ icon("briefcase") }}</span><span>Job Assistant</span></a>
-        <p>Job search for Canada: openings from job boards and company career sites, matched to your experience.</p>
+        <a class="site-logo" href="/"><img class="site-logo-mark" src="{{ static_url("brand/mark.svg") }}" alt="" width="32" height="32"><span>Hirlumo</span></a>
+        <p>Job search for Canada: openings from job boards and company career sites, matched to your experience, with a resume tailored to every application.</p>
       </div>
       <div class="footer-col"><h4>Job seekers</h4>
-        <a href="/jobs"{% if not signed_in %} data-auth-open data-next="/jobs"{% endif %}>Find jobs</a>
-        <a href="/companies">Companies</a><a href="/resources">Career resources</a>
+        <a href="/jobs">Find jobs</a><a href="/job-search">Browse jobs by role and city</a><a href="/canadian-resume-check">Free Canadian resume check</a>
+        <a href="/companies">Companies</a><a href="/resources">Career resources</a><a href="/plans">Plans</a>
         {% if signed_in %}{% if can_route("/profile") %}<a href="/profile">My profile</a>{% endif %}{% else %}<a href="/signup">Create an account</a>{% endif %}</div>
       <div class="footer-col"><h4>Company</h4>
-        <a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a></div>
+        <a href="/help">Help centre</a><a href="/contact">Contact us</a><a href="/terms">Terms of Service</a><a href="/privacy">Privacy Policy</a></div>
     </div>
-    <div class="site-footer-base">&copy; 2026 Job Assistant. Your resume and applications are private to your account.</div>
+    <div class="site-footer-base">&copy; 2026 Hirlumo. Your resume and applications are private to your account.</div>
   </footer>
   {% endblock %}
 
@@ -125,6 +149,8 @@
   {# For app.js (hasPermission & co.); a convenience only -- the server checks every request. #}
   <script type="application/json" id="access-state">{{ {"roles": nav_user.roles|list, "permissions": nav_user.permissions|sort, "routes": {"/jobs": can_route("/jobs"), "/saved": can_route("/saved"), "/applications": can_route("/applications"), "/admin": can_route("/admin")}}|tojson }}</script>
   {% endif %}
+  {% block help_chat %}{% include "_help_chat.html" %}{% endblock %}
+  {% if signed_in and nav_user.email_verified %}{% include "_review.html" %}{% endif %}
   {% if not signed_in %}{% block auth_modal %}{% include "auth/_modal.html" %}{% endblock %}{% endif %}
 </body>
 </html>

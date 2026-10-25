@@ -41,6 +41,12 @@ def test_plain_titles_are_left_alone(vocab, text):
     assert read(text, vocab).same_as(text)
 
 
+@pytest.mark.parametrize("text", ["HR and Admin", "HR & Admin", "HR/Admin", "HR and Admin jobs in Victoria"])
+def test_and_between_two_jobs_makes_two_titles(vocab, text):
+    r = read(text, vocab)
+    assert r.titles == ["HR", "Admin"] and not r.same_as(text)
+
+
 def test_a_place_typed_in_the_title_box_becomes_the_location(vocab):
     r = read("Data analyst, Toronto", vocab)
 

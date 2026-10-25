@@ -20,7 +20,9 @@
   <div class="detail-actions">
     <a class="button primary pill" href="{{ p.url }}" target="_blank" rel="noopener">Apply {{ icon("external") }}</a>
     {% with ref=p.ref, saved_job_id=saved_job_id %}{% include "_save_button.html" %}{% endwith %}
-    {% if track and track.fit and can_route("/jobs/{job_id}") %}
+    {% if guest is defined and guest %}
+      <a class="button pill outline" href="/signup" data-auth-open data-next="/jobs/posting/{{ p.ref }}" data-reason="Create a free account to see how well this job fits your resume.">{{ icon("sparkles") }} Analyze match</a>
+    {% elif track and track.fit and can_route("/jobs/{job_id}") %}
       <a class="button pill outline" href="/jobs/{{ track.job_id }}#fit">{{ icon("sparkles") }} Fit {{ track.fit.fit_score }}/100 &middot; view analysis</a>
     {% elif track and can_route("/jobs/{job_id}") %}
       <a class="button pill outline" href="/jobs/{{ track.job_id }}">{{ icon("sparkles") }} Open analysis</a>

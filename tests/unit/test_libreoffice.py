@@ -31,7 +31,10 @@ def test_convert_returns_pdf_path_on_success(tmp_path, monkeypatch):
     docx_path.write_bytes(b"fake docx")
     pdf_path = tmp_path / "resume.pdf"
 
+    calls = []
+
     def fake_run(cmd, **kwargs):
+        calls.append(cmd)
         pdf_path.write_bytes(b"fake pdf")
         return SimpleNamespace(returncode=0, stderr="")
 
@@ -41,6 +44,8 @@ def test_convert_returns_pdf_path_on_success(tmp_path, monkeypatch):
     result = converter.convert(docx_path)
 
     assert result == pdf_path
+    # Its own settings folder: works for a user with no account entry (Docker with APP_UID).
+    assert calls[0][1].startswith("-env:UserInstallation=file://")
 
 
 def test_convert_raises_when_soffice_exits_nonzero(tmp_path, monkeypatch):

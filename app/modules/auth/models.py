@@ -52,6 +52,13 @@ class User(Base):
     # Per-user hourly limits set by an admin; None = the platform default.
     search_limit_per_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ai_limit_per_hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The free plan's lifetime resume actions for this person, set by an admin; None = the platform default.
+    ai_total_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ...and job-board searches in total; None = the platform default.
+    search_total_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # The review popup (app/modules/feedback): None = not asked yet | "later" | "never" | "sent".
+    review_prompt: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    review_prompt_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)  # "later": not before
 
     identities: Mapped[list["OAuthIdentity"]] = relationship(back_populates="user", cascade="all, delete-orphan")
 

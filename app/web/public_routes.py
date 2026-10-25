@@ -9,14 +9,15 @@ runs exactly what they typed.
 from __future__ import annotations
 
 import time
+from email.utils import parseaddr
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.database.session import get_session
+from app.integrations.email import EmailSettings
 from app.modules.access import rbac
 from app.modules.auth.deps import current_user, member_session, require_member
 from app.modules.auth.models import User
@@ -24,6 +25,10 @@ from app.modules.jobs import places, postings
 from app.modules.jobs.pool import service as pool
 from app.modules.jobs.pool.models import PoolCompany, PoolJob
 from app.modules.profiles import service as profiles
+from app.core.tenancy import bind_tenant
+from app.modules.resumes import public_check
+from app.modules.usage import plans as plan_catalog
+from app.modules.usage import free_plan, quota
 from app.web.templating import safe_next, templates
 
 router = APIRouter()
@@ -62,14 +67,14 @@ def _landing_data(session: Session) -> dict:
         for label, query, icon in CATEGORIES:
             count = pool.search_pool(session, [query], [], [], "ca", per_page=1).total
             categories.append({"label": label, "query": query, "icon": icon, "count": count})
-        recent_rows = session.query(PoolJob).join(PoolCompany, PoolJob.company_id == PoolCompany.id).filter(
-            PoolCompany.enabled.is_(True), PoolJob.country == "ca", PoolJob.date_posted.is_not(None)).order_by(
+        recent_rows = pool.fresh_jobs(session).filter(
+            PoolJob.country == "ca", PoolJob.date_posted.is_not(None)).order_by(
             PoolJob.date_posted.desc()).limit(6).all()
         recent = [postings.from_raw(pool.to_raw_job(r)) for r in recent_rows]
         companies = session.query(PoolCompany).filter(PoolCompany.enabled.is_(True), PoolCompany.canada_count > 0) \
             .order_by(PoolCompany.canada_count.desc()).limit(8).all()
         companies = [{"name": c.label, "count": c.canada_count} for c in companies]
-        total = session.query(func.count(PoolJob.id)).filter(PoolJob.country == "ca").scalar() or 0
+        total = pool.fresh_jobs(session).filter(PoolJob.country == "ca").count()
         return {"categories": categories, "recent": recent, "companies": companies, "total": total}
     return _cached("landing", build)
 
@@ -104,6 +109,24 @@ def terms_page(request: Request, user: User | None = Depends(current_user)):
     return templates.TemplateResponse(request, "legal/terms.html", {})
 
 
+@router.get("/plans")
+def plans_page(request: Request, user: User | None = Depends(current_user), session: Session = Depends(get_session)):
+    """What each plan includes. Only the free plan for now, while Hirlumo is in beta."""
+    platform = quota.platform_limits(session)
+    usage = None
+    if user is not None and user.is_member:
+        bind_tenant(session, user.id)
+        usage = [("Job-board searches", quota.free_standing(session, user, platform, free_plan.SEARCH)),
+                 ("Resume actions", quota.free_standing(session, user, platform, free_plan.AI))]
+        if all(st.unlimited for _, st in usage):
+            usage = None
+        session.commit()
+    return templates.TemplateResponse(request, "plans.html", {
+        "plans": plan_catalog.all_plans(platform), "current_plan": "free" if user is not None else None,
+        "usage": usage, "used_up": any(st.exhausted for _, st in usage or []),
+        "contact": plan_catalog.CONTACT_EMAIL})
+
+
 @router.get("/access-denied")
 def access_denied_page(request: Request, reason: str = "forbidden", user: User | None = Depends(current_user)):
     """Where htmx navigation lands after a 403 (it can't swap a 403 page in)."""
@@ -118,13 +141,23 @@ def privacy_page(request: Request, user: User | None = Depends(current_user)):
     return templates.TemplateResponse(request, "legal/privacy.html", {})
 
 
+@router.get("/data-deletion")
+def data_deletion_page(request: Request, user: User | None = Depends(current_user)):
+    """How to delete your data -- Facebook Login asks every app for this page."""
+    address = parseaddr(EmailSettings().smtp_from or "")[1]
+    contact = address if address and not address.endswith("@localhost") else None
+    return templates.TemplateResponse(request, "legal/data_deletion.html",
+                                      {"contact": contact, "hold_minutes": public_check.HOLD_SECONDS // 60})
+
+
 # ---- the optional profile step after signing in ----------------------------------------
 
 @router.get("/welcome")
 def welcome_page(request: Request, next: str = "/jobs", user: User = Depends(require_member),
                  session: Session = Depends(member_session)):
     return templates.TemplateResponse(request, "welcome.html", {
-        "next": safe_next(next, "/jobs"), "completion": profiles.completion(session, user)})
+        "next": safe_next(next, "/jobs"), "completion": profiles.completion(session, user),
+        "signed_up_with_linkedin": any(i.provider == "linkedin" for i in user.identities)})
 
 
 @router.post("/welcome")

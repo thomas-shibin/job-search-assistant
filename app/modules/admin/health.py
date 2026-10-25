@@ -31,7 +31,9 @@ from app.modules.auth.settings import AuthSettings
 from app.modules.jobs.models import Job
 from app.modules.resumes.models import CandidateProfile
 from app.modules.usage.ai_calls import AICallLog
-from app.workers.background import is_running, next_scan_time
+from app.modules.backups import service as backups
+from app.integrations.object_storage import StorageSettings
+from app.workers.background import is_running, next_backup_time, next_scan_time
 from app.workers.models import SchedulerRun, SourceRunResult
 
 
@@ -129,6 +131,41 @@ def _scheduler(session: Session, config) -> Check:
     return Check("Scheduler", last_status, detail)
 
 
+def _backups() -> Check:
+    settings = backups.BackupSettings()
+    if not settings.enabled:
+        return Check("Backups", WARN, "turned off (BACKUP_ENABLED=false)")
+    status = backups.read_status()
+    if not status.get("last_success_at"):
+        detail = "no backup yet"
+        if status.get("last_error"):
+            detail += f"; the last try failed: {status['last_error']}"
+        return Check("Backups", FAIL if status.get("last_error") else WARN, detail)
+    last = datetime.fromisoformat(status["last_success_at"])
+    detail = f"last {_ago(last)}, {status.get('last_size', 0) // 1_000_000} MB"
+    level = OK
+    if _utcnow() - last > timedelta(hours=30):
+        level = FAIL
+        detail = "none for over a day -- " + detail
+    if status.get("last_error") and status.get("last_error_at", "") > status["last_success_at"]:
+        level, detail = FAIL, detail + f"; the latest try failed: {status['last_error']}"
+    if status.get("uploaded"):
+        detail += ", encrypted and copied off the server"
+    elif not StorageSettings().configured:
+        level = max(level, WARN, key=[OK, WARN, FAIL].index)
+        detail += ", on this server only (set BACKUP_S3_* in .env to copy them off it)"
+    elif not settings.encryption_key:
+        level = max(level, WARN, key=[OK, WARN, FAIL].index)
+        detail += ", on this server only: set BACKUP_ENCRYPTION_KEY so they can be copied off it"
+    else:
+        level = max(level, WARN, key=[OK, WARN, FAIL].index)
+        detail += f", not copied off the server: {status.get('upload_error') or 'unknown error'}"
+    next_at = next_backup_time()
+    if next_at is not None:
+        detail += f"; next in {_duration((next_at - datetime.now(next_at.tzinfo)).total_seconds())}"
+    return Check("Backups", level, detail)
+
+
 def _accounts(session: Session) -> Check:
     members = session.query(func.count(User.id)).filter(User.role != Role.GUEST.value).scalar()
     unverified = session.query(func.count(User.id)).filter(
@@ -213,6 +250,7 @@ def check_health(session: Session, config_path: Path = _DEFAULT_CONFIG_PATH) -> 
 
     report.checks += [
         _check("Scheduler", lambda: _scheduler(session, config)),
+        _check("Backups", _backups),
         _check("Accounts", lambda: _accounts(session)),
         _check("Integrations", _api_keys),
         _check("PDF export", _pdf),
@@ -224,7 +262,7 @@ def check_health(session: Session, config_path: Path = _DEFAULT_CONFIG_PATH) -> 
 def format_health_message(report: HealthReport) -> str:
     """The report as a Telegram HTML message."""
     headline = {"ok": "✅ All systems OK", "degraded": "⚠️ Running with warnings", "down": "❌ App is down"}
-    lines = [f"<b>Job Search Assistant — {headline[report.status]}</b>",
+    lines = [f"<b>Hirlumo — {headline[report.status]}</b>",
              f"Up {_duration(report.uptime_seconds)}", ""]
     lines += [f"{_ICONS[c.status]} <b>{escape(c.name)}</b>: {escape(c.detail)}" for c in report.checks]
     return "\n".join(lines)

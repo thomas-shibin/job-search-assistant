@@ -41,6 +41,7 @@ from app.modules.jobs.ingestion.pipeline import ingest_raw_job
 from app.modules.jobs.search import QuerySpec, queries_per_scan, scan_slice, scan_specs, search_jobs
 from app.modules.matching.pipeline import NoActiveCandidateProfileError, analyze_job
 from app.modules.resumes.pipeline import generate_resume_bundle
+from app.modules.usage import free_plan, quota
 from app.workers.lock import RunAlreadyInProgressError, run_lock
 from app.workers.models import SchedulerRun, SourceRunResult
 
@@ -76,13 +77,15 @@ class ScheduledSearchSource:
 
     def __init__(
         self, adzuna: AdzunaSource, specs: list[QuerySpec], interval_minutes: int, daily_limit: int,
-        areas: dict[str, list[str]] | None = None,
+        areas: dict[str, list[str]] | None = None, max_age_days: int | None = None,
     ) -> None:
+        self._max_age_days = max_age_days
         self._adzuna = adzuna
         self._specs = specs
         self._interval_minutes = interval_minutes
         self._daily_limit = daily_limit
         self._areas = areas or {}
+        self.reached = False  # at least one query got an answer from the board
 
     def discover_jobs(self, search_profile: SearchProfile | None) -> list[RawJob]:
         per_scan = queries_per_scan(len(self._specs), self._interval_minutes, self._daily_limit)
@@ -96,7 +99,8 @@ class ScheduledSearchSource:
         failed = 0
         for (keywords, filters), pairs in groups.items():
             results = search_jobs(self._adzuna, [], [], pairs=pairs, per_page=50, use_cache=False,
-                                  keywords=list(keywords), areas=self._areas, filters=dict(filters))
+                                  keywords=list(keywords), areas=self._areas, filters=dict(filters),
+                                  max_age_days=self._max_age_days)
             failed += len(results.failed_queries)
             for job in results.jobs:
                 key = job.external_id or job.source_url
@@ -105,6 +109,7 @@ class ScheduledSearchSource:
                     jobs.append(job)
         if todo and failed == len(todo):
             raise RuntimeError(f"Every Adzuna query failed ({failed})")
+        self.reached = bool(todo)
         return jobs
 
 
@@ -122,7 +127,8 @@ def _scheduled_search_source(
         logger.warning("Scheduled Adzuna searches are set up but ADZUNA_APP_ID/ADZUNA_APP_KEY are not set in .env -- skipping")
         return None
     adzuna = AdzunaSource(app_id=adzuna_settings.app_id, app_key=adzuna_settings.app_key, country=config.search.country)
-    return ScheduledSearchSource(adzuna, specs, config.scheduler.interval_minutes, config.search.adzuna_daily_limit, areas)
+    return ScheduledSearchSource(adzuna, specs, config.scheduler.interval_minutes, config.search.adzuna_daily_limit,
+                                 areas, max_age_days=config.platform.board_max_job_age_days)
 
 
 def _build_notification_provider() -> NotificationProvider | None:
@@ -149,6 +155,26 @@ def _send_alert_email(session: Session, config: AppConfig) -> None:
     except Exception:
         session.rollback()
         logger.warning("Job alert email failed for user_id=%s", user_id, exc_info=True)
+
+
+def _member(session: Session) -> User | None:
+    """The member a scan's session is bound to (None for a single-user database)."""
+    user_id = tenant_of(session)
+    return session.get(User, user_id) if user_id is not None else None
+
+
+def _without_paid_analysis(config: AppConfig) -> bool:
+    """A member's scan makes no paid analysis calls: their free plan's resume
+    actions are for what they ask for themselves. Scores use the free rules;
+    returns whether tailoring is still free (the mock provider)."""
+    config.ai.enabled = False
+    config.ai.generate_match_explanations = False
+    return config.ai.provider == "mock"
+
+
+def _boards_left(session: Session, member: User, config: AppConfig) -> bool:
+    standing = quota.free_standing(session, member, config.platform, free_plan.SEARCH)
+    return standing is None or not standing.exhausted
 
 
 def run_once(session: Session, config: AppConfig) -> RunSummary:
@@ -205,6 +231,8 @@ def _run_source(
     notification_provider: NotificationProvider | None,
     watchlist_alerter: WatchlistAlerter | None,
     summary: RunSummary,
+    *,
+    tailor: bool = True,
 ) -> None:
     result = SourceRunResult(
         scheduler_run_id=scheduler_run.id,
@@ -256,6 +284,8 @@ def _run_source(
             result.jobs_qualified += 1
             summary.jobs_qualified += 1
             maybe_notify_qualified_job(job, analysis.breakdown, config, notification_provider)
+            if not tailor:
+                continue
 
             try:
                 generate_resume_bundle(session, job, config, ai_provider=ai_provider)
@@ -278,6 +308,12 @@ def _run(session: Session, config: AppConfig, *, desktop_notifications: bool = T
     scheduler_run = SchedulerRun(status="RUNNING")
     session.add(scheduler_run)
     session.commit()
+
+    # A member's scan stays inside the free plan: no paid analysis, and job-board
+    # queries only while their lifetime job-board searches last (each scan that
+    # reaches the board counts as one, like a search they run themselves).
+    member = _member(session)
+    tailor = _without_paid_analysis(config) if member is not None else True
 
     ai_provider: AIProvider | None = None
     if config.ai.enabled or config.ai.generate_match_explanations:
@@ -303,15 +339,24 @@ def _run(session: Session, config: AppConfig, *, desktop_notifications: bool = T
         for source_name, source in _configured_sources(search_profile):
             _run_source(
                 session, scheduler_run, source_name, source, search_profile, config,
-                ai_provider, notification_provider, watchlist_alerter, summary,
+                ai_provider, notification_provider, watchlist_alerter, summary, tailor=tailor,
             )
 
     global_source = _scheduled_search_source(config, adzuna_settings, location_paths(session))
+    if global_source is not None and member is not None and not _boards_left(session, member, config):
+        logger.info("Free plan job-board searches used up for user_id=%s; scan skips the job board", member.id)
+        global_source = None
     if global_source is not None:
         _run_source(
             session, scheduler_run, "adzuna", global_source, None, config,
-            ai_provider, notification_provider, watchlist_alerter, summary,
+            ai_provider, notification_provider, watchlist_alerter, summary, tailor=tailor,
         )
+        if member is not None and getattr(global_source, "reached", False):
+            try:
+                free_plan.spend(session, member, free_plan.SEARCH)
+            except Exception:
+                session.rollback()
+                logger.exception("Couldn't count a scheduled scan for user_id=%s", member.id)
 
     if watchlist_alerter is not None:
         watchlist_alerter.flush()

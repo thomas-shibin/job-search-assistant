@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Plans - Hirlumo{% endblock %}
+{% block description %}Hirlumo's plans and what each includes. Hirlumo is in beta: the free plan covers job search, the Canadian resume check, tracking and alerts, with a limited number of tailored resumes and match analyses.{% endblock %}
+{% block crumb %}Plans{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Plans</p>
+    <h1>What's included</h1>
+    <p class="lead">Every feature, and the limits that come with each plan.</p>
+  </div>
+</header>
+
+<div class="notice beta-note">{{ icon("info") }}<div class="alert-body">
+  <strong>Hirlumo is in beta.</strong> We're still building and testing it, so there's one plan for now, and it's free.
+  Things may sometimes break, and features and limits may change as we learn what job seekers need. This page always shows the current limits.
+  <div class="beta-contact">Found a bug, missing a feature, or need higher limits? Email <a href="mailto:{{ contact }}?subject=Hirlumo%20feedback">{{ contact }}</a>. We read every message.</div>
+</div></div>
+
+<section class="plans" data-plans aria-roledescription="carousel" aria-label="Plans">
+  {% if plans|length > 1 %}
+  <button type="button" class="plans-arrow prev" data-plans-prev aria-label="Previous plan">{{ icon("back") }}</button>
+  {% endif %}
+  <div class="plans-track" data-plans-track tabindex="0">
+    {% for plan in plans %}
+    <article class="plan-card" data-plan="{{ plan.key }}" aria-roledescription="slide" aria-label="{{ plan.name }} plan, {{ loop.index }} of {{ loop.length }}">
+      <header class="plan-head">
+        <div>
+          <h2>{{ plan.name }}</h2>
+          <p class="plan-summary">{{ plan.summary }}</p>
+        </div>
+        <div class="plan-price"><strong>{{ plan.price }}</strong><span>{{ plan.period }}</span>
+          {% if current_plan == plan.key %}<span class="status-badge ok">Your plan</span>{% endif %}</div>
+      </header>
+
+      {% if current_plan == plan.key and usage %}
+      <div class="plan-usage">
+        {% for label, st in usage if not st.unlimited %}
+        <div class="meter-label"><strong>{{ label }}</strong>
+          <span class="muted">{{ st.used if st.used < st.limit else st.limit }} of {{ st.limit }} used &middot; {{ st.remaining }} left</span></div>
+        <div class="meter"><span style="width: {{ [100, (100 * st.used / st.limit) if st.limit else 100] | min }}%" class="{{ 'full' if st.exhausted }}"></span></div>
+        {% endfor %}
+        {% if used_up %}<p class="muted">Need more? Email <a href="mailto:{{ contact }}?subject=Hirlumo%20limits">{{ contact }}</a>.</p>{% endif %}
+      </div>
+      {% endif %}
+
+      <div class="plan-sections">
+        {% for section in plan.sections %}
+        <section class="plan-section">
+          <h3>{{ icon(section.icon) }} {{ section.title }}</h3>
+          <ul>
+            {% for f in section.features %}
+            <li>
+              <div><strong>{{ f.name }}</strong>{% if f.detail %}<span>{{ f.detail }}</span>{% endif %}</div>
+              <em class="plan-limit">{{ f.limit }}</em>
+            </li>
+            {% endfor %}
+          </ul>
+        </section>
+        {% endfor %}
+      </div>
+
+      {% if plan.notes %}
+      <ul class="plan-notes">{% for note in plan.notes %}<li>{{ icon("info") }} {{ note }}</li>{% endfor %}</ul>
+      {% endif %}
+
+      <div class="plan-foot">
+        {% if current_plan == plan.key %}
+        <a class="button pill" href="/jobs">{{ icon("search") }} Find jobs</a>
+        {% elif not current_plan %}
+        <a class="button pill primary" href="/signup">Create a free account</a>
+        <a class="button pill" href="/canadian-resume-check">Try the free resume check</a>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% if plans|length > 1 %}
+  <button type="button" class="plans-arrow next" data-plans-next aria-label="Next plan">{{ icon("forward") }}</button>
+  <div class="plans-dots" role="tablist" aria-label="Choose a plan">
+    {% for plan in plans %}<button type="button" role="tab" data-plans-dot="{{ loop.index0 }}" aria-label="{{ plan.name }}" aria-selected="{{ 'true' if loop.first else 'false' }}"></button>{% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+<p class="muted plans-foot">Questions, feedback or higher limits: <a href="mailto:{{ contact }}">{{ contact }}</a>.</p>
+<p class="muted plans-foot">What's a resume action? Something that asks our analysis service to read your resume against a job: a match analysis, a tailored resume, Quick Tailor or Canadian job titles, or reading a search the search box couldn't read on its own. Everything else on Hirlumo runs on our own rules and isn't counted.</p>
+{% endblock %}

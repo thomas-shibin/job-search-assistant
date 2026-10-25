@@ -33,6 +33,7 @@ from app.modules.auth.settings import AuthSettings
 from app.modules.auth.sessions import session_settings
 from app.modules.auth.storage import delete_user_files
 from app.modules.auth.tokens import consume_token, hash_secret, issue_token, revoke_tokens, utcnow
+from app.modules.usage import free_plan
 from app.modules.usage.models import ActivityEvent
 
 logger = logging.getLogger(__name__)
@@ -185,7 +186,7 @@ def reset_password(session: Session, raw_token: str, new_password: str) -> User:
     if user is None:
         session.rollback()
         raise AuthError("That reset link is invalid or has expired. Ask for a new one.")
-    weak = password_problems(new_password, email=user.email, first_name=user.first_name, last_name=user.last_name)
+    weak = password_problems(new_password)
     if weak:
         session.rollback()  # the link stays usable for a better password
         raise AuthError("Choose a stronger password: " + "; ".join(weak) + ".")
@@ -203,7 +204,7 @@ def reset_password(session: Session, raw_token: str, new_password: str) -> User:
 def change_password(session: Session, user: User, current: str, new_password: str) -> None:
     if user.password_hash and not verify_password(current, user.password_hash):
         raise AuthError("Your current password is incorrect.")
-    weak = password_problems(new_password, email=user.email, first_name=user.first_name, last_name=user.last_name)
+    weak = password_problems(new_password)
     if weak:
         raise AuthError("Choose a stronger password: " + "; ".join(weak) + ".")
     user.password_hash = hash_password(new_password)
@@ -213,6 +214,13 @@ def change_password(session: Session, user: User, current: str, new_password: st
 
 # ---- social sign-in ------------------------------------------------------------
 
+PROVIDER_NAMES = {"google": "Google", "facebook": "Facebook", "linkedin": "LinkedIn"}
+
+
+def provider_name(provider: str) -> str:
+    return PROVIDER_NAMES.get(provider, provider.title())
+
+
 @dataclass
 class ProviderProfile:
     provider: str
@@ -221,6 +229,9 @@ class ProviderProfile:
     email_verified: bool
     first_name: str
     last_name: str
+    # ISO 3166 country code the provider shares (LinkedIn's locale), if any --
+    # used once to fill an empty profile, never to overwrite it.
+    country: str | None = None
 
 
 def social_login(session: Session, profile: ProviderProfile) -> User:
@@ -235,7 +246,7 @@ def social_login(session: Session, profile: ProviderProfile) -> User:
 
     if not profile.email or not profile.email_verified:
         raise AuthError(
-            f"Your {profile.provider.title()} account didn't share a verified email address. "
+            f"Your {provider_name(profile.provider)} account didn't share a verified email address. "
             "Sign up with your email instead."
         )
     user = _account_by_email(session, profile.email)
@@ -300,6 +311,7 @@ def delete_account(session_factory, user_id: int) -> None:
             raise AuthError("You're the only Super Admin. Make someone else a Super Admin before deleting "
                             "your account.")
         delete_user_data(session, user_id)
+        free_plan.retire(session, user_id)  # hashes and the count stay, so a new account can't start over
         session.query(UserRole).filter(UserRole.user_id == user_id).delete(synchronize_session=False)
         session.query(AuditLog).filter(AuditLog.actor_user_id == user_id).update(
             {AuditLog.actor_user_id: None}, synchronize_session=False)  # the record of what they did stays
@@ -346,7 +358,7 @@ def account_problems(*, first_name: str, last_name: str, email: str, password: s
                          ("last_name", name_problem(last_name, "last name"))):
         if problem:
             problems.errors[key] = problem
-    weak = password_problems(password, email=email, first_name=first_name, last_name=last_name)
+    weak = password_problems(password)
     if weak:
         problems.errors["password"] = "Choose a stronger password: " + "; ".join(weak) + "."
     if confirm_password is not None and password != confirm_password:

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Job sources - Job Assistant{% endblock %}
+{% block title %}Job sources - Hirlumo{% endblock %}
 {% block crumb %}Job sources{% endblock %}
 {% block content %}
 {% include "admin/_nav.html" %}
@@ -41,10 +41,39 @@
 </div>
 
 <section class="panel">
+  <div class="panel-head"><div><h2>Job boards</h2>
+    <p>Members' searches ask the job board, plus the companies below. When the board can't answer -- not set up,
+      today's share used, or not responding -- searches ask the second board instead, then just the companies.</p></div></div>
+  <div class="table-wrap">
+    <table class="job-table">
+      <thead><tr><th>Board</th><th>Status</th><th>Members' searches today (UTC)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="cell-title">Adzuna<div class="muted">ADZUNA_APP_ID, ADZUNA_APP_KEY</div></td>
+          <td>{% if not boards.configured %}<span class="status-badge missing">not set up</span>
+            {% elif boards.paused_minutes %}<span class="status-badge missing">not responding: skipped for {{ boards.paused_minutes }} min</span>
+            {% elif boards.used >= boards.allowed %}<span class="status-badge missing">today's share used</span>
+            {% else %}<span class="status-badge ok">ok</span>{% endif %}</td>
+          <td>{{ boards.used }} of {{ boards.allowed }} requests
+            <div class="muted">the platform's daily limit less what scheduled scans keep (<a href="/admin/settings#platform">change</a>)</div></td>
+        </tr>
+        <tr>
+          <td class="cell-title">Jooble<div class="muted">JOOBLE_API_KEY</div></td>
+          <td>{% if boards.second_configured %}<span class="status-badge ok">ready</span>{% else %}<span class="status-badge missing">not set up</span>{% endif %}</td>
+          <td class="muted">asked only when Adzuna can't answer</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="panel">
   <div class="panel-head"><div><h2>Add a company</h2>
     <p>Paste the company's careers-page URL (e.g. <code>https://jobs.lever.co/acme</code>,
-      <code>https://job-boards.greenhouse.io/acme</code>, <code>https://jobs.ashbyhq.com/acme</code>) or pick the
-      provider and type its board name. It's checked and loaded right away.</p></div></div>
+      <code>https://job-boards.greenhouse.io/acme</code>, <code>https://jobs.ashbyhq.com/acme</code>,
+      <code>https://jobs.smartrecruiters.com/Acme</code>, <code>https://apply.workable.com/acme/</code>) or pick the
+      provider and type its board name. It's checked and loaded right away. SmartRecruiters companies bring only their
+      jobs in Canada.</p></div></div>
   <form method="post" action="/admin/sources/add" class="filters">
     <label>Provider
       <select name="provider">
@@ -55,6 +84,26 @@
     <button type="submit" class="primary">{{ icon("plus") }} Add company</button>
   </form>
 </section>
+
+{% if suggested %}
+<section class="panel">
+  <div class="panel-head">
+    <div><h2>Suggested Canadian employers</h2>
+      <p>{{ suggested|length }} employers hiring in Canada outside tech -- construction, health and care, logistics,
+        trades, food, retail -- whose feeds were checked when they were suggested. Adding them gives searches for
+        admin, care, trades and office jobs something to find.</p></div>
+    <form method="post" action="/admin/sources/add-suggested">
+      <button type="submit" class="primary">{{ icon("plus") }} Add all {{ suggested|length }}</button>
+    </form>
+  </div>
+  <details>
+    <summary>See the list</summary>
+    <ul class="muted">
+      {% for provider, board, name, count in suggested %}<li>{{ name }} ({{ providers[provider] }}, about {{ count }} in Canada)</li>{% endfor %}
+    </ul>
+  </details>
+</section>
+{% endif %}
 
 <section class="panel flush">
   <div class="panel-head">

@@ -13,3 +13,13 @@ class AdzunaSettings(BaseSettings):
 
     app_id: str | None = Field(default=None, alias="ADZUNA_APP_ID")
     app_key: str | None = Field(default=None, alias="ADZUNA_APP_KEY")
+
+
+class JoobleSettings(BaseSettings):
+    """The second job board, asked when Adzuna can't answer (app/integrations/job_boards/jooble.py).
+    A free partner key from https://jooble.org/api/about; unset, it isn't used."""
+
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    api_key: str | None = Field(default=None, alias="JOOBLE_API_KEY")
+    url: str = Field(default="https://jooble.org/api/", alias="JOOBLE_URL")

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Job Assistant installer for Linux (and macOS).
+# Hirlumo installer for Linux (and macOS).
 #
 #   ./install.sh                 # Docker (recommended): pulls APP_IMAGE (or builds) and starts
 #   ./install.sh --native        # no Docker: Python virtual environment instead
@@ -56,7 +56,7 @@ ask_key() {  # ask_key VAR "description" -- only if not already set
   ./install.sh
 For Docker, your user needs to be in the docker group: sudo usermod -aG docker \$USER (then log out and in)."
 
-bold "Job Assistant -- installing ($MODE)"
+bold "Hirlumo -- installing ($MODE)"
 
 # 1. Folders and settings ------------------------------------------------------
 mkdir -p data/resumes data/applications config
@@ -148,7 +148,7 @@ else
 
   cat > start.sh <<EOS
 #!/usr/bin/env bash
-# Starts Job Assistant (dashboard + background job scans). Ctrl+C to stop.
+# Starts Hirlumo (dashboard + background job scans). Ctrl+C to stop.
 cd "\$(dirname "\$0")"
 exec .venv/bin/python cli.py serve --port ${PORT}
 EOS

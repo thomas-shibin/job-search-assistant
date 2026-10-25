@@ -1,11 +1,25 @@
+# Production: https://hirlumo.com. Settings come from .env.prod (or .env on a
+# server set up by the installer); on this computer, development runs from
+# docker-compose.dev.yml instead.
+#   docker compose --env-file .env.prod --profile tunnel up -d
+# (--env-file also fills in the ${...} values below from .env.prod.)
+# The project name sets the container names (hirlumo-app-1, ...), whatever the
+# folder is called.
+name: hirlumo
+
 services:
   app:
-    # APP_IMAGE in .env (e.g. thomasshibin90/jobfinderapp:0.1) runs a published
+    # APP_IMAGE in .env (e.g. thomasshibin90/hirlumo:0.1) runs a published
     # image -- no source code needed. Unset, it builds from this folder.
-    image: ${APP_IMAGE:-job-search-assistant}
+    image: ${APP_IMAGE:-hirlumo}
     build: .
     restart: unless-stopped
-    env_file: .env
+    # .env.prod wins where both exist; either alone is fine.
+    env_file:
+      - path: .env
+        required: false
+      - path: .env.prod
+        required: false
     # Run as the owner of data/ (set by install.sh) so files it writes stay yours.
     user: "${APP_UID:-1000}:${APP_GID:-1000}"
     # Least privilege: no Linux capabilities (it only listens on port 8000, which
@@ -19,19 +33,102 @@ services:
       # LibreOffice's profile and conversion scratch files (HOME=/tmp).
       - /tmp:size=512m,mode=1777
     environment:
+      # The public address: Google/LinkedIn/Facebook sign-in, email links, the
+      # sitemap and canonical links all use it. Fixed here so a development
+      # PUBLIC_URL (127.0.0.1) can never leak into production.
+      PUBLIC_URL: https://${DOMAIN:-hirlumo.com}
       # The host .env's relative sqlite URL resolves against /app inside the container.
       DATABASE_URL: sqlite:////app/data/job_assistant.db
       # Your time zone (set by the installer), so times -- e.g. in tailored resume
       # file names -- are local rather than UTC.
       TZ: ${TZ:-UTC}
+      # Trust the visitor address the HTTPS proxy or tunnel (below) passes on --
+      # and only from them -- so sign-in rate limits count each visitor.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-172.30.53.10,172.30.53.11}
+    # Members' data (database, resumes, backups) and settings. On a server, keep
+    # them outside this folder -- HIRLUMO_DATA_DIR / HIRLUMO_CONFIG_DIR in
+    # .env.prod, e.g. /srv/hirlumo/data (scripts/move-data.sh) -- so copying a
+    # new version of the code here can never replace them. A folder that
+    # doesn't exist stops the start instead of starting on an empty one.
     volumes:
-      - ./data:/app/data
-      - ./config:/app/config
-    # Dashboard on http://127.0.0.1:${APP_PORT} (localhost only); set APP_PORT in .env.
+      - type: bind
+        source: ${HIRLUMO_DATA_DIR:-./data}
+        target: /app/data
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HIRLUMO_CONFIG_DIR:-./config}
+        target: /app/config
+        bind:
+          create_host_path: false
+    # Plain http on APP_BIND:APP_PORT, this server only by default; the public
+    # site is served over https by the tunnel or caddy service below, which reach
+    # the app over the internal network. Set APP_BIND to a LAN address in .env
+    # only to open it to other computers on the network.
     ports:
-      - "192.168.1.80:${APP_PORT:-8000}:8000"
+      - "${APP_BIND:-127.0.0.1}:${APP_PORT:-8000}:8000"
+    networks:
+      web: {}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # HTTPS on https://hirlumo.com (DOMAIN in .env), with www redirected to it.
+  # Off unless started with: docker compose --profile https up -d
+  caddy:
+    image: caddy:2.8.4-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    depends_on: [app]
+    environment:
+      DOMAIN: ${DOMAIN:-hirlumo.com}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    cap_drop: [ALL]
+    cap_add: [NET_BIND_SERVICE]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      web:
+        ipv4_address: 172.30.53.10
+
+  # Or: Cloudflare Tunnel -- https for hirlumo.com and www through Cloudflare,
+  # with no open ports or fixed IP needed. Make the tunnel in Cloudflare (Zero
+  # Trust > Networks > Tunnels), point both hostnames at http://app:8000, and
+  # put its token in TUNNEL_TOKEN. Start: docker compose --profile tunnel up -d
+  cloudflared:
+    image: cloudflare/cloudflared:2024.10.1
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    depends_on: [app]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+    user: "65532:65532"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    networks:
+      web:
+        ipv4_address: 172.30.53.11
+
+networks:
+  web:
+    ipam:
+      config:
+        - subnet: 172.30.53.0/24
+
+volumes:
+  # Certificates; keep them, or Let's Encrypt's rate limits can bite on rebuilds.
+  caddy_data: {}
+  caddy_config: {}

@@ -2,8 +2,10 @@
 in app/modules/resumes/canadian.py).
 
 - A Word resume is fixed inside the member's own file: lines are removed or
-  reworded in place (app/modules/resumes/documents/docx_edit.py), so fonts,
-  layout and tables stay as designed.
+  reworded in place (app/modules/resumes/documents/docx_edit.py), so fonts and
+  design stay. Layout that ATS software misreads -- tables, text boxes,
+  columns, contact details in the page header -- is changed only when the
+  member chooses to (documents/docx_layout.py).
 - A PDF can't be edited, so its content goes into the standard layout (a new
   Word file), like a structural edit in the resume editor. That layout already
   writes dates as month and year and has no photo, declaration or references.
@@ -32,8 +34,9 @@ from app.core.exceptions import AppError
 from app.core.tenancy import require_tenant
 from app.integrations.ai.factory import AIProviderConfigError, build_ai_provider
 from app.integrations.ai.settings import AISettings
-from app.modules.resumes import canadian, uploads
+from app.modules.resumes import ats, canadian, uploads
 from app.modules.resumes.canadian import DATES, DECLARATION, HIGH_SCHOOL, PERSONAL, PHOTO, REFERENCES, SPELLING
+from app.modules.resumes.documents import docx_layout
 from app.modules.resumes.documents.docx_edit import remove_photos, tailor_docx
 from app.modules.resumes.editor import BulletEdit, EducationEdit, ResumeEdit, RoleEdit, save_edit
 from app.modules.resumes.models import CandidateProfile
@@ -77,6 +80,11 @@ class Review:
     is_docx: bool
     pages: int
     dropped_sections: list[str] = field(default_factory=list)  # PDF: sections the standard layout leaves out
+    ats: list[canadian.Finding] = field(default_factory=list)  # ATS readability (app/modules/resumes/ats.py)
+    not_a_resume: bool = False  # nothing is checked: see canadian.evidence
+    changes: dict[str, list[canadian.Change]] = field(default_factory=dict)  # each fix's changes, line by line
+    layout: dict[str, list[docx_layout.Item]] = field(default_factory=dict)  # each ATS layout fix's, item by item
+    sections: list[str] = field(default_factory=list)  # the headings that have changes, in resume order
 
     @property
     def counts(self) -> dict[str, int]:
@@ -97,13 +105,36 @@ def review(current: CandidateProfile) -> Review | None:
         except Exception:
             logger.warning("Couldn't read resume version %s for the Canadian check", current.version, exc_info=True)
             return None
+        if not canadian.evidence(doc).is_resume:
+            return Review([], doc.is_docx, doc.pages, not_a_resume=True)
+        try:
+            ats_findings = ats.check(path, doc, path.stat().st_size)
+        except Exception:
+            logger.warning("Couldn't run the ATS check on resume version %s", current.version, exc_info=True)
+            ats_findings = []
+        layout = {}
+        if doc.is_docx and any(f.fixable for f in ats_findings):
+            try:
+                layout = docx_layout.preview(path, lambda text: canadian._section_of(text) is not None)
+            except Exception:
+                logger.warning("Couldn't list the layout changes for version %s", current.version, exc_info=True)
+            flagged = {f.key for f in ats_findings}
+            layout = {key: items for key, items in layout.items() if key in flagged}
     dropped = []
     if not doc.is_docx:
         for part in (current.raw_unparsed_sections or "").split("\n\n---\n\n"):
             match = re.match(r"\[(.+?)\]\n", part)
             if match and match.group(1) != "PREAMBLE":
                 dropped.append(match.group(1))
-    return Review(canadian.check(doc), doc.is_docx, doc.pages, dropped)
+    findings = canadian.check(doc)
+    changes = canadian.changes(doc)
+    if not doc.is_docx:  # the standard layout does these by itself
+        changes = {key: c for key, c in changes.items() if key not in LAYOUT_FIXES}
+    fixable = {f.key for f in findings if f.fixable}
+    changes = {key: c for key, c in changes.items() if key in fixable}
+    sections = list(dict.fromkeys(c.section for items in changes.values() for c in items))
+    return Review(findings, doc.is_docx, doc.pages, dropped_sections=dropped, ats=ats_findings, changes=changes,
+                  layout=layout, sections=sections)
 
 
 # ---- Canadian job titles ----------------------------------------------------------------------
@@ -181,14 +212,19 @@ class Conversion:
     standard_layout: bool = False
 
 
-def convert(session: Session, current: CandidateProfile, chosen: set[str], titles: dict[int, str]) -> Conversion:
+def convert(session: Session, current: CandidateProfile, chosen: set[str], titles: dict[int, str],
+            only: dict[str, set[int]] | None = None) -> Conversion:
     """Apply the `chosen` fixes and title equivalents ({employment id: title}) as
-    a new resume version. Raises BaseResumeMissingError when the Word file is lost."""
+    a new resume version; `only` limits a fix to the changes the member picked
+    ({key: line indexes, or table / text box numbers}). Raises
+    BaseResumeMissingError when the Word file is lost."""
+    only = only or {}
     by_id = {e.id: e for e in current.employments}
     titles = {role_id: clean_title(t) for role_id, t in titles.items() if role_id in by_id and clean_title(t)}
     titles = {role_id: t for role_id, t in titles.items() if t.casefold() != by_id[role_id].title.casefold()}
     base = _base_docx(current)
-    result = _convert_docx(session, current, base, chosen, titles) if base else _convert_pdf(session, current, chosen, titles)
+    result = (_convert_docx(session, current, base, chosen, titles, only) if base
+              else _convert_pdf(session, current, chosen, titles, only))
     if result.profile is not None:
         quota.record(session, require_tenant(session), ActivityKind.RESUME_CANADIAN,
                      f"Version {result.profile.version}: {', '.join(result.done)}"[:300])
@@ -196,14 +232,16 @@ def convert(session: Session, current: CandidateProfile, chosen: set[str], title
 
 
 def _convert_docx(session: Session, current: CandidateProfile, base: Path, chosen: set[str],
-                  titles: dict[int, str]) -> Conversion:
+                  titles: dict[int, str], only: dict[str, set[int]]) -> Conversion:
     by_id = {e.id: e for e in current.employments}
     doc = canadian.read_docx(base)
-    plan = canadian.plan(doc, chosen, {by_id[role_id].title: t for role_id, t in titles.items()})
+    plan = canadian.plan(doc, chosen, {by_id[role_id].title: t for role_id, t in titles.items()}, only)
     problems = [f"Couldn't find the job title \"{title}\" in your Word file as written, so it's unchanged."
                 for title in plan.titles_missed]
-    if not plan.edits and not plan.photos:
+    layout = chosen & set(ats.FIXES)
+    if not plan.edits and not plan.photos and not layout:
         return Conversion(None, problems=problems)
+    done = list(plan.done)
     with tempfile.TemporaryDirectory() as folder:
         out = Path(folder) / "resume_canadian.docx"
         replacements = [(doc.lines[i].text, new) for i, new in plan.edits.items() if new is not None]
@@ -214,14 +252,35 @@ def _convert_docx(session: Session, current: CandidateProfile, base: Path, chose
         if report.not_found:
             problems.append(f"{len(report.not_found)} change{'s' if len(report.not_found) != 1 else ''} couldn't be "
                             "made in your Word file, so those lines are as they were.")
+        if layout:
+            try:
+                done += [_LAYOUT_DONE[key](n) for key, n in docx_layout.fix(out, layout, only).items()]
+            except Exception:
+                logger.warning("Couldn't change the layout of resume version %s", current.version, exc_info=True)
+                problems.append("The layout changes for ATS software couldn't be made in your Word file, so its "
+                                "layout is as it was.")
+        if not done:
+            return Conversion(None, problems=problems)
         imported, error = uploads.import_resume_file(session, out.name, out.read_bytes(), force=True, record=False)
     if error:
         return Conversion(None, problems=[*problems, error])
-    return Conversion(imported.profile, plan.done, problems)
+    return Conversion(imported.profile, done, problems)
 
 
-def _convert_pdf(session: Session, current: CandidateProfile, chosen: set[str], titles: dict[int, str]) -> Conversion:
-    """The standard layout, from what the app read from the PDF."""
+_LAYOUT_DONE = {
+    "ats_header": lambda n: "moved your contact details from the page header to the page",
+    "ats_text_boxes": lambda n: f"took the text out of {n} text box{'es' if n != 1 else ''}",
+    "ats_tables": lambda n: f"turned {n} table{'s' if n != 1 else ''} into plain lines",
+    "ats_columns": lambda n: "made it one column",
+}
+
+
+def _convert_pdf(session: Session, current: CandidateProfile, chosen: set[str], titles: dict[int, str],
+                 only: dict[str, set[int]]) -> Conversion:
+    """The standard layout, from what the app read from the PDF. It's rebuilt
+    from the resume's content, not its lines, so each fix applies to the whole
+    resume: the page offers whole fixes for a PDF, not single changes."""
+    chosen = chosen | set(only)
     done = ["moved your resume into the standard layout (dates as month and year, no photo, declaration or "
             "references)"]
     words = 0

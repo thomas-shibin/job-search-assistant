@@ -264,6 +264,6 @@ def test_watches_run_their_own_searches_alongside_the_job_search(session, monkey
 
     by_where = {call["where"]: call for call in fake.calls}
     assert set(by_where) == {"Toronto, ON", "Vancouver, BC"}
-    assert by_where["Toronto, ON"]["filters"] == {}
+    assert by_where["Toronto, ON"]["filters"] == {"max_days_old": "30"}  # scans skip old ads too
     assert by_where["Vancouver, BC"]["what_or"] == "Java"
-    assert by_where["Vancouver, BC"]["filters"] == {"salary_min": "90000", "contract": "1"}
+    assert by_where["Vancouver, BC"]["filters"] == {"salary_min": "90000", "contract": "1", "max_days_old": "30"}

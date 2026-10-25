@@ -32,7 +32,7 @@ from functools import cached_property
 from typing import Iterable
 
 from app.modules.jobs.places import parse_radius
-from app.modules.jobs.relevance import SYNONYMS
+from app.modules.jobs.relevance import SYNONYMS, split_titles
 from app.shared.terms import normalize_term, split_terms
 
 DATE_STEPS = (1, 3, 7, 14, 30)  # the Date posted filter's choices (postings.DATE_RANGES)
@@ -218,7 +218,8 @@ def _money(match: re.Match) -> int | None:
 
 def read(text: str, vocab: Vocabulary) -> Reading:
     """Read a typed search. Recognized phrases are taken out of the text; what's
-    left, split at commas and "or", is job titles."""
+    left, split at commas, "or", "and", "&" and "/" (relevance.split_titles),
+    is job titles."""
     reading = Reading()
     folded = fold(text)
     taken = [False] * len(text)
@@ -284,8 +285,10 @@ def read(text: str, vocab: Vocabulary) -> Reading:
         place = vocab.place(title)
         if place:  # "Data analyst, Toronto", or "toronot" corrected to a place
             reading.add("locations", place)
-        elif title.lower() not in (t.lower() for t in reading.titles):
-            reading.titles.append(title)
+            continue
+        for one in split_titles(title):  # "HR and Admin": two titles
+            if one.lower() not in (t.lower() for t in reading.titles):
+                reading.titles.append(one)
     return reading
 
 

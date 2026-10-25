@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Feedback & messages - Admin - Hirlumo{% endblock %}
+{% macro stars(value) -%}
+{%- if value %}<span class="star-row" aria-label="{{ value }} of 5">{% for n in range(1, 6) %}<span class="{{ 'on' if n <= value }}">{{ icon("star") }}</span>{% endfor %}</span>
+{%- else %}<span class="muted">&mdash;</span>{% endif %}
+{%- endmacro %}
+{% block content %}
+{% include "admin/_nav.html" %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Members</p>
+    <h1>Feedback &amp; messages</h1>
+    <p class="lead">Reviews from the rating card members see after a few minutes of use, and messages sent from the Contact us page (each is also emailed to the team inbox, with the member as Reply-To).</p>
+  </div>
+</header>
+{% if message %}<div class="flash" role="status">{{ icon("check") }}<div class="alert-body">{{ message }}</div></div>{% endif %}
+
+<div class="stats review-stats">
+  <div class="stat"><span class="stat-label">Reviews</span><strong class="stat-value">{{ summary.count }}</strong></div>
+  {% for field, (question, low, high) in questions.items() %}
+  <div class="stat" title="{{ question }}"><span class="stat-label">{{ short[field] }}</span>
+    <strong class="stat-value">{{ summary.averages[field] if summary.averages[field] is not none else "—" }}{% if summary.averages[field] is not none %}<small> / 5</small>{% endif %}</strong>
+    <span class="stat-sub">{{ summary.answered[field] }} answered</span></div>
+  {% endfor %}
+</div>
+
+<nav class="tabs dup-tabs" aria-label="Show">
+  {% for key, label, n in [("reviews", "Reviews", summary.count), ("open", "Messages to answer", counts.open), ("handled", "Answered", counts.handled), ("help", "Help questions", help_counts.total)] %}
+  <a href="/admin/feedback?show={{ key }}" class="{{ 'active' if show == key }}"{% if show == key %} aria-current="page"{% endif %}>{{ label }} <span class="chip">{{ n }}</span></a>
+  {% endfor %}
+</nav>
+
+{% if show == "reviews" %}
+<div class="table-wrap">
+  <table class="job-table">
+    <thead><tr><th>Member</th>{% for field, (question, low, high) in questions.items() %}<th title="{{ question }}">{{ short[field] }}</th>{% endfor %}<th>Comment</th><th>Sent</th></tr></thead>
+    <tbody>
+      {% for review, member in reviews %}
+      <tr>
+        <td class="dup-who">{% if member %}<a href="/admin/users/{{ member.id }}">{{ member.full_name or member.email }}</a><small class="muted">{{ member.email }}</small>{% else %}<span class="muted">&mdash;</span>{% endif %}</td>
+        {% for field in questions %}<td class="nowrap">{{ stars(review[field]) }}</td>{% endfor %}
+        <td class="review-text">{{ review.comment or "" }}{% if review.page %}<small class="muted">from {{ review.page }}</small>{% endif %}</td>
+        <td class="nowrap">{{ review.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="{{ questions|length + 3 }}" class="muted">No reviews yet. Members are asked after {{ REVIEW_MINUTES }} minutes of use.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% elif show == "help" %}
+<p class="muted">Questions asked in the help assistant and the Help centre search over the last 180 days, without who asked. {{ help_counts.unanswered }} had no answer in the help articles: those show what to write next.
+  {% if unanswered %}<a href="/admin/feedback?show=help">Show all</a>{% else %}<a href="/admin/feedback?show=help&amp;unanswered=1">Show only unanswered</a>{% endif %}</p>
+<div class="table-wrap">
+  <table class="job-table">
+    <thead><tr><th>Question</th><th>Answered with</th><th>Where</th><th>When</th></tr></thead>
+    <tbody>
+      {% for q in help_questions %}
+      <tr>
+        <td class="review-text">{{ q.question }}<small class="muted">{{ "chat" if q.channel == "chat" else "search" }}{{ " · signed in" if q.signed_in }}</small></td>
+        <td>{% if q.answered %}<a href="/help/{{ q.article }}">{{ q.section }}</a>{% else %}<span class="chip chip-warn">No answer</span>{% endif %}</td>
+        <td class="nowrap muted">{{ q.page or "" }}</td>
+        <td class="nowrap">{{ q.created_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="4" class="muted">No questions yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="message-list">
+  {% for m in messages %}
+  <article class="panel contact-message">
+    <header>
+      <div><span class="chip">{{ topics.get(m.topic, m.topic) }}</span> <strong>{{ m.title }}</strong></div>
+      <small class="muted">{{ m.created_at.strftime("%Y-%m-%d %H:%M") }} UTC{% if not m.emailed %} &middot; <span class="chip chip-warn">email not sent</span>{% endif %}</small>
+    </header>
+    <p class="contact-who"><a href="/admin/users/{{ m.user_id }}">{{ (m.first_name ~ " " ~ m.last_name)|trim or m.email }}</a>
+      &lt;<a href="mailto:{{ m.email }}?subject={{ ('Re: ' ~ m.title)|urlencode }}">{{ m.email }}</a>&gt;</p>
+    <div class="contact-body">{{ m.message }}</div>
+    <footer>
+      <a class="button small" href="mailto:{{ m.email }}?subject={{ ('Re: ' ~ m.title)|urlencode }}">{{ icon("mail") }} Reply</a>
+      {% if can("users.update") %}
+      <form method="post" action="/admin/feedback/messages/{{ m.id }}">
+        <input type="hidden" name="handled" value="{{ '0' if m.handled_at else '1' }}">
+        <button type="submit" class="small{{ '' if m.handled_at else ' primary' }}">{{ "Move back to answer" if m.handled_at else "Mark as answered" }}</button>
+      </form>
+      {% endif %}
+    </footer>
+  </article>
+  {% else %}
+  <p class="muted">{{ "No messages waiting." if show == "open" else "Nothing answered yet." }}</p>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

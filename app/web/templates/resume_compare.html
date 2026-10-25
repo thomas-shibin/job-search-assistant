@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Compare versions - Hirlumo{% endblock %}
+{% block crumb %}Compare versions{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Resume</p>
+    <h1>Compare versions</h1>
+    <p class="lead">What changed between two versions of your resume. Every version is kept, and you can go back to any of them.</p>
+  </div>
+  <div class="page-actions">
+    <a class="button" href="/resume">{{ icon("back") }} My resume</a>
+  </div>
+</header>
+
+
+<form method="get" action="/resume/compare" class="panel compare-pick">
+  <label>From
+    <select name="from">
+      {% for v in every %}<option value="{{ v.version }}" {% if v.id == old.id %}selected{% endif %}>Version {{ v.version }}{% if v.is_active %} (in use){% endif %} · {{ v.parsed_at.strftime("%b %d") }}</option>{% endfor %}
+    </select>
+  </label>
+  <span class="compare-arrow" aria-hidden="true">→</span>
+  <label>To
+    <select name="to">
+      {% for v in every %}<option value="{{ v.version }}" {% if v.id == new.id %}selected{% endif %}>Version {{ v.version }}{% if v.is_active %} (in use){% endif %} · {{ v.parsed_at.strftime("%b %d") }}</option>{% endfor %}
+    </select>
+  </label>
+  {% if show_all %}<input type="hidden" name="all" value="1">{% endif %}
+  <button type="submit">Compare</button>
+</form>
+
+<section class="panel compare-versions">
+  {% for v in (old, new) %}
+  <div class="compare-version">
+    <div>
+      <strong>Version {{ v.version }}</strong>{% if v.is_active %} <span class="status-badge ok">in use</span>{% endif %}
+      <span class="muted">{{ v.parsed_at.strftime("%b %d, %Y %H:%M") }}</span>
+    </div>
+    <div class="compare-version-actions">
+      <a class="button small" href="/resume/versions/{{ v.version }}/file" hx-boost="false" download>{{ icon("download") }} Download</a>
+      {% if not v.is_active %}
+      <form method="post" action="/resume/versions/{{ v.version }}/use" hx-boost="false">
+        <input type="hidden" name="next" value="/resume/compare?from={{ old.version }}&to={{ new.version }}">
+        <button type="submit" class="small{% if loop.first %} primary{% endif %}">{{ icon("refresh") }} {{ "Go back to" if v.version < (current.version if current else 0) else "Use" }} version {{ v.version }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</section>
+
+{% if comparison is none %}
+<div class="warning-box">{{ icon("info") }}<div class="alert-body">One of these versions' files isn't available any more, so they can't be compared line by line.</div></div>
+{% elif comparison.same %}
+<p class="check-none">{{ icon("check") }} These two versions have the same text. (The layout may still differ: download both to see.)</p>
+{% else %}
+<div class="compare-summary">
+  {% if comparison.changed %}<span class="chip diff-changed">{{ comparison.changed }} changed</span>{% endif %}
+  {% if comparison.added %}<span class="chip diff-added">{{ comparison.added }} added</span>{% endif %}
+  {% if comparison.removed %}<span class="chip diff-removed">{{ comparison.removed }} removed</span>{% endif %}
+  {% if comparison.moved %}<span class="chip diff-moved">{{ comparison.moved }} moved</span>{% endif %}
+  <a class="compare-toggle" href="/resume/compare?from={{ old.version }}&to={{ new.version }}{% if not show_all %}&all=1{% endif %}">{{ "Show only the changes" if show_all else "Show the whole resume" }}</a>
+</div>
+
+<ol class="compare-rows">
+  {% for row in comparison.rows %}
+  {% if row.kind == "skipped" %}
+  <li class="diff-row diff-skipped">… {{ row.skipped }} unchanged line{{ "s" if row.skipped != 1 }}</li>
+  {% elif row.kind == "same" %}
+  <li class="diff-row diff-same">{{ row.after }}</li>
+  {% elif row.kind == "changed" %}
+  <li class="diff-row diff-changed">
+    <span class="diff-label">Changed</span>
+    <div class="diff-before">{{ row.before }}</div>
+    <div class="diff-after">{{ row.after }}</div>
+  </li>
+  {% elif row.kind == "added" %}
+  <li class="diff-row diff-added"><span class="diff-label">Added</span><div><ins>{{ row.after }}</ins></div></li>
+  {% elif row.kind == "removed" %}
+  <li class="diff-row diff-removed"><span class="diff-label">Removed</span><div><del>{{ row.before }}</del></div></li>
+  {% elif row.kind == "moved_to" %}
+  <li class="diff-row diff-moved"><span class="diff-label">Moved here</span><div>{{ row.after }}</div></li>
+  {% elif row.kind == "moved_from" %}
+  <li class="diff-row diff-moved-from"><span class="diff-label">Moved from here</span><div>{{ row.before }}</div></li>
+  {% endif %}
+  {% endfor %}
+</ol>
+{% endif %}
+{% endblock %}

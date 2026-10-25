@@ -1,5 +1,10 @@
 {# Save / Saved toggle for one search result; swaps itself via htmx. #}
-{% if feature("saved_jobs") %}
+{# Signed out: asks to create an account (`feature()` is false for visitors). #}
+{% if guest is defined and guest %}
+<span class="save-slot" id="save-{{ ref }}">
+  <a class="button pill outline" href="/signup" data-auth-open data-next="/jobs/posting/{{ ref }}" data-reason="Create a free account to save jobs and come back to them.">{% from "_icons.html" import icon %}{{ icon("bookmark") }} Save</a>
+</span>
+{% elif feature("saved_jobs") %}
 <span class="save-slot" id="save-{{ ref }}">
 {% if saved_job_id %}
   <form method="post" action="/saved/{{ saved_job_id }}/remove" hx-post="/saved/{{ saved_job_id }}/remove" hx-target="closest .save-slot" hx-swap="outerHTML">

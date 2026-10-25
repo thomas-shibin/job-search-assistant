@@ -192,10 +192,12 @@ def get(session: Session, ref: str) -> Posting | None:
     """The posting `ref` names, or None if unknown (or a board result no longer remembered)."""
     ref = (ref or "").strip()
     if ref.startswith("p") and ref[1:].isdigit():
-        from app.modules.jobs.pool.service import to_raw_job  # the pool service imports this module
+        from app.modules.jobs.pool.service import is_fresh, to_raw_job  # the pool service imports this module
 
         job = session.get(PoolJob, int(ref[1:]))
-        return from_raw(to_raw_job(job)) if job is not None else None
+        if job is None or not is_fresh(session, job.id):  # too old, or its feed can't confirm it's open
+            return None
+        return from_raw(to_raw_job(job))
     if ref.startswith("a"):
         with _lock:
             hit = _remembered.get(ref)

@@ -13,6 +13,7 @@ from app.modules.auth.deps import member_session, require_member
 from app.modules.auth.models import User
 from app.modules.auth.service import AuthError, name_problem, normalize_phone
 from app.modules.jobs.postings import EMPLOYMENT_TYPES, WORKPLACES
+from app.modules.profiles import linkedin
 from app.modules.profiles import service as profiles
 from app.modules.profiles.models import ProfileEducation, ProfileExperience
 from app.modules.resumes.models import CandidateProfile
@@ -207,6 +208,25 @@ def import_resume_into_profile(session: Session = Depends(member_session)):
         return _back(error="Nothing to import: add a resume first, or your profile already lists experience.",
                      anchor="experience")
     return _back(msg=f"Imported {added} entries from your resume. Review them below.", anchor="experience")
+
+
+@router.post("/profile/import-linkedin")
+async def import_linkedin_into_profile(files: list[UploadFile] = File(default=[]),
+                                       session: Session = Depends(member_session)):
+    uploads, total = [], 0
+    for upload in files[:10]:
+        data = await upload.read(linkedin.MAX_UPLOAD_BYTES + 1 - total)
+        total += len(data)
+        if data:
+            uploads.append((upload.filename or "", data))
+    try:
+        found = linkedin.read_files(uploads)
+    except linkedin.LinkedInImportError as exc:
+        return _back(error=str(exc), anchor="linkedin")
+    result = profiles.import_linkedin(session, found)
+    if not result.anything:
+        return _back(msg="Your profile already has everything in that LinkedIn file.", anchor="linkedin")
+    return _back(msg=result.summary())  # the top of the page, where the message shows
 
 
 # ---- JSON API ------------------------------------------------------------------------

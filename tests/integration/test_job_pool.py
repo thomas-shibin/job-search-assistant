@@ -45,6 +45,17 @@ def fake_fetch(provider, board):
     return FEED[(provider, board)]
 
 
+def test_a_feeds_stated_workplace_outranks_its_remote_flag():
+    # Ashby marks a hybrid job that allows remote days isRemote: true; its workplaceType says what it is
+    hybrid = _raw(source="ashby", location="Toronto, Canada", isRemote=True, workplaceType="Hybrid")
+    assert pool.classify(hybrid) == ("ca", False)
+    assert pool.feed_workplace(hybrid) == "hybrid"
+    assert pool.feed_workplace(_raw(source="ashby", workplaceType="OnSite")) == "onsite"
+    assert pool.feed_workplace(_raw(source="lever", workplaceType="remote")) == "remote"
+    assert pool.feed_workplace(_raw(source="lever", workplaceType="unspecified")) is None
+    assert pool.feed_workplace(_raw()) is None
+
+
 def test_where_a_posting_is():
     assert pool.classify(_raw(location="Toronto, ON")) == ("ca", False)
     assert pool.classify(_raw(location="San Francisco, CA")) == ("us", False)
@@ -55,6 +66,15 @@ def test_where_a_posting_is():
     assert pool.classify(_raw(source="ashby", location="KOHO (CAN)", isRemote=True)) == ("ca", True)
     assert pool.classify(_raw(source="ashby", location="HQ", workplaceType="Remote",
                               address={"postalAddress": {"addressCountry": "Canada"}})) == ("ca", True)
+    assert pool.classify(RawJob(source="smartrecruiters", source_url="u", company="c", title="t", description="",
+                                location="Lyon", raw_payload={"location": {"country": "fr", "remote": True}})) \
+        == ("fr", True)
+    assert pool.classify(RawJob(source="workable", source_url="u", company="c", title="t", description="",
+                                location="Burnaby, British Columbia, Canada",
+                                raw_payload={"locations": [{"countryCode": "CA"}]})) == ("ca", False)
+    assert pool.classify(RawJob(source="workable", source_url="u", company="c", title="t", description="",
+                                location="Athens, Greece", raw_payload={"locations": [{"countryCode": "GR"}],
+                                                                        "telecommuting": True})) == ("gr", True)
 
 
 @pytest.mark.parametrize("provider, value, expected", [
@@ -63,12 +83,19 @@ def test_where_a_posting_is():
     ("greenhouse", "https://job-boards.greenhouse.io/acme/jobs/55", ("greenhouse", "acme")),
     ("lever", "jobs.ashbyhq.com/acme", ("ashby", "acme")),
     ("ashby", "https://boards-api.greenhouse.io/v1/boards/acme/jobs", ("greenhouse", "acme")),
+    ("greenhouse", "https://jobs.smartrecruiters.com/Ubisoft2", ("smartrecruiters", "ubisoft2")),
+    ("greenhouse", "https://api.smartrecruiters.com/v1/companies/BoschGroup/postings", ("smartrecruiters", "boschgroup")),
+    ("greenhouse", "https://apply.workable.com/maple-reinders/", ("workable", "maple-reinders")),
+    ("greenhouse", "https://apply.workable.com/maple-reinders/j/958B8634FD/", ("workable", "maple-reinders")),
+    ("workable", "maple-reinders", ("workable", "maple-reinders")),
 ])
 def test_board_from_name_or_url(provider, value, expected):
     assert pool.parse_board(provider, value) == expected
 
 
 def test_bad_board_names_are_refused():
+    with pytest.raises(ValueError, match="one Workable job"):
+        pool.parse_board("workable", "https://apply.workable.com/j/958B8634FD")
     for value in ("", "a b", "../etc", "https://example.com/"):
         with pytest.raises(ValueError):
             pool.parse_board("greenhouse", value)
@@ -244,3 +271,107 @@ def test_greenhouse_descriptions_are_plain_text():
     raw = GreenhouseSource("acme")._to_raw_job(
         {"id": 1, "title": "T", "absolute_url": "u", "content": "&lt;p&gt;Pay &amp;amp; perks&lt;/p&gt;&lt;li&gt;SQL&lt;/li&gt;"})
     assert raw.description == "Pay & perks\nSQL"
+
+
+def test_smartrecruiters_descriptions_are_kept_between_refreshes_and_unknown_names_refused(factory):
+    asked_known = []
+
+    def fetcher(provider, board, known=None):
+        if board == "nobody":
+            return []  # SmartRecruiters answers an unknown company with an empty list
+        asked_known.append(set(known or ()))
+        first = not asked_known[:-1]
+        return [RawJob(external_id="11", source="smartrecruiters", source_url="https://jobs.example/11",
+                       company="Acme Foods", title="Office Administrator", location="Mississauga, ON",
+                       description="Run the office." if first else "", raw_payload={"location": {"country": "ca"}})]
+
+    with factory() as s:
+        with pytest.raises(ValueError, match="no jobs in Canada"):
+            pool.add_company(s, "smartrecruiters", "nobody", fetcher=fetcher)
+        company = pool.add_company(s, "smartrecruiters", "acme", fetcher=fetcher)
+        assert company.canada_count == 1
+        assert pool.sync_company(s, company, fetcher=fetcher)
+        assert asked_known[-1] == {"11"}
+        assert s.query(PoolJob).one().description == "Run the office."  # not fetched again, so kept
+
+
+def test_admins_add_the_suggested_employers_in_one_go(factory, monkeypatch):
+    from app.modules.jobs.pool import suggested
+
+    monkeypatch.setattr(suggested, "SUGGESTED", (("workable", "maple", "Maple", 3), ("lever", "gone", "Gone", 1)))
+    feeds = {("workable", "maple"): [_raw(source="workable", ext="m1", title="Receptionist", location="Burnaby, BC",
+                                          company_name="Maple Builders")]}
+
+    def fetcher(provider, board):
+        if (provider, board) not in feeds:
+            raise RuntimeError("404 Not Found")
+        return feeds[(provider, board)]
+
+    with factory() as s:
+        assert [x[1] for x in pool.suggestions(s)] == ["maple", "gone"]
+    assert pool.add_suggested(factory, fetcher=fetcher, pause=0) == {"added": 1, "failed": 1}
+    with factory() as s:
+        assert [c.label for c in s.query(PoolCompany)] == ["Maple Builders"]
+        assert [x[1] for x in pool.suggestions(s)] == ["gone"]  # still offered: it couldn't be read
+
+
+
+def test_the_job_sources_page_offers_the_suggested_employers(http, monkeypatch):
+    _who["id"] = ADMIN
+    started = []
+    monkeypatch.setattr(pool, "start_adding_suggested", lambda factory: started.append(1) or True)
+
+    page = http.get("/admin/sources")
+    assert "Suggested Canadian employers" in page.text and "Maple Reinders" in page.text
+    assert "Job boards" in page.text and "JOOBLE_API_KEY" in page.text
+
+    done = http.post("/admin/sources/add-suggested")
+    assert started == [1] and "in the background" in done.text
+
+
+def test_job_seekers_only_see_current_postings(factory):
+    from datetime import timedelta
+
+    from app.modules.jobs import postings
+
+    now = datetime.utcnow()
+    feed = [
+        _raw(ext="new", title="Office Administrator", company_name="Acme Inc."),
+        _raw(ext="old", title="Receptionist", company_name="Acme Inc."),
+        _raw(ext="twice", title="Office Administrator", company_name="Acme Inc."),  # same job, same city
+        _raw(ext="ottawa", title="Office Administrator", location="Ottawa, ON", company_name="Acme Inc."),
+    ]
+    feed[0].date_posted = feed[2].date_posted = feed[3].date_posted = now - timedelta(days=3)
+    feed[1].date_posted = now - timedelta(days=90)  # past the 60-day limit for company sites
+
+    with factory() as s:
+        company = pool.add_company(s, "greenhouse", "acme", fetcher=lambda p, b: feed)
+
+        def found():
+            return sorted((j.title, j.location) for j in pool.search_pool(s, ["administrator"], [], [], "ca").jobs)
+
+        assert found() == [("Office Administrator", "Ottawa, ON"), ("Office Administrator", "Toronto, ON")]
+        assert pool.search_pool(s, ["receptionist"], [], [], "ca").total == 0
+        old_id = s.query(PoolJob).filter_by(external_id="old").one().id
+        assert postings.get(s, f"p{old_id}") is None  # its page says it's no longer available
+
+        # The feed can't be read for over a day: nothing it listed can be confirmed open.
+        s.query(PoolJob).update({PoolJob.last_seen_at: now - timedelta(hours=25)})
+        s.commit()
+        assert found() == []
+        assert pool.sync_company(s, company, fetcher=lambda p, b: feed)
+        assert len(found()) == 2
+
+
+def test_a_posting_abroad_is_not_canadian_because_of_the_companys_office():
+    assert pool.classify(_raw(location="Portugal", offices=[{"name": "Canada", "location": None}])) == (None, False)
+    assert pool.classify(_raw(location="London, UK", offices=[{"name": "Toronto"}])) == (None, False)
+    assert pool.classify(_raw(location="London, Ontario")) == ("ca", False)
+    assert pool.classify(_raw(location="Remote", offices=[{"name": "Canada"}])) == ("ca", True)
+    # Ashby sends "location" as text, SmartRecruiters as an object.
+    def raw(source, payload_location):
+        return RawJob(source=source, source_url="u", company="c", title="t", description="", location="Laval, QC",
+                      raw_payload={"location": payload_location})
+
+    assert pool.classify(raw("ashby", "Laval, QC")) == ("ca", False)
+    assert pool.classify(raw("smartrecruiters", {"country": "ca", "remote": True})) == ("ca", True)

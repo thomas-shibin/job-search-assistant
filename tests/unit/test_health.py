@@ -118,7 +118,7 @@ def test_health_command_answers_admin_chats_only(factory, tmp_path):
 
     assert "only available to administrators" in reply_for(_message("/health", chat_id=100), actions)[1]
     assert "only available to administrators" in reply_for(_message("/health", chat_id=999), actions)[1]
-    assert "Job Search Assistant" in reply_for(_message("/health", chat_id=200), actions)[1]
+    assert "Hirlumo" in reply_for(_message("/health", chat_id=200), actions)[1]
     assert reply_for(_message("/health", chat_id=200, age=3600), actions) is None  # stale backlog
     assert reply_for(_message("hello", chat_id=200), actions) is None
 

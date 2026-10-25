@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Edit resume - Job Assistant{% endblock %}
+{% block title %}Edit resume - Hirlumo{% endblock %}
 {% block crumb %}Edit resume{% endblock %}
 {# Values: what was just submitted (after an error), else the current resume. #}
 {% macro v(name, default) %}{{ form.get(name, "") if form else (default if default is not none else "") }}{% endmacro %}

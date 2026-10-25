@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Browse jobs in Canada by role and city - Hirlumo{% endblock %}
+{% block description %}Browse open jobs in Canada by role and city: software, data, product, design, sales and more in Toronto, Vancouver, Montreal, Calgary, Ottawa and across the country.{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Browse jobs in Canada</h1>
+    <p class="lead">Open roles from company career sites, by role and by city. Updated through the day.</p>
+  </div>
+  <a class="button primary pill" href="/jobs">Search all jobs</a>
+</header>
+
+<section class="browse-section">
+  <div class="section-head"><h2>Jobs by role</h2></div>
+  <div class="browse-links">
+    {% for slug, label, count in roles %}
+    <a href="/job-search/{{ make_slug(slug) }}"><strong>{{ label }} jobs</strong>{% if count %}<small>{{ "{:,}".format(count) }} open</small>{% endif %}</a>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="browse-section">
+  <div class="section-head"><h2>Jobs by city</h2></div>
+  <div class="browse-links">
+    {% for slug, label, count in cities %}
+    <a href="/job-search/{{ make_slug(city=slug) }}"><strong>Jobs in {{ label }}</strong>{% if count %}<small>{{ "{:,}".format(count) }} open</small>{% endif %}</a>
+    {% endfor %}
+    <a href="/job-search/{{ make_slug(remote=true) }}"><strong>Remote jobs</strong>{% if remote %}<small>{{ "{:,}".format(remote) }} open</small>{% endif %}</a>
+  </div>
+</section>
+{% endblock %}

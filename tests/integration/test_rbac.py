@@ -156,10 +156,10 @@ def test_seeding_is_repeatable_and_keeps_admin_changes(world):
 
 # ---- guests, registration and default roles -------------------------------------------------
 
-def test_guests_get_no_job_search(world):
+def test_signed_out_visitors_get_no_member_apis(world):
     http, _ = world
     _as(None)
-    assert http.get("/jobs", follow_redirects=False).headers["location"].startswith("/login")
+    assert http.get("/jobs", follow_redirects=False).status_code == 200  # career-site jobs only (test_onboarding)
     assert http.get("/api/jobs/search?q=python").status_code == 401
     assert http.get("/api/admin/roles").status_code == 401
     assert http.get("/").status_code == 200  # the landing page stays public

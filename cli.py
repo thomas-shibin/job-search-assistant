@@ -392,7 +392,7 @@ def generate_resume(
 
 
 def _job_action_command(action_name: str, help_text: str):
-    """Builds a `jobassistant <action> JOB_ID` CLI command around one
+    """Builds a `hirlumo <action> JOB_ID` CLI command around one
     `app.modules.applications.state_machine` transition function -- these all share
     the same shape (load job, apply transition, report old/new status).
     """
@@ -745,6 +745,79 @@ def grant_role_cmd(email: str = typer.Option(..., "--email"),
             audit(session, None, "user.roles.update", "user", user.id, {"roles": before}, {"roles": after})
         session.commit()
     typer.echo(f"{email} now has: {', '.join(after) or 'no roles'}.")
+
+
+@app.command("backup")
+def backup_cmd() -> None:
+    """Back up the database and members' files now (docs/BACKUPS.md). The site
+    also does this every night by itself."""
+    configure_logging()
+    from app.modules.backups import service as backups
+
+    try:
+        result = backups.create()
+    except backups.BackupError as exc:
+        typer.echo(f"Backup failed: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Saved data/backups/{result['file']} ({result['size'] // 1_000_000} MB"
+               f"{', encrypted' if result['encrypted'] else ''}).")
+    if result["uploaded"]:
+        typer.echo("Copied off the server.")
+    elif result["upload_error"]:
+        typer.echo(f"Not copied off the server: {result['upload_error']}", err=True)
+
+
+@app.command("backup-list")
+def backup_list_cmd() -> None:
+    """The backups on this server and in the off-server bucket."""
+    from app.integrations.object_storage import ObjectStorage, StorageSettings
+    from app.modules.backups import service as backups
+
+    typer.echo("On this server (data/backups):")
+    for name, size in backups.local_backups() or [("(none)", 0)]:
+        typer.echo(f"  {name}  {size // 1_000_000} MB")
+    settings = StorageSettings()
+    if settings.configured:
+        typer.echo(f"In the bucket {settings.bucket}:")
+        names = sorted(ObjectStorage(settings).names(), reverse=True)
+        for name, size in names or [("(none)", 0)]:
+            typer.echo(f"  {name}  {size // 1_000_000} MB")
+
+
+@app.command("backup-restore")
+def backup_restore_cmd(
+    name: str = typer.Argument(..., help="A backup's file name, from backup-list"),
+    to: Path = typer.Option(..., "--to", help="A new folder to unpack it into"),
+) -> None:
+    """Unpack a backup into a new folder. The running site is never touched:
+    docs/BACKUPS.md says how to swap the restored files in."""
+    from app.integrations.object_storage import ObjectStorage, StorageSettings
+    from app.modules.backups import service as backups
+
+    local = backups.default_places().backups / name
+    if not local.exists():
+        settings = StorageSettings()
+        if not settings.configured:
+            typer.echo(f"No backup called {name} on this server.", err=True)
+            raise typer.Exit(code=1)
+        typer.echo(f"Downloading {name}...")
+        local = to.parent / name
+        ObjectStorage(settings).download(name, local)
+    try:
+        backups.extract(local, to, backups.BackupSettings().encryption_key)
+    except (backups.BackupError, ValueError) as exc:
+        typer.echo(f"Couldn't restore: {exc}", err=True)
+        raise typer.Exit(code=1) from None
+    typer.echo(f"Unpacked into {to}: the database ({backups.default_places().database.name}), resumes/, "
+               "applications/ and config/.")
+
+
+@app.command("backup-key")
+def backup_key_cmd() -> None:
+    """Print a new random BACKUP_ENCRYPTION_KEY to put in .env (and in a password manager)."""
+    from app.modules.backups.crypto import new_key
+
+    typer.echo(new_key())
 
 
 def main() -> None:

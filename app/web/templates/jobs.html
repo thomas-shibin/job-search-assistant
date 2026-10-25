@@ -2,7 +2,8 @@
 {% from "_icons.html" import icon, avatar %}
 {% from "_job_detail.html" import job_detail with context %}
 {% from "_place_field.html" import place_field %}
-{% block title %}{{ (q ~ " jobs") if q else "Find jobs" }}{% if l %} in {{ l }}{% endif %} - Job Assistant{% endblock %}
+{% block title %}{{ (q ~ " jobs") if q else "Find jobs in Canada" }}{% if l %} in {{ l }}{% endif %} - Hirlumo{% endblock %}
+{% block description %}{% if q or l %}{{ (q ~ " jobs") if q else "Jobs" }}{% if l %} in {{ l }}{% endif %} from company career sites and job boards. {% endif %}Search jobs across Canada, filter by remote, salary and experience, and see how each role fits you.{% endblock %}
 {% block main_class %}app-main wide{% endblock %}
 {% block content %}
 <form class="results-search" action="/jobs" method="get" role="search">
@@ -30,8 +31,13 @@
   {% if search.failed|length >= search.queries %}The job board isn't responding right now, so {% if search.cards %}these results are only from company career sites{% else %}we couldn't search it{% endif %}. Please try again in a minute{% if search.allowance and not search.allowance.unlimited %}; this search wasn't counted{% endif %}.
   {% else %}Part of this search couldn't reach the job board ({{ search.failed|join(", ") }}), so results may be incomplete. Please try again in a minute.{% endif %}
 </div></div>
+{% elif search.boards_note %}
+<div class="notice">{{ icon("info") }}<div class="alert-body">{{ search.boards_note }} <a href="/plans">See the free plan</a></div></div>
 {% endif %}
-{% if not has_resume %}
+{% if guest %}
+{% set here = request.url.path ~ ("?" ~ request.url.query if request.url.query else "") %}
+<div class="notice">{{ icon("sparkles") }}<div class="alert-body"><strong>You're seeing jobs from company career sites.</strong> <a href="/signup" data-auth-open data-next="{{ here }}" data-reason="Create a free account to see more jobs, from job boards too.">Create a free account</a> to also see job board listings, save jobs, get alerts, and see how well each job fits your resume.</div></div>
+{% elif not has_resume %}
 <div class="notice">{{ icon("file") }}<div class="alert-body"><strong>Add your resume</strong> to see how well each job fits you. <a href="/resume">Upload it</a> or <a href="/profile">complete your profile</a>.</div></div>
 {% endif %}
 
@@ -134,8 +140,10 @@
       {% if search.has_next %}<a class="button pill outline" href="{{ page_base }}&page={{ search.page + 1 }}">Next {{ icon("forward") }}</a>{% else %}<span></span>{% endif %}
     </nav>
     {% endif %}
-    {% set allowance = search.allowance %}
-    {% if allowance and not allowance.unlimited %}
+    {% set allowance = search.allowance %}{% set boards = search.boards %}
+    {% if boards and not boards.unlimited %}
+    <p class="quota-note">{{ icon("search") }} Job-board searches left on the <a href="/plans">free plan</a>: {{ boards.remaining }} of {{ boards.limit }}{% if boards.exhausted %} (company careers-site jobs are still searched){% endif %}. Filters, paging and company careers-site jobs don't count.</p>
+    {% elif allowance and not allowance.unlimited %}
     <p class="quota-note">{{ icon("clock") }} New searches this hour: {{ allowance.used }} of {{ allowance.limit }}{% if allowance.exhausted and allowance.next_free_at %} &middot; next in {{ allowance.minutes_until_free() }} min{% endif %}. Filters and paging don't count.</p>
     {% endif %}
   </section>

@@ -1,6 +1,5 @@
 """The visitor-to-member journey, end to end with real sign-in: the public
-landing page, searching while signed out (the search is kept through
-sign-up), email codes (wrong / expired / too many attempts / resend), account
+landing page, searching while signed out (company career-site jobs only), email codes (wrong / expired / too many attempts / resend), account
 creation, the optional profile step, saved jobs, search filters, the profile
 page, signing out and back in."""
 from __future__ import annotations
@@ -99,8 +98,9 @@ def test_landing_page_is_public_and_shows_real_jobs(env):
     page = http.get("/")
     assert page.status_code == 200
     text = page.text
-    assert "Find Your Next Career Opportunity" in text
-    assert 'data-auth-search' in text and 'name="q"' in text and 'name="l"' in text
+    assert "Find Jobs in Canada That Fit You" in text
+    assert 'action="/jobs"' in text and 'name="q"' in text and 'name="l"' in text
+    assert "data-auth-search" not in text  # searching doesn't need an account
     assert "Popular job categories" in text and "How it works" in text
     assert "Senior Data Analyst" in text and "Acme" in text  # recently posted, from the real pool
     assert 'id="auth-dialog"' in text  # the sign-in dialog is there for signed-out visitors
@@ -109,14 +109,34 @@ def test_landing_page_is_public_and_shows_real_jobs(env):
     assert "guest" not in text.lower()
 
 
-def test_searching_while_signed_out_asks_to_sign_in_and_keeps_the_search(env):
+def test_signed_out_visitors_search_company_career_sites_only(env, monkeypatch):
+    import app.modules.jobs.service as job_service
+
+    def no_job_board(*args, **kwargs):
+        raise AssertionError("a signed-out search must not reach the job board")
+
+    monkeypatch.setattr(job_service, "AdzunaSource", no_job_board)
+    http, factory, _ = env
+    page = http.get(SEARCH, follow_redirects=False)
+    assert page.status_code == 200
+    assert "Data Analyst" in page.text and "Office Manager" not in page.text  # from the job pool
+    assert "seeing jobs from company career sites" in page.text and "Create a free account" in page.text
+    assert "New searches this hour" not in page.text  # nothing counted for visitors
+    assert 'href="/signup" data-auth-open' in page.text  # Save / Analyze ask for an account
+
+    ref = re.search(r'data-ref="(p\d+)"', page.text).group(1)
+    posting = http.get(f"/jobs/posting/{ref}")
+    assert posting.status_code == 200 and "Data Analyst" in posting.text
+    board = http.get("/jobs/posting/a123", follow_redirects=False)  # job board listings are for members
+    assert board.status_code == 303 and board.headers["location"].startswith("/login")
+    with system_session(factory) as s:
+        assert s.query(User).count() == 0  # a visitor's search stores nothing
+
+
+def test_find_jobs_is_a_plain_link_for_visitors(env):
     http, _, _ = env
-    response = http.get(SEARCH, follow_redirects=False)
-    assert response.status_code == 303
-    target = urlparse(response.headers["location"])
-    assert target.path == "/login" and parse_qs(target.query)["next"] == [SEARCH]
-    login = http.get(response.headers["location"])
-    assert f'data-next="{SEARCH.replace("&", "&amp;")}"' in login.text
+    text = http.get("/").text
+    assert 'Find Jobs</a>' in text and 'data-next="/jobs">Find Jobs' not in text
 
 
 def test_saving_needs_an_account(env):
@@ -158,7 +178,7 @@ def test_new_user_signs_up_with_an_emailed_code(env):
     assert created.status_code == 200 and created.json()["step"] == "created"
     redirect = created.json()["redirect"]
     assert redirect.startswith("/welcome") and parse_qs(urlparse(redirect).query)["next"] == [SEARCH]
-    assert outbox[-1]["Subject"] == "Welcome to Job Assistant"
+    assert outbox[-1]["Subject"] == "Welcome to Hirlumo"
 
     with system_session(factory) as s:
         user = s.query(User).one()
@@ -239,7 +259,7 @@ def test_existing_address_gets_a_sign_in_code_and_the_same_answer(env):
 
     start = http.post("/api/auth/register/start", json={"email": "mia@example.com", "next": SEARCH})
     assert start.json() == {"step": "verify", "email": "mia@example.com", "expires_in": 60, "resend_in": 30}
-    assert outbox[-1]["Subject"] == "Your Job Assistant sign-in code"
+    assert outbox[-1]["Subject"] == "Your Hirlumo sign-in code"
     signed_in = http.post("/api/auth/verify-email", json={"email": "mia@example.com", "code": _code(outbox),
                                                           "next": SEARCH})
     assert signed_in.json()["step"] == "done"  # straight in -- no second account
@@ -362,7 +382,7 @@ def test_sign_out_and_back_in_and_sessions_expire(env):
     http, factory, outbox = env
     _register(http, outbox)
     http.post("/logout")
-    assert http.get("/jobs", follow_redirects=False).status_code == 303
+    assert http.get("/saved", follow_redirects=False).status_code == 303
     wrong = http.post("/api/auth/login", json={"email": "mia@example.com", "password": "Not-The-Password-1"})
     assert wrong.status_code == 401
     ok = http.post("/api/auth/login", json={"email": "mia@example.com", "password": PASSWORD, "next": "/saved"})
@@ -470,3 +490,25 @@ def test_signed_in_header_and_landing(env):
     for item in ("My Profile", "Saved Jobs", "Applications", "Settings", "Log Out"):
         assert item in page.text
     assert 'id="auth-dialog"' not in page.text
+
+
+@pytest.mark.parametrize("default, cookie, expected", [
+    (None, None, None),            # follow the device
+    ("light", None, "light"),
+    ("dark", None, "dark"),
+    ("Dark ", None, "dark"),
+    ("purple", None, None),        # unknown value: follow the device
+    ("light", "dark", "dark"),     # a visitor's own choice wins...
+    ("dark", "system", None),      # ...including "match my device"
+])
+def test_default_theme_comes_from_env(env, monkeypatch, default, cookie, expected):
+    client = env[0]
+    if default is None:
+        monkeypatch.delenv("DEFAULT_THEME", raising=False)
+    else:
+        monkeypatch.setenv("DEFAULT_THEME", default)
+    if cookie:
+        client.cookies.set("theme", cookie)
+    html = client.get("/").text
+    tag = html[html.index("<html"):html.index(">", html.index("<html"))]
+    assert (f'data-theme="{expected}"' in tag) if expected else ("data-theme" not in tag)

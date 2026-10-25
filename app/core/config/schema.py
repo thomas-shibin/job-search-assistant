@@ -270,12 +270,24 @@ class PlatformConfig(BaseModel):
     member_searches_per_hour: int = Field(default=10, ge=0)
     # Match analyses + tailored resumes a member may run per hour.
     member_ai_actions_per_hour: int = Field(default=5, ge=0)
+    # The free plan: resume actions one person may make in total, across all their
+    # accounts (app/modules/usage/free_plan.py). Admins can change it per user.
+    free_ai_actions_total: int = Field(default=10, ge=0, le=100000)
+    # The free plan: new job searches that reach the job boards, in total per person.
+    # After that, searches show company careers-site jobs only.
+    free_searches_total: int = Field(default=10, ge=0, le=100000)
     # New job searches one guest may run per hour.
     guest_searches_per_hour: int = Field(default=1, ge=0)
     # Result pages one search may page through (each page is a listing request).
     max_search_pages: int = Field(default=10, ge=1, le=100)
     # How often the job pool (companies' careers-site feeds) is refreshed; 0 = never.
     pool_refresh_hours: int = Field(default=6, ge=0, le=168)
+    # Job-board ads (Adzuna, Jooble) posted longer ago than this are never shown:
+    # aggregated ads aren't taken down when the job is filled.
+    board_max_job_age_days: int = Field(default=30, ge=1, le=90)
+    # Company careers-site jobs (the job pool) posted longer ago than this are
+    # hidden, even while the company still lists them.
+    pool_max_job_age_days: int = Field(default=60, ge=7, le=365)
 
 
 class SessionsConfig(BaseModel):

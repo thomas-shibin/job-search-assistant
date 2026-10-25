@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon, avatar %}
+{% block title %}{{ heading }}{% if total %} ({{ "{:,}".format(total) }} open){% endif %} - Hirlumo{% endblock %}
+{% block description %}{% set what = ("j" ~ heading[1:]) if heading.startswith("Jobs") else heading %}{% if total %}{{ "{:,}".format(total) }} open {{ what }}{% if companies %} at {{ companies[:3]|join(", ") }} and more{% endif %}{% else %}{{ heading }}{% endif %}, straight from company career sites. See how each fits your experience and apply with a tailored resume.{% endblock %}
+{% block content %}
+<nav class="breadcrumbs" aria-label="Breadcrumb"><a href="/">Home</a> › <a href="/job-search">Browse jobs</a> › <span>{{ heading }}</span></nav>
+<header class="page-header">
+  <div>
+    <h1>{{ heading }}</h1>
+    <p class="lead">
+      {% if total %}{{ "{:,}".format(total) }} open role{{ "s" if total != 1 }}{% if companies %} at companies like {{ companies[:4]|join(", ") }}{% endif %}, taken straight from their own career sites{% if not remote and city %} in and around {{ city }}{% endif %}. Updated {{ updated.strftime("%B %-d, %Y") }}.
+      {% else %}No open roles here right now. Try a nearby city or a related role below, or set up an alert and we'll tell you when one is posted.{% endif %}
+    </p>
+  </div>
+  <a class="button primary pill" href="{{ search_url }}">{{ "See all and filter" if total else "Search jobs" }}</a>
+</header>
+
+{% if jobs %}
+<div class="recent-grid browse-results">
+  {% for p in jobs %}
+  <a class="recent-card" href="/jobs/posting/{{ p.ref }}">
+    <div class="recent-top">{{ avatar(p.company) }}<div><strong>{{ p.title }}</strong><span>{{ p.company }}</span></div></div>
+    <div class="chips">
+      {% if p.location %}<span class="chip">{{ icon("pin") }}{{ p.location|truncate(38) }}</span>{% endif %}
+      <span class="chip">{{ p.workplace_label }}</span>
+      {% if p.salary_text %}<span class="chip">{{ p.salary_text }}</span>{% endif %}
+    </div>
+    {% if p.date_posted %}<span class="recent-date">{{ p.date_posted|ago }}</span>{% endif %}
+  </a>
+  {% endfor %}
+</div>
+{% if total > jobs|length %}<p class="browse-more"><a class="button pill outline" href="{{ search_url }}">See all {{ "{:,}".format(total) }} jobs</a></p>{% endif %}
+{% endif %}
+
+<section class="browse-pitch">
+  <div>
+    <h2>Apply with a resume made for each job</h2>
+    <p>Hirlumo compares every posting with your experience, shows your match score and gaps, and tailors your resume to the role, in a Canadian format recruiters expect.</p>
+  </div>
+  {% if not signed_in %}<a class="button primary pill" href="/signup">Create a free account</a>{% endif %}
+</section>
+
+{% if related_roles %}
+<section class="browse-section">
+  <div class="section-head"><h2>{{ "More remote jobs" if remote else ("More jobs in " ~ city if city else "Other roles") }}</h2></div>
+  <div class="browse-links">{% for slug, label, count in related_roles %}<a href="/job-search/{{ slug }}"><strong>{{ label }}</strong><small>{{ "{:,}".format(count) }} open</small></a>{% endfor %}</div>
+</section>
+{% endif %}
+{% if related_cities %}
+<section class="browse-section">
+  <div class="section-head"><h2>{{ role }} jobs in other cities</h2></div>
+  <div class="browse-links">{% for slug, label, count in related_cities %}<a href="/job-search/{{ slug }}"><strong>{{ label }}</strong><small>{{ "{:,}".format(count) }} open</small></a>{% endfor %}</div>
+</section>
+{% endif %}
+<p class="muted"><a href="/job-search">Browse all roles and cities</a></p>
+{% endblock %}

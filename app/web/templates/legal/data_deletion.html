@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Delete your data - Hirlumo{% endblock %}
+{% block description %}How to delete your Hirlumo account and all its data, including if you signed in with Google, Facebook or LinkedIn.{% endblock %}
+{% block content %}
+<article class="legal">
+  <h1>Delete your data</h1>
+  <p>You can delete your Hirlumo account and everything in it at any time. It takes effect right away and can't be undone.</p>
+
+  <h2>Delete your account</h2>
+  <ol>
+    <li><a href="/login?next=%2Faccount">Sign in</a> the way you usually do: email, Google, Facebook or LinkedIn.</li>
+    <li>Open <a href="/account">Account</a> and scroll down to <strong>Delete account</strong>.</li>
+    <li>Type your email address to confirm, then click <strong>Delete my account</strong>.</li>
+  </ol>
+  <p>This permanently deletes your profile, resumes, saved and tracked jobs, tailored resumes, alerts, settings and activity, and the link between Hirlumo and your Google, Facebook or LinkedIn sign-in. We keep only one-way codes that can't be read back (made from your email, phone, name and resume text) and how many free-plan actions you used, so a new account doesn't reset the free plan's limits (see the <a href="/privacy">Privacy Policy</a>).</p>
+
+  <h2>If you signed in with Facebook</h2>
+  <p>Deleting your Hirlumo account as above removes everything we received from Facebook. To also remove Hirlumo from your Facebook account, go to Facebook <strong>Settings &amp; privacy → Settings → Apps and websites</strong>, find Hirlumo and click <strong>Remove</strong>. Removing it on Facebook only stops Facebook sharing with us; it doesn't delete your Hirlumo account, so do both.</p>
+
+  <h2>If you can't sign in</h2>
+  {% if contact %}
+  <p>Email <a href="mailto:{{ contact }}?subject=Delete%20my%20Hirlumo%20account">{{ contact }}</a> from the email address on your account, with the subject “Delete my Hirlumo account”. We'll delete it and confirm by email once it's done.</p>
+  {% else %}
+  <p>Use “Forgot password” on the <a href="/login">sign-in page</a> to get back in, then follow the steps above.</p>
+  {% endif %}
+
+  <h2>The free resume check</h2>
+  <p>If you used the free check without an account, there's nothing to delete: your resume is never saved to disk, it's held in memory for {{ hold_minutes }} minutes and then deleted.</p>
+
+  <p class="muted">More about what we collect and keep in our <a href="/privacy">Privacy Policy</a>.</p>
+</article>
+{% endblock %}

@@ -2,8 +2,9 @@
 {% from "_icons.html" import icon, avatar %}
 {% macro ai_note() -%}
 {%- if ai_allowance and not ai_allowance.unlimited %} &middot; Resume actions left this hour: {{ ai_allowance.remaining }} of {{ ai_allowance.limit }}{% if ai_allowance.exhausted and ai_allowance.next_free_at %} (more in {{ ai_allowance.minutes_until_free() }} min){% endif %}{% endif -%}
+{%- if ai_allowance and ai_allowance.free and not ai_allowance.free.unlimited %} &middot; <a href="/plans">Free plan</a>: {{ ai_allowance.free.remaining }} of {{ ai_allowance.free.limit }} left{% endif -%}
 {%- endmacro %}
-{% block title %}{{ detail.job.title }} - Job Assistant{% endblock %}
+{% block title %}{{ detail.job.title }} - Hirlumo{% endblock %}
 {% block crumb %}{{ detail.job.title }}{% endblock %}
 {% block content %}
 {% set job = detail.job %}
@@ -270,8 +271,8 @@
       <div class="panel-head">
         <div>
           <h2>Job description</h2>
-          {% if job.source == "adzuna" %}{# listings provider: previews only #}
-            <p>{% if description_preview %}<span class="chip chip-warn">Preview only</span> Job board listings include just the first 500 characters of a posting.
+          {% if job.source in ("adzuna", "jooble") %}{# listings providers: previews only #}
+            <p>{% if description_preview %}<span class="chip chip-warn">Preview only</span> Job board listings include just the start of a posting.
                {% else %}From a job board listing, which includes at most 500 characters -- this may or may not be the whole posting.{% endif %}
                For an accurate analysis and tailored resume, paste the full text from the posting below.</p>
           {% endif %}

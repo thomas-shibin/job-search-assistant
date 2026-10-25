@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.paths import PROJECT_ROOT
@@ -213,7 +214,7 @@ def _structural_changes(current: CandidateProfile, edit: ResumeEdit) -> list[str
     return list(dict.fromkeys(reasons))
 
 
-def _new_profile(current: CandidateProfile, edit: ResumeEdit) -> CandidateProfile:
+def _new_profile(session: Session, current: CandidateProfile, edit: ResumeEdit) -> CandidateProfile:
     payload = json.dumps([edit.full_name, edit.contact_line, edit.summary, edit.skills,
                           [[r.title, r.company, r.location, str(r.start), str(r.end), r.is_current,
                             [b.text for b in r.bullets]] for r in edit.roles],
@@ -222,7 +223,7 @@ def _new_profile(current: CandidateProfile, edit: ResumeEdit) -> CandidateProfil
     profile = CandidateProfile(
         full_name=edit.full_name, contact_line=edit.contact_line or None, summary=edit.summary or None,
         raw_resume_path=current.raw_resume_path, source_hash=hashlib.sha256(payload.encode()).hexdigest(),
-        version=current.version + 1, is_active=True, raw_unparsed_sections=current.raw_unparsed_sections,
+        version=(session.query(func.max(CandidateProfile.version)).scalar() or 0) + 1, is_active=True, raw_unparsed_sections=current.raw_unparsed_sections,
     )
     for role in edit.roles:
         employment = Employment(company=role.company, title=role.title, location=role.location or None,
@@ -248,7 +249,7 @@ def save_edit(session: Session, current: CandidateProfile, edit: ResumeEdit, *, 
               upload_dir: Path, allow_layout_change: bool) -> SaveResult:
     """Save `edit` as the new active resume version."""
     structural = _structural_changes(current, edit)
-    profile = _new_profile(current, edit)
+    profile = _new_profile(session, current, edit)
     out = _edited_path(upload_dir, session, profile.version)
 
     in_place = base_docx is not None and not structural

@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 from app.core.exceptions import IntegrationError
@@ -38,6 +39,16 @@ def _find_soffice() -> str | None:
     return None
 
 
+def _profile_dir() -> Path:
+    """LibreOffice's settings folder for conversions, in the temp folder. Given
+    explicitly because LibreOffice can't create its default one when the user
+    it runs as has no account entry -- as in Docker with APP_UID set to a
+    server account (scripts/move-data.sh) -- and so a LibreOffice open on the
+    desktop doesn't block conversions."""
+    owner = os.getuid() if hasattr(os, "getuid") else os.environ.get("USERNAME", "user")
+    return Path(tempfile.gettempdir()) / f"hirlumo-libreoffice-{owner}"
+
+
 class PdfConversionError(IntegrationError):
     """Raised when LibreOffice isn't available or a conversion attempt fails."""
 
@@ -59,7 +70,8 @@ class LibreOfficePdfConverter:
         out_dir = docx_path.parent
         try:
             result = subprocess.run(
-                [self._soffice_path, "--headless", "--convert-to", "pdf", "--outdir", str(out_dir), str(docx_path)],
+                [self._soffice_path, f"-env:UserInstallation={_profile_dir().as_uri()}", "--headless",
+                 "--convert-to", "pdf", "--outdir", str(out_dir), str(docx_path)],
                 capture_output=True,
                 text=True,
                 timeout=_CONVERT_TIMEOUT_SECONDS,

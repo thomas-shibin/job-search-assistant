@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Build your profile - Job Assistant{% endblock %}
+{% block title %}Build your profile - Hirlumo{% endblock %}
 {% block content %}
 <section class="welcome-card">
   <span class="notice-icon">{{ icon("user") }}</span>
@@ -20,6 +20,7 @@
     <button type="submit" name="choice" value="profile" class="primary pill large">Complete My Profile</button>
     <button type="submit" name="choice" value="search" class="pill outline large">Continue Job Search</button>
   </form>
+  <p class="welcome-linkedin">{{ "Signed up with LinkedIn?" if signed_up_with_linkedin else "On LinkedIn?" }} <a href="/profile#linkedin">Import your jobs, education and skills from LinkedIn</a> instead of typing them.</p>
   <p class="muted">Optional. You can complete your profile any time from the account menu.</p>
 </section>
 {% endblock %}

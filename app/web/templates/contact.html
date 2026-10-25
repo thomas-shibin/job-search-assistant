@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Contact us - Hirlumo{% endblock %}
+{% block description %}Questions, problems, ideas or higher limits: send the Hirlumo team a message and we'll answer by email.{% endblock %}
+{% block crumb %}Contact us{% endblock %}
+{% block content %}
+<header class="page-header">
+  <div>
+    <p class="eyebrow">Contact us</p>
+    <h1>Send us a message</h1>
+    <p class="lead">A question, something that isn't working, an idea, or higher limits during the beta. We answer by email, usually within two working days.</p>
+  </div>
+</header>
+
+<div class="contact-layout">
+  <section class="panel contact-card">
+    {% if sent %}
+    <div class="flash" role="status">{{ icon("check") }}<div class="alert-body"><strong>Message sent.</strong> Thank you! We'll reply to {{ member.email if member else "your email address" }}.</div></div>
+    {% endif %}
+    {% if error %}<div class="error" role="alert">{{ icon("alert") }}<div class="alert-body">{{ error }}</div></div>{% endif %}
+
+    {% if member %}
+    <form method="post" action="/contact" class="auth-form contact-form">
+      <div class="contact-from">
+        <span class="avatar-circle">{{ (member.first_name[:1] ~ member.last_name[:1])|upper }}</span>
+        <div><small class="muted">Sending as</small><strong>{{ member.full_name or member.email }}</strong><small>{{ member.email }}</small></div>
+        <a class="contact-change" href="/account">Change</a>
+      </div>
+      <label>Topic
+        <select name="topic">
+          {% for key, label in topics.items() %}<option value="{{ key }}"{% if values.topic == key %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
+      <label>Title
+        <input type="text" name="title" required maxlength="{{ max_title }}" value="{{ values.title or '' }}" placeholder="In a few words, what's it about?"></label>
+      <label>Message
+        <textarea name="message" required minlength="10" maxlength="{{ max_message }}" rows="8" placeholder="Tell us what happened, or what you'd like. If something isn't working, the page and what you clicked help a lot.">{{ values.message or '' }}</textarea></label>
+      <div class="form-foot"><button type="submit" class="primary">{{ icon("send") }} Send message</button></div>
+      <p class="muted small">We'll reply to {{ member.email }}. Your message is kept with your account so we can follow up; deleting your account deletes it.</p>
+    </form>
+    {% else %}
+    <div class="notice">{{ icon("info") }}<div class="alert-body">
+      <a href="/login?next=/contact">Sign in</a> or <a href="/signup">create a free account</a> to send a message from here, so we know who to reply to.
+      Or email us at <a href="mailto:{{ contact }}?subject=Hirlumo%20question">{{ contact }}</a>.
+    </div></div>
+    {% endif %}
+  </section>
+
+  <aside class="contact-side">
+    <div class="panel">
+      <h3>{{ icon("mail") }} Email</h3>
+      <p><a href="mailto:{{ contact }}">{{ contact }}</a></p>
+      <p class="muted">The same inbox as this form.</p>
+    </div>
+    <div class="panel">
+      <h3>{{ icon("info") }} Before you write</h3>
+      <ul class="plain-list">
+        <li><a href="/plans">Plans and limits</a>: what the free plan includes.</li>
+        <li><a href="/privacy">Privacy policy</a> and <a href="/data-deletion">deleting your data</a>.</li>
+        <li><a href="/resources">Career resources</a>: Canadian resumes and job search.</li>
+      </ul>
+    </div>
+  </aside>
+</div>
+{% endblock %}

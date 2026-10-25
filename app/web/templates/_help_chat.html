@@ -1,0 +1,23 @@
+{# The help assistant (app/modules/help): answers from the help articles. app.js initHelpChat. #}
+{% from "_icons.html" import icon %}
+<button type="button" class="help-launcher" data-help-toggle aria-controls="help-chat" aria-expanded="false">
+  {{ icon("chat") }}<span>Help</span>
+</button>
+<section class="help-chat" id="help-chat" hidden role="dialog" aria-modal="false" aria-labelledby="help-chat-title"
+         data-owner="{{ nav_user.id if nav_user is not none and not nav_user.is_guest else '' }}">
+  <header class="help-chat-head">
+    <span class="help-chat-mark">{{ icon("help") }}</span>
+    <div><strong id="help-chat-title">Hirlumo help</strong><small>Answers from our help articles</small></div>
+    <a class="help-chat-icon" href="/help" title="Open the Help centre" aria-label="Open the Help centre">{{ icon("external") }}</a>
+    <button type="button" class="help-chat-icon" data-help-clear title="Start over" aria-label="Start a new conversation">{{ icon("refresh") }}</button>
+    <button type="button" class="help-chat-icon" data-help-close title="Close" aria-label="Close help">{{ icon("x") }}</button>
+  </header>
+  <div class="help-log" data-help-log aria-live="polite"></div>
+  <div class="help-suggest" data-help-suggest></div>
+  <form class="help-ask" data-help-form hx-boost="false" autocomplete="off">
+    <label class="sr-only" for="help-question">Your question</label>
+    <input id="help-question" name="question" type="text" maxlength="300" placeholder="Ask how to do something..." required>
+    <button type="submit" class="primary" aria-label="Send">{{ icon("send") }}</button>
+  </form>
+  <p class="help-chat-foot">Need a person? <a href="/contact">Contact us</a></p>
+</section>
