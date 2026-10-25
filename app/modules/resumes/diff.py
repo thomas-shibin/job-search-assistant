@@ -13,7 +13,7 @@ from markupsafe import Markup, escape
 
 def inline_word_diff_html(before: str | None, after: str) -> Markup:
     if not before or before == after:
-        return Markup(escape(after))
+        return escape(after)
 
     before_words = before.split()
     after_words = after.split()
@@ -31,14 +31,14 @@ def inline_word_diff_html(before: str | None, after: str) -> Markup:
             parts.append(f"<del>{escape(' '.join(before_words[i1:i2]))}</del>")
             parts.append(f"<ins>{escape(' '.join(after_words[j1:j2]))}</ins>")
 
-    return Markup(" ".join(parts))
+    return Markup(" ".join(parts))  # every word is escaped above  # nosec B704
 
 
 def side_by_side_diff(before: str | None, after: str) -> tuple[Markup, Markup]:
     """The same word diff as two readable lines: `before` with the removed words
     marked <del>, `after` with the added words marked <ins>."""
     if not before:
-        return Markup(""), Markup(escape(after))
+        return Markup(""), escape(after)
     before_words, after_words = before.split(), after.split()
     old: list[str] = []
     new: list[str] = []
@@ -55,4 +55,4 @@ def side_by_side_diff(before: str | None, after: str) -> tuple[Markup, Markup]:
             old.append(f"<del>{removed}</del>")
         if added:
             new.append(f"<ins>{added}</ins>")
-    return Markup(" ".join(old)), Markup(" ".join(new))
+    return Markup(" ".join(old)), Markup(" ".join(new))  # every word is escaped above  # nosec B704

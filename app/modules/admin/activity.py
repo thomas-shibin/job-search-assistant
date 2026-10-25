@@ -167,7 +167,7 @@ def overview(session: Session, days: int, *, q: str = "", include_guests: bool =
     signups = [(u.role, u.created_at) for u in users.values() if u.created_at and u.created_at >= since]
 
     rows = {uid: UserRow(user=u, last_active=u.last_login_at) for uid, u in users.items()}
-    for kind, created_at, provider_calls, user_id, ai_calls in events:
+    for kind, created_at, provider_calls, user_id, _ai_calls in events:
         row = rows.get(user_id)
         if row is None:
             continue
@@ -182,7 +182,7 @@ def overview(session: Session, days: int, *, q: str = "", include_guests: bool =
             row.sign_ins += 1
         if kind != ActivityKind.LIMIT_HIT and (row.last_active is None or created_at > row.last_active):
             row.last_active = created_at
-    for created_at, estimated_cost, cache_hit, user_id in calls:
+    for _created_at, estimated_cost, cache_hit, user_id in calls:
         row = rows.get(user_id)
         if row is not None:
             row.ai_cost += float(estimated_cost or 0)

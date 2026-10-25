@@ -119,7 +119,7 @@ class Comparison:
 
 
 def _text(value: str) -> Markup:
-    return Markup(escape(value))
+    return escape(value)
 
 
 MAX_PAIRING = 40_000  # removed x added lines compared for rewording; beyond it they stay added and removed

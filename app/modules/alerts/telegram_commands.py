@@ -23,13 +23,10 @@ from pathlib import Path
 from app.core.config.models import UserSetting
 from app.core.config.store import load_app_config, save_section
 from app.core.database.session import SessionLocal
-from app.core.tenancy import system_session
 from app.core.tenancy import system_session, tenant_session
-from app.core.tenancy import tenant_session
 from app.integrations.telegram import TelegramClient, TelegramSettings
 from app.modules.admin.health import check_health, format_health_message
 from app.modules.auth.models import TokenPurpose, User
-from app.modules.auth.models import User
 from app.modules.auth.tokens import consume_token
 
 logger = logging.getLogger(__name__)

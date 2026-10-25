@@ -3,8 +3,10 @@ FROM python:3.12-slim
 # LibreOffice (headless writer only) for DOCX -> PDF resume conversion, plus fonts
 # so PDFs match Word: Liberation (= Times New Roman/Arial metrics), Carlito
 # (= Calibri), and WenQuanYi for CJK/full-width characters like "－" -- without
-# it those render as empty boxes.
+# it those render as empty boxes. `upgrade` takes Debian's security fixes released
+# since the base image was built (CI's image scan fails on fixable HIGH/CRITICAL ones).
 RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
     && apt-get install -y --no-install-recommends libreoffice-writer-nogui fonts-dejavu fonts-liberation \
        fonts-crosextra-carlito fonts-wqy-microhei tzdata \
     && rm -rf /var/lib/apt/lists/*

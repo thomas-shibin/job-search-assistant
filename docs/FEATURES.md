@@ -151,6 +151,9 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
   before they leave the server; kept 7 daily, 4 weekly, 6 monthly; restore into a new
   folder only ([BACKUPS.md](BACKUPS.md)).
 - Search-engine setup: sitemap, robots, structured data ([REACHING_PEOPLE.md](REACHING_PEOPLE.md)).
+- **CI on GitHub** (not deployed yet: needs a push): tests, lint, security analysis (bandit, CodeQL),
+  package vulnerabilities, secret scan, Docker build + start + image scan on every push; Dependabot
+  updates weekly (README.md, "CI").
 - YouTube channel: https://www.youtube.com/@hirlumo
 
 ## Not deployed yet

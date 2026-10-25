@@ -203,18 +203,21 @@ def render(markdown: str, *, anchors: bool = False) -> str:
     for raw in markdown.splitlines():
         line = raw.rstrip()
         if line.startswith(">"):
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             tip.append(line[1:].lstrip())
             continue
         flush_tip()
         if not line.strip():
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             continue
         heading = re.match(r"^(#{2,4})\s+(.*)$", line)
         bullet = re.match(r"^\s*[-*]\s+(.*)$", line)
         number = re.match(r"^\s*\d+[.)]\s+(.*)$", line)
         if heading:
-            flush_para(); flush_list()
+            flush_para()
+            flush_list()
             level = len(heading.group(1)) + (0 if anchors else 1)
             text = heading.group(2).strip()
             anchor = f' id="{slugify(text)}"' if anchors and len(heading.group(1)) == 2 else ""
@@ -232,7 +235,9 @@ def render(markdown: str, *, anchors: bool = False) -> str:
         else:
             flush_list()
             para.append(line.strip())
-    flush_para(); flush_list(); flush_tip()
+    flush_para()
+    flush_list()
+    flush_tip()
     return "\n".join(out)
 
 

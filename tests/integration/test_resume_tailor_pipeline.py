@@ -5,7 +5,6 @@ Uses MockAIProvider throughout so this stays free/deterministic/offline.
 """
 from __future__ import annotations
 
-import os
 from datetime import date
 
 import pytest

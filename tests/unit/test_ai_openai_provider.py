@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-import pytest
 
 from app.integrations.ai.base import ExtractedJobRequirements
 from app.integrations.ai.openai_provider import OpenAIProvider

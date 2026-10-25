@@ -76,7 +76,7 @@ def bar_chart(labels: list[str], series: list[Series], *, fmt: Callable[[float],
                          f"{escape(label)}</text>")
     parts.append("</svg>")
     legend = "".join(f'<span class="legend-item"><i class="swatch {s.css}"></i>{escape(s.label)}</span>' for s in series)
-    return Markup(f'<div class="chart-wrap">{"".join(parts)}<div class="chart-legend">{legend}</div></div>')
+    return Markup(f'<div class="chart-wrap">{"".join(parts)}<div class="chart-legend">{legend}</div></div>')  # labels are escaped above  # nosec B704
 
 
 def money(value: float) -> str:

@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig, SearchProfile
+from app.core.config.schema import AIConfig, AppConfig, CandidateConfig, MatchingConfig
 from app.core.database.base import Base
 from app.integrations.ai.mock import MockAIProvider
 import app.models  # noqa: F401  register all models on Base.metadata

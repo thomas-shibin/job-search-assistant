@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
 
 from app.core.config.schema import MatchingConfig, MatchingWeights, SearchProfile
 from app.integrations.ai.base import ExtractedJobRequirements

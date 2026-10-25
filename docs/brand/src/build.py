@@ -199,7 +199,7 @@ def avatar(size: int) -> str:
   left:{(size - gw) / 2 + size * 0.008:.1f}px; top:{(size - gh) / 2 + size * 0.012:.1f}px;
   filter: drop-shadow(0 {size * 0.012:.0f}px {size * 0.03:.0f}px rgba(10,16,36,.30)); }}
 """
-    return page(size, size, f'<div class="tile"></div><svg class="g"><use href="#glyph"/></svg>', css)
+    return page(size, size, '<div class="tile"></div><svg class="g"><use href="#glyph"/></svg>', css)
 
 
 def app_icon(size: int) -> str:
@@ -211,7 +211,7 @@ def app_icon(size: int) -> str:
 .g {{ position:absolute; width:{gw:.1f}px; height:{gh:.1f}px;
   left:{(size - gw) / 2 + size * 0.008:.1f}px; top:{(size - gh) / 2 + size * 0.012:.1f}px; }}
 """
-    return page(size, size, f'<div class="tile"></div><svg class="g"><use href="#glyph"/></svg>', css)
+    return page(size, size, '<div class="tile"></div><svg class="g"><use href="#glyph"/></svg>', css)
 
 
 def watermark(size: int) -> str:

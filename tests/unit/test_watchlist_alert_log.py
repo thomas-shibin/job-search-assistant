@@ -35,7 +35,7 @@ def session(tmp_path):
 CONFIG = WatchlistConfig(enabled=True, watches=[Watch(name="Java", keywords=["Java"], min_score=80)])
 
 
-def _job(session, title, location="Mississauga, Peel region", n=[0]):
+def _job(session, title, location="Mississauga, Peel region", n=[0]):  # noqa: B006  (a counter shared by calls)
     n[0] += 1
     job = Job(source="adzuna", source_url=f"https://x/{n[0]}", company="Citigroup", title=title, location=location,
               description="Java services.", status=JobStatus.DISCOVERED, fingerprint=f"f{n[0]}", description_hash=f"d{n[0]}")

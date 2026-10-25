@@ -78,7 +78,7 @@ def parse_salary(text: str | None) -> tuple[int | None, int | None, str | None]:
     if not text:
         return None, None, None
     values = []
-    for prefix, number, thousands in _MONEY.findall(text):
+    for _prefix, number, thousands in _MONEY.findall(text):
         amount = float(number.replace(",", "").replace(" ", ""))
         if thousands:
             amount *= 1000

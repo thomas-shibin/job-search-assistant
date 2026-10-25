@@ -188,6 +188,34 @@ pytest tests/integration/test_rbac.py -q # one file
 renamed; update `tests/fixtures/routes_snapshot.json` only for a deliberate change.
 `tests/integration/test_rbac.py` fails if a member or admin route has no permission rule.
 
+### CI (GitHub Actions)
+
+Every push to `master`, `prod` or `dev`, every pull request, and a weekly run on
+`master` go through `.github/workflows/ci.yml`:
+
+| Job | Checks | Fails when |
+|---|---|---|
+| Code hygiene | `ruff check .` (rules in `pyproject.toml`), every file compiles | a lint error or syntax error |
+| Tests and migrations | `pytest`, `pip check`, one Alembic head, migrations apply to an empty database | any test fails |
+| Static security analysis | `bandit` on `app/`, `main.py`, `cli.py` | a medium or high finding |
+| Package vulnerabilities | `pip-audit` on exactly what `pip install .` installs | any known vulnerability |
+| Secret scan | `gitleaks` over the whole git history (`.gitleaksignore`: made-up test values) | a credential is found |
+| Docker image | builds, starts read-only with no capabilities as non-root and serves pages, refuses root, `trivy` image scan | build or start fails, or a fixable HIGH/CRITICAL vulnerability |
+
+`.github/workflows/codeql.yml` runs GitHub CodeQL on the Python and JavaScript
+(results under Security -> Code scanning), and `.github/dependabot.yml` opens
+weekly update pull requests for packages, the base image and the actions. The
+same checks locally:
+
+```bash
+pip install ruff==0.17.2 "bandit[toml]==1.9.4" pip-audit==2.10.1
+ruff check . && bandit -c pyproject.toml -r app main.py cli.py --severity-level medium && pytest -q
+```
+
+A finding that has been reviewed and is safe is marked in the code with
+`# <why>  # nosec B<id>` (bandit) or listed in `.gitleaksignore`, never by
+turning the check off.
+
 ## Adding a feature or module
 
 1. Put the code in the module that owns the business area, or create

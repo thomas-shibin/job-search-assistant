@@ -50,3 +50,20 @@ include = ["app*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# Code hygiene (CI: `ruff check .`). Real-bug rules: pyflakes (unused or undefined
+# names), syntax and statement errors, bugbear. Left out on purpose: B008 (FastAPI's
+# `Depends()` defaults), B904/B905, E402 (imports after setup in tests and
+# scripts) and E741 (`l` is the place box's query parameter).
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+extend-exclude = ["alembic/versions", "tmp", "dist", "data"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W", "B", "PLE"]
+ignore = ["B008", "B904", "B905", "E402", "E741"]
+
+# SAST (CI: `bandit -c pyproject.toml -r app main.py cli.py`).
+[tool.bandit]
+exclude_dirs = ["tests", "alembic", ".venv", "tmp"]

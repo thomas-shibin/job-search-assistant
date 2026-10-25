@@ -4,7 +4,6 @@ made, so these stay fast/deterministic/offline like the rest of the suite.
 """
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 
 import httpx

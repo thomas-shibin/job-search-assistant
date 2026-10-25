@@ -121,7 +121,6 @@ def import_config_cmd(
     configure_logging()
 
     from app.core.config.store import has_settings, import_yaml_config
-    from app.core.database.session import SessionLocal
 
     session = _session()
     try:
@@ -153,7 +152,6 @@ def import_resume_cmd(
         typer.echo(f"Resume file not found: {resume_path}", err=True)
         raise typer.Exit(code=1)
 
-    from app.core.database.session import SessionLocal
     from app.modules.resumes.parser import import_resume as run_import_resume
 
     session = _session()
@@ -216,7 +214,6 @@ def discover(
         typer.echo("Provide --description or --description-file with the job posting text.", err=True)
         raise typer.Exit(code=1)
 
-    from app.core.database.session import SessionLocal
     from app.modules.jobs.ingestion.pipeline import ingest_raw_job
     from app.modules.jobs.ingestion.manual import import_manual_job
 
@@ -296,7 +293,6 @@ def analyze(
 
     from app.integrations.ai.factory import AIProviderConfigError, build_ai_provider
     from app.integrations.ai.settings import AISettings
-    from app.core.database.session import SessionLocal
     from app.modules.matching.pipeline import NoActiveCandidateProfileError, analyze_job
     from app.modules.jobs.models import Job, JobStatus
 
@@ -358,7 +354,6 @@ def generate_resume(
     config = _load_settings(config_path)
 
     from app.integrations.ai.factory import AIProviderConfigError
-    from app.core.database.session import SessionLocal
     from app.modules.jobs.models import Job
     from app.modules.resumes.pipeline import generate_resume_bundle
     from app.modules.resumes.tailor import NoActiveCandidateProfileError
@@ -401,7 +396,6 @@ def _job_action_command(action_name: str, help_text: str):
         configure_logging()
 
         from app.modules.applications import state_machine
-        from app.core.database.session import SessionLocal
         from app.modules.jobs.models import Job
 
         transition_fn = getattr(state_machine, action_name)
@@ -450,7 +444,6 @@ def open_application(job_id: int) -> None:
     import webbrowser
 
     from app.modules.applications import state_machine
-    from app.core.database.session import SessionLocal
     from app.modules.jobs.models import Job
 
     session = _session()
@@ -552,7 +545,6 @@ def rebuild_resumes(
     """
     from sqlalchemy import func
 
-    from app.core.database.session import SessionLocal
     from app.integrations.libreoffice import PdfConversionError, convert_to_pdf
     from app.modules.resumes.tailoring_models import TailoredResume
     from app.modules.resumes.tailor import rebuild_tailored_resume
@@ -591,7 +583,6 @@ def cleanup_jobs(
     """Delete stored jobs older than the retention period (default 7 days), with
     their scores, analyses and tailored resumes. Jobs you've acted on are kept.
     Runs automatically after every scheduled scan."""
-    from app.core.database.session import SessionLocal
     from app.modules.applications.retention import purge_old_jobs
 
     config = _load_settings(config_path)
@@ -620,7 +611,6 @@ def catalog_scan(
     """
     from app.modules.jobs.catalog.scan import plural, scan_market
     from app.modules.jobs.catalog.store import counts, seed_catalog
-    from app.core.database.session import SessionLocal
     from app.integrations.job_boards.adzuna import AdzunaSource
     from app.integrations.job_boards.settings import AdzunaSettings
 
