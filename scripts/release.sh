@@ -11,6 +11,10 @@
 #   ./scripts/release.sh --list           # versions in the registry, and which is running
 #   ./scripts/release.sh --setup-registry # once: start the registry on the server
 #   ./scripts/release.sh --no-tests       # skip the tests first
+#   ./scripts/release.sh --allow-uncommitted  # build files not yet committed (not recommended)
+#
+# A release is built from what's committed: with uncommitted changes it stops,
+# so a version is always one known commit (labelled in the image).
 #
 # Run from the project folder on your computer. DEPLOY_TARGET (user@host:folder)
 # is the server and its Hirlumo folder; REGISTRY_PORT the registry's port there
@@ -30,7 +34,7 @@ FOLDER="${DEPLOY_TARGET#*:}"
 SERVER_IMAGE="127.0.0.1:$REGISTRY_PORT/$REPO"
 LOCAL_IMAGE="127.0.0.1:$LOCAL_PORT/$REPO"
 
-MODE=release; VERSION=""; TESTS=true
+MODE=release; VERSION=""; TESTS=true; DIRTY_OK=false
 while [ $# -gt 0 ]; do
   case "$1" in
     --version) VERSION="${2:?--version needs a value, e.g. 0.9}"; shift ;;
@@ -39,7 +43,8 @@ while [ $# -gt 0 ]; do
     --list) MODE=list ;;
     --setup-registry) MODE=setup ;;
     --no-tests) TESTS=false ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    --allow-uncommitted) DIRTY_OK=true ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1 (see --help)" >&2; exit 1 ;;
   esac
   shift
@@ -56,7 +61,7 @@ open_tunnel() {
   TUNNEL_SOCKET="$(mktemp -u "${TMPDIR:-/tmp}/hirlumo-tunnel.XXXXXX")"
   ssh -f -N -M -S "$TUNNEL_SOCKET" -o ExitOnForwardFailure=yes \
     -L "127.0.0.1:$LOCAL_PORT:127.0.0.1:$REGISTRY_PORT" "$HOST" ||
-    die "Couldn't open the tunnel to the registry (is port $LOCAL_PORT free here? set LOCAL_REGISTRY_PORT)."
+    die "Couldn't open the SSH tunnel to $HOST: the SSH login failed, or port $LOCAL_PORT is in use here (set LOCAL_REGISTRY_PORT)."
   for _ in $(seq 1 20); do
     curl -fs -o /dev/null "http://127.0.0.1:$LOCAL_PORT/v2/" && return 0
     sleep 0.5
@@ -156,6 +161,15 @@ case "$MODE" in
 esac
 
 # ---- release / push: build a new version ------------------------------------------
+COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+  if $DIRTY_OK; then
+    COMMIT="$COMMIT+uncommitted"
+  else
+    git status --short | head -15
+    die "There are uncommitted changes (above): commit them first, so the release is exactly that commit. (--allow-uncommitted to build them anyway.)"
+  fi
+fi
 check_server
 open_tunnel
 if [ -z "$VERSION" ]; then
@@ -164,7 +178,7 @@ if [ -z "$VERSION" ]; then
   VERSION="0.$(( ${last#0.} + 1 ))"
 fi
 ! grep -qx "$VERSION" <<<"$(registry_tags)" || die "$VERSION is already in the registry: pick another --version."
-echo "Version: $VERSION"
+echo "Version: $VERSION (commit $COMMIT: $(git log -1 --format=%s 2>/dev/null))"
 
 if $TESTS; then
   step "Tests"
@@ -173,7 +187,8 @@ if $TESTS; then
 fi
 
 step "Building $REPO:$VERSION (compiled, no source)"
-docker build --target release --build-arg VERSION="$VERSION" -t "$REPO:$VERSION" .
+docker build --target release --build-arg VERSION="$VERSION" --label "org.opencontainers.image.revision=$COMMIT" \
+  -t "$REPO:$VERSION" .
 
 step "Checking the image"
 # No source, secrets, databases, resumes or docs inside; then a start like production's.

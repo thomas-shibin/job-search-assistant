@@ -274,7 +274,8 @@ Every release, from the project folder on your computer:
 
     ./scripts/release.sh --version 0.9   # the first time; after that just ./scripts/release.sh (next 0.N)
 
-It runs the tests, builds the compiled image, checks it (no source, `.env`, database,
+It builds what's committed: with uncommitted changes it stops and lists them, so each version is
+exactly one commit (recorded in the image). It runs the tests, builds the compiled image, checks it (no source, `.env`, database,
 keys or docs inside; it starts on an empty database and serves pages), and pushes it.
 Then, on the server, it pulls the image, backs up the database to
 `<data>/backups/job_assistant-pre-<version>-<time>.db` (readable by root only; needs
