@@ -257,10 +257,52 @@ can't touch members' data. If the data folder is ever missing (a typo in `.env.p
 `.env.prod` replaced by one without those lines), the app **refuses to start** rather than
 starting on an empty database. To look at the files: `sudo ls /srv/hirlumo/data`.
 
-To send a new version from your computer, `./scripts/deploy.sh` runs the tests, copies only
-the code and build files (never `data/`, `config/` or `.env*`), rebuilds and restarts the
-app on the server, and waits until it's healthy. The server is `DEPLOY_TARGET`
-(`user@host:folder`); `--copy-only` just copies.
+### Releases: a compiled image through the server's private registry
+
+New versions reach the server as a **Docker image with no source code** in it: the
+Python is compiled to bytecode, without comments or docstrings (Dockerfile, `release`
+stage). They go through a private registry on the server, which listens on the server's
+own `127.0.0.1:5000` only. Your computer pushes to it through an SSH tunnel, so your SSH
+login is the only way in, and there are no registry passwords or certificates. The
+server keeps no code: only `docker-compose.yml`, `.env.prod` and the data.
+
+Once, start the registry on the server (its images live in `/srv/hirlumo-registry`):
+
+    ./scripts/release.sh --setup-registry
+
+Every release, from the project folder on your computer:
+
+    ./scripts/release.sh --version 0.9   # the first time; after that just ./scripts/release.sh (next 0.N)
+
+It runs the tests, builds the compiled image, checks it (no source, `.env`, database,
+keys or docs inside; it starts on an empty database and serves pages), and pushes it.
+Then, on the server, it pulls the image, backs up the database to
+`<data>/backups/job_assistant-pre-<version>-<time>.db` (readable by root only; needs
+`sudo apt install -y sqlite3`), sets `APP_IMAGE` in `.env.prod` to the new version (so a
+plain restart runs it too), starts it, and waits until it's healthy.
+
+    ./scripts/release.sh --list           # versions in the registry, and the one running
+    ./scripts/release.sh --rollback 0.8   # go back to an earlier version (same as --up 0.8)
+    ./scripts/release.sh --push-only      # push now, bring it up later with --up <version>
+
+The server is `DEPLOY_TARGET` (`user@host:folder`); `REGISTRY_PORT` is the registry's
+port there, and `LOCAL_REGISTRY_PORT` the tunnel's end on your computer, if 5000 is taken.
+A rollback runs the older code on the database the newer version may have migrated. That's
+fine for added tables and columns, the usual case; otherwise restore the `pre-<version>`
+copy. Bytecode hides the source from casual reading, not from a determined reverse
+engineer. Templates, styles, scripts and help articles stay readable, since the site
+serves them.
+
+Once a release runs well, the old code on the server can go (keep `docker-compose.yml`,
+`deploy/`, `scripts/move-data.sh`, `.env.prod` and the data):
+`rm -rf app alembic alembic.ini cli.py main.py pyproject.toml Dockerfile .dockerignore` in
+the app folder. Old versions in the registry:
+`curl -s 127.0.0.1:5000/v2/hirlumo/tags/list` on the server; images no version uses any
+more are freed by
+`sudo docker compose -f deploy/registry/docker-compose.yml exec registry registry garbage-collect --delete-untagged /etc/distribution/config.yml`.
+
+The older `./scripts/deploy.sh` (copies the source and builds on the server) still works,
+but it puts the source code on the server; use `release.sh` instead.
 
 ## 9. Uninstall
 

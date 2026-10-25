@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Copies a new version of the code to the server and restarts the site there.
+# Replaced by scripts/release.sh (a compiled image through the server's private
+# registry, so no source code goes to the server); kept as a fallback.
 #
 #   ./scripts/deploy.sh               # test, copy, rebuild and restart, check it's healthy
 #   ./scripts/deploy.sh --copy-only   # just copy the files

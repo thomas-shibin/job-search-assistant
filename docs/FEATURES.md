@@ -151,6 +151,9 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
   before they leave the server; kept 7 daily, 4 weekly, 6 monthly; restore into a new
   folder only ([BACKUPS.md](BACKUPS.md)).
 - Search-engine setup: sitemap, robots, structured data ([REACHING_PEOPLE.md](REACHING_PEOPLE.md)).
+- **Releases as a compiled image** (not used yet): `scripts/release.sh` builds an image with no
+  source code, pushes it to a private registry on the server (127.0.0.1 only, through SSH), backs up
+  the database, brings the version up and waits until healthy; `--rollback` to go back (INSTALL.md).
 - **CI on GitHub** (not deployed yet: needs a push): tests, lint, security analysis (bandit, CodeQL),
   package vulnerabilities, secret scan, Docker build + start + image scan on every push; Dependabot
   updates weekly (README.md, "CI").
@@ -170,6 +173,12 @@ workplace the feed states (an Ashby job marked hybrid that allows remote days wa
 Also: a search for two jobs joined by "and", "&" or "/" ("HR and Admin", "HR & Admin") is two searches, one per job
 (before, it looked for titles containing both words and found almost nothing); "Sales and Marketing Manager" is
 "Sales Manager" and "Marketing Manager", and one field's name ("Health and Safety") stays whole.
+And: viewing a job from the results keeps the list where it is (before, it reloaded the page and jumped to the top,
+so after job 15 you had to scroll down again to reach job 16).
+And: Analyze match, Analyze & tailor, Tailor anyway and Re-tailor show the steps they're working through (getting
+the full description, matching, strengths and gaps / rewriting and checking lines, building the files) for at least
+5 seconds and until the result is ready, with a "still working" note after 15 seconds; the result opens at its
+section. ("Analyze & tailor" now always redirects back to the job, with any reason on top.)
 
 ## Upcoming
 

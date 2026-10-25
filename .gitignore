@@ -9,7 +9,9 @@ dist/
 
 # Secrets and personal config
 .env
+.env.prod
 config/config.yaml
+config/free_plan.key
 
 # Local database
 data/*.db

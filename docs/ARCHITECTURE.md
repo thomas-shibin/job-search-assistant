@@ -199,9 +199,13 @@ folders and an in-memory `/tmp`.
   (id 1990) that can't log in, readable by nobody else. The mounts are made with
   `create_host_path: false`, so a missing folder stops the start instead of starting
   on an empty database.
-- **Deploying.** `scripts/deploy.sh`, run on the developer's computer, runs the tests,
-  copies an explicit list of code and build files (never data, settings or `.env*`),
-  rebuilds on the server and waits for the health check.
+- **Releasing.** `scripts/release.sh`, run on the developer's computer, runs the tests,
+  builds the Dockerfile's `release` stage (bytecode only: `compileall -b -o 2`, every
+  `.py` removed, Alembic `sourceless = true`), checks it, and pushes it through an SSH
+  tunnel to a registry bound to the server's 127.0.0.1 (`deploy/registry/`). The server
+  pulls it, backs up the database, pins `APP_IMAGE` in `.env.prod` and starts it with
+  `--no-build`. The `dev` stage is the source, for docker-compose.dev.yml. The older
+  `scripts/deploy.sh` (copy the source, build on the server) is kept as a fallback.
 - **Backups** are described in [BACKUPS.md](BACKUPS.md). Removing the container or image
   never touches the data: it's a host folder.
 

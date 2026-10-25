@@ -1,0 +1,212 @@
+# Continuous integration: every push and pull request must pass all of these
+# before it's deployed (./scripts/deploy.sh). Every job is read-only: nothing is
+# pushed or published from here.
+#
+#   hygiene       lint (ruff: unused/undefined names, real-bug patterns), and
+#                 every file compiles
+#   test          the test suite, the database migrations (one head, apply to
+#                 an empty database), installed packages agree with each other
+#   sast          static security analysis of our code (bandit; CodeQL runs
+#                 in codeql.yml)
+#   dependencies  known vulnerabilities in the Python packages we install
+#                 (pip-audit)
+#   secrets       no credentials anywhere in the git history (gitleaks)
+#   docker        the release image (compiled, no source) builds, has no
+#                 source, secrets or data inside, starts with production's hardening
+#                 (read-only, no capabilities, non-root) and serves pages, and
+#                 has no fixable HIGH/CRITICAL vulnerabilities (trivy)
+#
+# Weekly, the same checks run on master so newly published vulnerabilities in
+# unchanged code are caught. Third-party actions are pinned to commit SHAs and
+# tools to exact versions; Dependabot (.github/dependabot.yml) proposes updates.
+name: CI
+
+on:
+  push:
+    branches: [master, prod, dev]
+  pull_request:
+  schedule:
+    - cron: "17 6 * * 1"  # Mondays 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"  # the Docker image's Python
+  RUFF_VERSION: "0.17.2"
+  BANDIT_VERSION: "1.9.4"
+  PIP_AUDIT_VERSION: "2.10.1"
+  GITLEAKS_IMAGE: ghcr.io/gitleaks/gitleaks:v8.30.1
+  TRIVY_IMAGE: aquasec/trivy:0.76.1
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  hygiene:
+    name: Code hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install ruff
+        run: pip install "ruff==${RUFF_VERSION}"
+      - name: Lint (rules in pyproject.toml)
+        run: ruff check . --output-format github
+      - name: Every Python file compiles
+        run: python -m compileall -q app alembic main.py cli.py scripts
+
+  test:
+    name: Tests and migrations
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install the app and test tools
+        run: pip install ".[dev]"
+      - name: Installed packages are compatible
+        run: pip check
+      - name: Test suite
+        run: python -m pytest -q -p no:cacheprovider
+      - name: Migrations have one head
+        run: |
+          python - <<'EOF'
+          from alembic.config import Config
+          from alembic.script import ScriptDirectory
+          heads = ScriptDirectory.from_config(Config("alembic.ini")).get_heads()
+          print("alembic heads:", heads)
+          assert len(heads) == 1, f"expected one migration head, found {heads}"
+          EOF
+      - name: Migrations apply to an empty database
+        env:
+          DATABASE_URL: sqlite:///${{ runner.temp }}/ci.db
+        run: alembic upgrade head
+
+  sast:
+    name: Static security analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install bandit
+        run: pip install "bandit[toml]==${BANDIT_VERSION}"
+      - name: Bandit (fails on medium or high severity)
+        run: bandit -c pyproject.toml -r app main.py cli.py --severity-level medium
+      - name: Bandit report, low severity included (informational)
+        if: always()
+        run: bandit -c pyproject.toml -r app main.py cli.py --exit-zero -q
+
+  dependencies:
+    name: Package vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install what production installs
+        run: |
+          python -m venv "$RUNNER_TEMP/app"
+          "$RUNNER_TEMP/app/bin/pip" install .
+          "$RUNNER_TEMP/app/bin/pip" freeze --exclude-editable | grep -viE '^hirlumo([=@ ]|$)' > "$RUNNER_TEMP/installed.txt"
+          cat "$RUNNER_TEMP/installed.txt"
+      - name: pip-audit (fails on any known vulnerability)
+        run: |
+          pip install "pip-audit==${PIP_AUDIT_VERSION}"
+          pip-audit -r "$RUNNER_TEMP/installed.txt" --no-deps --progress-spinner off --desc on
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0  # the whole history: a secret removed later is still leaked
+          persist-credentials: false
+      - name: gitleaks (findings are redacted; known test values in .gitleaksignore)
+        run: |
+          docker run --rm -v "$PWD:/repo:ro" "$GITLEAKS_IMAGE" \
+            git /repo --redact --no-banner --exit-code 1
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # v4.4.1
+      - name: Build the image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc  # v7.4.0
+        with:
+          context: .
+          target: release  # what production runs: compiled, no source
+          push: false
+          load: true
+          tags: hirlumo:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: No source, secrets or data inside
+        run: |
+          docker run --rm --entrypoint sh hirlumo:ci -c '
+            bad=$(find /app \( -name "*.py" -o -name ".env*" -o -name "*.db" -o -name "config.yaml" -o -name "*.key" \
+                   -o -name docs -o -name tests \) -print | head -5)
+            [ -z "$bad" ] || { echo "Not allowed in the image: $bad"; exit 1; }
+            [ -z "$(find /app/data /app/config -mindepth 1 -print -quit)" ] || { echo "data/ or config/ is not empty"; exit 1; }'
+      - name: The dev image builds too
+        run: docker build --target dev -t hirlumo:ci-dev .
+      - name: Starts hardened like production and serves pages
+        run: |
+          mkdir -p "$RUNNER_TEMP/smoke/data" "$RUNNER_TEMP/smoke/config"
+          docker run -d --name hirlumo-smoke -p 127.0.0.1:8000:8000 \
+            --read-only --tmpfs /tmp:size=512m,mode=1777 \
+            --cap-drop ALL --security-opt no-new-privileges:true \
+            -u "$(id -u):$(id -g)" \
+            -e APP_SECRET_KEY="$(openssl rand -hex 32)" \
+            -v "$RUNNER_TEMP/smoke/data:/app/data" -v "$RUNNER_TEMP/smoke/config:/app/config" \
+            hirlumo:ci
+          for _ in $(seq 1 60); do
+            curl -fs -o /dev/null http://127.0.0.1:8000/robots.txt && break
+            sleep 2
+          done
+          for path in /robots.txt / /jobs /help /login /plans; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8000$path")
+            echo "$path -> $code"
+            [ "$code" = 200 ] || { docker logs hirlumo-smoke; exit 1; }
+          done
+          if docker logs hirlumo-smoke 2>&1 | grep -q "Traceback"; then docker logs hirlumo-smoke; exit 1; fi
+      - name: Refuses to run as root
+        run: |
+          if docker run --rm -u 0:0 hirlumo:ci; then echo "the image ran as root" >&2; exit 1; fi
+      - name: Stop the container
+        if: always()
+        run: docker rm -f hirlumo-smoke || true
+      - name: Trivy image scan (fails on fixable HIGH/CRITICAL)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock "$TRIVY_IMAGE" image \
+            --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 --no-progress hirlumo:ci

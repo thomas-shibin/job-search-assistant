@@ -227,6 +227,19 @@ def test_save_as_default_updates_global_search(client, monkeypatch):
     assert saved["search"]["keywords"] == ["Kafka"]
 
 
+def test_viewing_a_job_keeps_the_list_where_it_is(client):
+    """The job links open the details panel in place (app.js); a boosted link would
+    reload the page, run the search again and scroll back to the top."""
+    import re
+
+    test_client, _ = client
+    page = test_client.get("/jobs").text
+    links = re.findall(r"<a [^>]*data-view-job=[^>]*>", page)
+    assert len(links) == 2  # the card and its View Details button
+    assert all('hx-boost="false"' in link for link in links)
+    assert re.search(r'<template id="detail-[^"]+">', page)  # what the panel shows, already in the page
+
+
 def test_analyze_card_saves_job_and_shows_ai_fit(client):
     test_client, SessionLocal = client
 
@@ -520,3 +533,26 @@ def test_below_minimum_job_explains_why_and_can_be_tailored_anyway(client, monke
     assert calls == [False]  # tailored, without pretending the job qualified
     with SessionLocal() as session:
         assert session.get(Job, job_id).status == JobStatus.ANALYZED
+
+
+def test_analyze_and_tailor_always_redirects_to_the_job(client, monkeypatch):
+    """The progress panel (app.js, data-work) sends the analysis buttons in the
+    background and opens where they redirect: a reason no resume was made comes
+    back on the job's page, not as a page of its own."""
+    import app.modules.matching.routes as matching_routes
+
+    test_client, _ = client
+    tracked = test_client.post("/browse/track", data={
+        "external_id": "222", "source_url": "https://www.adzuna.ca/land/ad/222", "company": "Acme Corp",
+        "title": "Backend Engineer", "location": "Victoria, BC", "description": "Java, Spring Boot."},
+        follow_redirects=False)
+    job_id = int(tracked.headers["location"].split("/jobs/")[1].split("?")[0].split("#")[0])
+    monkeypatch.setattr(matching_routes, "analyze_and_tailor", lambda session, job, force=False: "Scored 40/100.")
+
+    response = test_client.post(f"/jobs/{job_id}/analyze", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/jobs/{job_id}?error=Scored+40%2F100.#resume"
+    assert "Scored 40/100." in test_client.get(response.headers["location"]).text
+
+    page = test_client.get(f"/jobs/{job_id}").text
+    assert 'data-work="tailor"' in page and 'data-work="force"' in page

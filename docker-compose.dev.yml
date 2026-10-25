@@ -10,7 +10,9 @@ name: hirlumo-dev
 services:
   app:
     image: hirlumo:dev
-    build: .
+    build:
+      context: .
+      target: dev  # the source as-is (Dockerfile)
     restart: unless-stopped
     env_file: .env
     user: "${APP_UID:-1000}:${APP_GID:-1000}"

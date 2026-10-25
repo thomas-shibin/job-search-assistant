@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
-from app.modules.applications.views import get_job_or_404, job_detail_response
+from app.modules.applications.views import get_job_or_404
 from app.modules.auth.deps import member_session, require_member
 from app.modules.auth.models import User
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
@@ -46,9 +46,10 @@ async def analyze_job_action(
                 error = analyze_and_tailor(session, job, force=force)
         except quota.LimitReached as exc:
             error = str(exc)
-    if error is not None:
-        return job_detail_response(request, session, job_id, error=error)
-    return RedirectResponse(url=f"/jobs/{job_id}", status_code=303)
+    # Always a redirect, like the other analysis buttons, so the page that shows
+    # their progress (app.js, data-work) can go straight to the result.
+    query = f"?{urlencode({'error': error})}" if error is not None else ""
+    return RedirectResponse(url=f"/jobs/{job_id}{query}#resume", status_code=303)
 
 
 @router.post("/jobs/{job_id}/assess")

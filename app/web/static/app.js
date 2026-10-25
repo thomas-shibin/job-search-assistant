@@ -648,6 +648,140 @@
     });
   }
 
+  // ---------- analysis and tailoring: progress while it works ----------
+  // A form (or its submit button) with data-work="<kind>" is sent in the
+  // background while a panel shows the steps the server is going through; the
+  // result page opens when it's done. Each step is something the request really
+  // does (app/modules/matching/workflows.py). They advance over at least
+  // PROGRESS_MIN_MS, so a quick answer doesn't flash past, and the last one
+  // stays active until the answer arrives -- nothing waits longer than the work.
+  var PROGRESS_MIN_MS = 5000, PROGRESS_SLOW_MS = 15000;
+  var PROGRESS = {
+    assess: { title: "Analyzing your match", hash: "#fit", steps: [
+      "Getting the full job description", "Reading your resume",
+      "Matching your skills and experience to the requirements", "Finding your strengths and gaps",
+      "Preparing your match report"] },
+    browse: { title: "Analyzing your match", hash: "#fit", steps: [
+      "Saving the job to your list", "Getting the full job description",
+      "Matching your skills and experience to the requirements", "Finding your strengths and gaps",
+      "Preparing your match report"] },
+    tailor: { title: "Analyzing and tailoring", hash: "#resume", slow: "Tailoring a resume can take up to a minute.", steps: [
+      "Getting the full job description", "Checking your filters and match score",
+      "Tailoring your resume, if it reaches your minimum score", "Checking every rewritten line",
+      "Creating your Word and PDF files"] },
+    force: { title: "Tailoring your resume", hash: "#resume", slow: "Tailoring a resume can take up to a minute.", steps: [
+      "Getting the full job description", "Matching your resume to the requirements",
+      "Rewriting your resume for this job", "Checking every rewritten line", "Creating your Word and PDF files"] },
+    retailor: { title: "Re-tailoring your resume", hash: "#resume", slow: "Tailoring a resume can take up to a minute.", steps: [
+      "Reading the job description", "Matching your resume to the requirements",
+      "Rewriting your resume for this job", "Checking every rewritten line", "Creating your Word and PDF files"] }
+  };
+  var progressBusy = false;
+
+  function progressPanel(spec, jobTitle) {
+    var old = document.getElementById("work-progress");
+    if (old) old.remove();
+    var box = document.createElement("div");
+    box.id = "work-progress";
+    box.className = "work-progress";
+    box.innerHTML = '<div class="work-card" role="status" aria-live="polite"><h2></h2><p class="muted work-job"></p>' +
+      '<ol class="check-steps"></ol><p class="muted work-note" hidden></p>' +
+      '<div class="work-error" hidden><p></p><button type="button" class="pill outline" data-work-close>Close</button></div></div>';
+    box.querySelector("h2").textContent = spec.title;
+    var job = box.querySelector(".work-job");
+    if (jobTitle) job.textContent = jobTitle; else job.remove();
+    var list = box.querySelector("ol");
+    spec.steps.forEach(function (text) { var li = document.createElement("li"); li.textContent = text; list.appendChild(li); });
+    document.body.appendChild(box);
+    document.body.classList.add("work-open");
+    return box;
+  }
+  function closeProgress() {
+    var box = document.getElementById("work-progress");
+    if (box) box.remove();
+    document.body.classList.remove("work-open");
+    progressBusy = false;
+  }
+
+  // The result page: the same page (a job's own actions) is swapped in place --
+  // like the site's other page changes -- so it isn't loaded twice; another
+  // page (a search result's "Analyze match") opens normally.
+  function showResult(response, html, hash) {
+    var target = new URL(response.url, window.location.href);
+    target.hash = hash || "";
+    var samePage = target.pathname + target.search === window.location.pathname + window.location.search ||
+                   target.pathname === window.location.pathname;
+    if (!samePage) { window.location.assign(target.href); return; }
+    var doc = new DOMParser().parseFromString(html, "text/html");
+    if (!doc.body) { window.location.assign(target.href); return; }
+    document.title = doc.title;
+    Array.prototype.slice.call(document.body.attributes).forEach(function (a) { document.body.removeAttribute(a.name); });
+    Array.prototype.slice.call(doc.body.attributes).forEach(function (a) { document.body.setAttribute(a.name, a.value); });
+    document.body.innerHTML = doc.body.innerHTML;
+    history.replaceState(history.state, "", target.href);
+    progressBusy = false;
+    if (window.htmx) window.htmx.process(document.body);
+    init();
+    var anchor = hash && document.getElementById(hash.slice(1));
+    if (anchor) anchor.scrollIntoView(); else window.scrollTo(0, 0);
+  }
+
+  document.addEventListener("submit", function (event) {
+    var form = event.target;
+    var button = event.submitter || null;
+    var kind = (button && button.dataset.work) || form.dataset.work;
+    var spec = kind && PROGRESS[kind];
+    if (!spec || !window.fetch || !window.DOMParser || event.defaultPrevented) return;
+    if (!form.checkValidity()) return;  // the browser says what's missing
+    event.preventDefault();
+    if (progressBusy) return;
+    progressBusy = true;
+
+    var data = new FormData(form);
+    if (button && button.name) data.append(button.name, button.value);
+    var titleEl = document.querySelector("#job-detail h2, .job-header h1, main h1");
+    var box = progressPanel(spec, titleEl ? titleEl.textContent.trim() : "");
+    var steps = $all(box, ".check-steps li");
+    var each = PROGRESS_MIN_MS / steps.length;
+    var timers = steps.map(function (li, i) {
+      return setTimeout(function () {
+        if (i > 0) steps[i - 1].className = "is-done";
+        li.className = "is-active";
+      }, i * each);
+    });
+    var slowTimer = spec.slow ? setTimeout(function () {
+      var note = $(box, ".work-note"); note.textContent = "Still working. " + spec.slow; note.hidden = false;
+    }, PROGRESS_SLOW_MS) : null;
+    var minimum = new Promise(function (resolve) { setTimeout(resolve, PROGRESS_MIN_MS); });
+
+    var request = fetch(form.action, { method: "POST", body: data, credentials: "same-origin" })
+      .then(function (response) {
+        return response.text().then(function (html) { return { response: response, html: html }; });
+      });
+    Promise.all([request, minimum]).then(function (results) {
+      var got = results[0];
+      if (!got.response.ok) throw new Error("HTTP " + got.response.status);
+      timers.forEach(clearTimeout);
+      if (slowTimer) clearTimeout(slowTimer);
+      steps.forEach(function (li) { li.className = "is-done"; });
+      setTimeout(function () { closeProgress(); showResult(got.response, got.html, spec.hash); }, 350);
+    }).catch(function () {
+      timers.forEach(clearTimeout);
+      if (slowTimer) clearTimeout(slowTimer);
+      $all(box, ".check-steps li.is-active").forEach(function (li) { li.className = ""; });
+      var err = $(box, ".work-error");
+      $(err, "p").textContent = "That didn't finish -- check your connection and try again. Nothing was lost.";
+      err.hidden = false;
+      $(err, "button").focus();
+      progressBusy = false;
+    });
+  });
+  document.addEventListener("click", function (event) {
+    if (event.target.closest("[data-work-close]")) closeProgress();
+  });
+  // Back to a page restored from the browser's cache mid-work: no stale panel.
+  window.addEventListener("pageshow", function (event) { if (event.persisted) closeProgress(); });
+
   // Choosing resume changes one by one (resume_canadian.html): a fix's own tick
   // box ticks all its changes, the toolbar ticks all, none, or a resume section's.
   var CHANGE_BOXES = 'input[name="change"], input[name="fix"]';

@@ -1,0 +1,6 @@
+# Secret scan (CI: gitleaks) findings that are made-up test values, not credentials:
+# a wrong unsubscribe token, a test reset token and test passwords.
+6fd8813d3393ed7fc70065a55f7e17d5024e9ccf:tests/integration/test_email_alerts.py:generic-api-key:248
+53d06beae52a5612c366d47b3694a29098c7b931:tests/integration/test_auth.py:generic-api-key:161
+53d06beae52a5612c366d47b3694a29098c7b931:tests/integration/test_auth.py:generic-api-key:162
+53d06beae52a5612c366d47b3694a29098c7b931:tests/integration/test_onboarding.py:generic-api-key:30

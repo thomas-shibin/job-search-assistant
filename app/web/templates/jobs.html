@@ -93,7 +93,8 @@
     {% for p in postings %}
     {% set track = tracked.get(p.ref) %}
     <article class="result-card{% if selected and selected.ref == p.ref %} selected{% endif %}" data-ref="{{ p.ref }}">
-      <a class="result-main" href="{{ page_base }}&page={{ search.page }}&view={{ p.ref }}" data-view-job="{{ p.ref }}">
+      {# hx-boost="false": app.js shows the job in the details panel in place; a boosted link would reload the page and scroll to the top. #}
+      <a class="result-main" href="{{ page_base }}&page={{ search.page }}&view={{ p.ref }}" data-view-job="{{ p.ref }}" hx-boost="false">
         <div class="result-top">
           {{ avatar(p.company) }}
           <div class="result-title">
@@ -112,7 +113,7 @@
         <p class="result-snippet">{{ p.snippet }}</p>
       </a>
       <div class="result-actions">
-        <a class="button pill ghost small" href="{{ page_base }}&page={{ search.page }}&view={{ p.ref }}" data-view-job="{{ p.ref }}">View Details</a>
+        <a class="button pill ghost small" href="{{ page_base }}&page={{ search.page }}&view={{ p.ref }}" data-view-job="{{ p.ref }}" hx-boost="false">View Details</a>
         {% with ref=p.ref, saved_job_id=saved.get(p.ref) %}{% include "_save_button.html" %}{% endwith %}
         <a class="button pill outline small" href="{{ p.url }}" target="_blank" rel="noopener">Apply {{ icon("external") }}</a>
       </div>

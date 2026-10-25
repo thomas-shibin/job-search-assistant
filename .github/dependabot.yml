@@ -1,0 +1,21 @@
+# Weekly pull requests for outdated or vulnerable dependencies: Python packages
+# (pyproject.toml), the Docker base image, and the GitHub Actions used by CI.
+# Each one runs through CI (.github/workflows/ci.yml) before it can be merged.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]

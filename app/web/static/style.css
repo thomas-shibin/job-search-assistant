@@ -1696,3 +1696,16 @@ form.check-fix-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 }
 @media (prefers-reduced-motion: reduce) { .help-chat.open { animation: none; } .help-msg.typing span { animation: none; } }
 @media print { .help-launcher, .help-chat { display: none !important; } }
+
+/* Analysis and tailoring in progress (app.js, data-work): the steps it's going through. */
+.work-progress { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 1rem;
+  background: rgba(10, 16, 36, 0.45); backdrop-filter: blur(2px); }
+.work-card { width: min(28rem, 100%); background: var(--surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 16px; box-shadow: var(--shadow); padding: 1.5rem 1.5rem 1.25rem; display: grid; gap: 0.9rem; }
+.work-card h2 { margin: 0; font-size: 1.2rem; }
+.work-card .work-job { margin: -0.6rem 0 0; font-size: 0.92rem; }
+.work-card .check-steps { gap: 0.65rem; }
+.work-card .work-note { margin: 0; font-size: 0.88rem; }
+.work-error { display: grid; gap: 0.6rem; justify-items: start; }
+.work-error p { margin: 0; color: var(--danger, #b42318); }
+body.work-open { overflow: hidden; }

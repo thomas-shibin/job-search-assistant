@@ -8,8 +8,8 @@ order: 8
 A tailored resume is your own resume with its wording adjusted for one job: the summary and bullets are rewritten to use the job's language where your experience supports it. Everything else (layout, fonts, skills section) stays exactly as in your base resume.
 
 ## How do I tailor my resume for a job?
-?: change my resume for a job, adjust my cv for a job, make my resume fit a job, customise resume, resume for each application
-On a job you've saved or analyzed, select **Analyze & tailor**. Hirlumo scores the job against your resume and, if it reaches your minimum score, writes a tailored copy. If the job is below your minimum score, select **Tailor anyway**. When it's ready, select **Download DOCX** or **Download PDF**.
+?: change my resume for a job, how long does tailoring take, adjust my cv for a job, make my resume fit a job, customise resume, resume for each application
+On a job you've saved or analyzed, select **Analyze & tailor**. Hirlumo scores the job against your resume and, if it reaches your minimum score, writes a tailored copy. If the job is below your minimum score, select **Tailor anyway**. While it works, you'll see each step it's on; tailoring usually takes under a minute. When it's ready, select **Download DOCX** or **Download PDF**.
 
 ## What is Quick Tailor?
 ?: job from another website, job I found elsewhere, paste a job description, linkedin job, indeed job

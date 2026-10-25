@@ -9,10 +9,13 @@ name: hirlumo
 
 services:
   app:
-    # APP_IMAGE in .env (e.g. thomasshibin90/hirlumo:0.1) runs a published
-    # image -- no source code needed. Unset, it builds from this folder.
+    # APP_IMAGE in .env.prod runs a published image -- no source code needed.
+    # scripts/release.sh sets it to the version it brings up from the private
+    # registry (127.0.0.1:5000/hirlumo:0.N). Unset, it builds from this folder.
     image: ${APP_IMAGE:-hirlumo}
-    build: .
+    build:
+      context: .
+      target: release  # compiled, no source (Dockerfile)
     restart: unless-stopped
     # .env.prod wins where both exist; either alone is fine.
     env_file:

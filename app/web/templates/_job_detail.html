@@ -27,7 +27,7 @@
     {% elif track and can_route("/jobs/{job_id}") %}
       <a class="button pill outline" href="/jobs/{{ track.job_id }}">{{ icon("sparkles") }} Open analysis</a>
     {% elif not track and can_route("/browse/analyze", "POST") %}
-      <form method="post" action="/browse/analyze" hx-boost="false">
+      <form method="post" action="/browse/analyze" hx-boost="false" data-work="browse">
         <input type="hidden" name="ref" value="{{ p.ref }}">
         <button type="submit" class="pill outline" title="{{ 'Compare this job with your resume' if has_resume else 'Upload your resume first to compare it with this job' }}">{{ icon("sparkles") }} Analyze match</button>
       </form>

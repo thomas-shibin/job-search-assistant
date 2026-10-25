@@ -62,7 +62,7 @@ app/
 alembic/                database migrations
 tests/                  unit/ and integration/ tests
 docs/                   features, architecture, multi-tenancy, backups, sign-in setup, go-live and growth plans
-scripts/                deploy.sh, move-data.sh, package.py, build_places.py
+scripts/                release.sh, deploy.sh, move-data.sh, package.py, build_places.py
 ```
 
 ### Module responsibilities
@@ -128,9 +128,11 @@ On this computer both use the same `data/` folder; run one at a time. Compose ex
 **On the server** the data lives outside the code folder (`HIRLUMO_DATA_DIR` and
 `HIRLUMO_CONFIG_DIR` in `.env.prod`, set by `sudo ./scripts/move-data.sh`), so copying
 in a new version can't replace it, and the app refuses to start if that folder is
-missing. Send a new version from this computer with `./scripts/deploy.sh`: it runs the
-tests, copies only the code and build files (never `data/`, `config/` or `.env*`),
-rebuilds and waits until the app is healthy. See [INSTALL.md](INSTALL.md) section 8.
+missing. Release a new version from this computer with `./scripts/release.sh`: it runs
+the tests, builds an image with the code compiled (no source), pushes it to the private
+registry on the server through SSH, backs up the database, brings the version up there
+and waits until it's healthy; `--rollback <version>` goes back. See [INSTALL.md](INSTALL.md)
+section 8, "Releases".
 
 ## Environment configuration
 

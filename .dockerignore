@@ -8,8 +8,10 @@ dist
 .pytest_cache
 # Secrets come in via env_file at runtime, never baked into the image.
 .env
+.env.prod
 # Bind-mounted at runtime.
 data
 config/config.yaml
+config/free_plan.key
 tests
 docs

@@ -6,7 +6,7 @@ pages: /applications, /tracked-jobs
 order: 7
 ---
 ## How do I see how well I match a job?
-Select **Analyze match** on a job's details (in search results or on Saved Jobs). Hirlumo compares the job's requirements with your resume and opens the job's page with the result. You need a resume on [My resume](/resume) first.
+Select **Analyze match** on a job's details (in search results or on Saved Jobs). Hirlumo compares the job's requirements with your resume, showing each step as it goes, and opens the job's page with the result. You need a resume on [My resume](/resume) first.
 
 ## What does the match analysis show?
 - A **fit score** out of 100 and a verdict.
