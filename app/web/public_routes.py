@@ -1,10 +1,10 @@
 """Public pages: the landing page, companies, career resources, terms and
 privacy -- plus the one-time "build your profile" step after signing in.
 
-Everything shown publicly is real: categories, recent jobs and companies come
-from the job pool (companies' own careers sites). Seeing search results needs
-an account; the landing page's search asks visitors to sign in first and then
-runs exactly what they typed.
+The landing page leads with the free Canadian resume check (its upload form
+posts to /canadian-resume-check), then job search. Everything shown publicly is
+real: category counts and the companies page come from the job pool
+(companies' own careers sites).
 """
 from __future__ import annotations
 
@@ -21,9 +21,9 @@ from app.integrations.email import EmailSettings
 from app.modules.access import rbac
 from app.modules.auth.deps import current_user, member_session, require_member
 from app.modules.auth.models import User
-from app.modules.jobs import places, postings
+from app.modules.jobs import places
 from app.modules.jobs.pool import service as pool
-from app.modules.jobs.pool.models import PoolCompany, PoolJob
+from app.modules.jobs.pool.models import PoolCompany
 from app.modules.profiles import service as profiles
 from app.core.tenancy import bind_tenant
 from app.modules.resumes import public_check
@@ -67,15 +67,7 @@ def _landing_data(session: Session) -> dict:
         for label, query, icon in CATEGORIES:
             count = pool.search_pool(session, [query], [], [], "ca", per_page=1).total
             categories.append({"label": label, "query": query, "icon": icon, "count": count})
-        recent_rows = pool.fresh_jobs(session).filter(
-            PoolJob.country == "ca", PoolJob.date_posted.is_not(None)).order_by(
-            PoolJob.date_posted.desc()).limit(6).all()
-        recent = [postings.from_raw(pool.to_raw_job(r)) for r in recent_rows]
-        companies = session.query(PoolCompany).filter(PoolCompany.enabled.is_(True), PoolCompany.canada_count > 0) \
-            .order_by(PoolCompany.canada_count.desc()).limit(8).all()
-        companies = [{"name": c.label, "count": c.canada_count} for c in companies]
-        total = pool.fresh_jobs(session).filter(PoolJob.country == "ca").count()
-        return {"categories": categories, "recent": recent, "companies": companies, "total": total}
+        return {"categories": categories}
     return _cached("landing", build)
 
 
@@ -84,9 +76,10 @@ def landing(request: Request, msg: str | None = None, user: User | None = Depend
             session: Session = Depends(get_session)):
     if user is not None and not user.is_guest:
         return RedirectResponse(url="/jobs" + (f"?{urlencode({'msg': msg})}" if msg else ""), status_code=303)
-    return templates.TemplateResponse(request, "landing.html", {**_landing_data(session), "message": msg,
-                                                                "smart_search": rbac.feature_on(session, "smart_search"),
-                                                                "radius_choices": places.RADIUS_CHOICES})
+    return templates.TemplateResponse(request, "landing.html", {
+        **_landing_data(session), "message": msg, "smart_search": rbac.feature_on(session, "smart_search"),
+        "radius_choices": places.RADIUS_CHOICES, "resume_check": rbac.feature_on(session, "canadian_resume"),
+        "hold_minutes": public_check.HOLD_SECONDS // 60})
 
 
 @router.get("/companies")

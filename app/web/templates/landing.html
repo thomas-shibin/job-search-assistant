@@ -1,51 +1,131 @@
 {% extends "base.html" %}
-{% from "_icons.html" import icon, avatar %}
+{% from "_icons.html" import icon %}
 {% from "_place_field.html" import place_field %}
-{% block title %}Hirlumo: Jobs in Canada with Match Scores and AI Resume Tailoring{% endblock %}
-{% block description %}Find jobs in Canada from company career sites and job boards in one search. See your match score for every role and apply with a resume tailored to the job. Free.{% endblock %}
+{# What Hirlumo is first: a Canadian resume checker and converter that tailors
+   the resume to each job. Job search comes after, as the place to use it.
+   Every claim here is something the app does (docs/FEATURES.md): the
+   checklist names the checks in resumes/canadian.py and resumes/ats.py. #}
+{% block title %}Free Canadian Resume Checker, Converter and ATS Check | Hirlumo{% endblock %}
+{% block description %}Make your resume ready for Canadian employers. Free Canadian resume and ATS check in seconds, no sign-up. Fix it in one click in your own Word design, and tailor it to every job you apply for.{% endblock %}
 {% block structured_data %}{% for item in structured_data() %}<script type="application/ld+json">{{ item|tojson }}</script>{% endfor %}{% endblock %}
 {% block main_class %}landing{% endblock %}
 {% block content %}
-<section class="hero">
-  <div class="hero-inner">
-    <h1>Find Jobs in Canada That Fit You</h1>
-    <p class="hero-sub">Search company career sites and job boards at once, see how well you match each role, and apply with a resume tailored to the job.</p>
-    <form class="hero-search" action="/jobs" method="get" role="search">
-      <label class="hero-field">
-        {{ icon("search") }}
-        <span class="visually-hidden">Job title, keywords, or company</span>
-        <input type="text" name="q" placeholder="{{ 'Job title, or describe the job you want' if smart_search else 'Job title, keywords, or company' }}" autocomplete="off">
-      </label>
-      <span class="hero-divider" aria-hidden="true"></span>
-      {{ place_field("", none, radius_choices) }}
-      <button type="submit" class="primary pill">Find Jobs</button>
-    </form>
-    <p class="hero-hint">Popular:
-      {% for label, q in [("Software Engineer", "Software Engineer"), ("Data Analyst", "Data Analyst"), ("Product Manager", "Product Manager"), ("Remote", "")] %}
-        <a href="/jobs?{{ {'q': q, 'l': 'Remote' if label == 'Remote' else ''}|urlencode }}">{{ label }}</a>{{ "," if not loop.last }}
-      {% endfor %}
-    </p>
-    {% if total %}<p class="hero-stat">{{ "{:,}".format(total) }} open roles in Canada from company career sites, plus job boards.</p>{% endif %}
+<section class="hero resume-hero">
+  <div class="resume-hero-inner">
+    <div class="resume-hero-text">
+      <p class="eyebrow">Canadian resume checker and converter</p>
+      <h1>Make Your Resume Ready for Canadian Employers</h1>
+      <p class="hero-sub">Find out in seconds whether your resume follows what Canadian employers expect and whether applicant tracking systems (ATS) can read it. Then fix it in one click, in your own Word design, and tailor it to every job you apply for.</p>
+      <ul class="hero-points">
+        <li>{{ icon("check") }} Canadian resume format, checked line by line</li>
+        <li>{{ icon("check") }} ATS-friendly layout and standard headings</li>
+        <li>{{ icon("check") }} Every change shown first; nothing invented</li>
+      </ul>
+    </div>
+    {% if resume_check %}
+    <div class="panel resume-hero-card check-upload" id="check">
+      <h2>Check your resume free</h2>
+      <p class="muted">No sign-up. Two scores: Canada-ready and ATS readability.</p>
+      <form method="post" action="/canadian-resume-check" enctype="multipart/form-data" hx-boost="false" data-check-steps>
+        <label class="check-drop">
+          {{ icon("upload") }}
+          <strong>Choose your resume</strong>
+          <span class="muted">PDF or Word (.docx), up to 10 MB</span>
+          <input type="file" name="resume" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+        </label>
+        <button type="submit" class="primary pill large">{{ icon("search") }} Check my resume</button>
+        <ol class="check-steps" role="status" aria-live="polite" hidden>
+          <li>Reading your resume</li>
+          <li>Understanding the layout</li>
+          <li>Comparing with Canadian expectations</li>
+          <li>Reviewing how software reads it</li>
+          <li>Scoring your resume</li>
+          <li>Preparing your results</li>
+        </ol>
+      </form>
+      <p class="muted check-privacy">{{ icon("shield") }} Your resume is never saved to disk. It's held in memory for {{ hold_minutes }} minutes, so you can fix it after signing up, then deleted.</p>
+    </div>
+    {% else %}
+    <div class="panel resume-hero-card">
+      <h2>Get your resume ready</h2>
+      <p class="muted">Upload your resume to a free account to make it Canadian and tailor it to each job.</p>
+      <a class="button primary pill large" href="/signup">Create a free account</a>
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<section class="landing-section">
+  <div class="section-head center">
+    <h2>What a Canadian resume looks like</h2>
+    <p>Canadian employers expect a different resume than many other countries. Hirlumo checks yours for each of these.</p>
+  </div>
+  <ul class="rule-grid">
+    <li><h3>No photo</h3><p>Canadian resumes leave out a photo, so nothing suggests bias in hiring.</p></li>
+    <li><h3>No personal details</h3><p>Leave out date of birth, age, gender, marital status, religion and nationality.</p></li>
+    <li><h3>No declaration or references</h3><p>No signed declaration, and references are given when the employer asks.</p></li>
+    <li><h3>Dates as month and year</h3><p>"April 2021", not "04/05/21", which reads differently from country to country.</p></li>
+    <li><h3>Canadian spelling</h3><p>A mix of British and American: colour, centre, travelled and licence, but organize and analyze.</p></li>
+    <li><h3>One or two pages</h3><p>Most employers expect one or two; three only for a long senior or academic career. High school can come off.</p></li>
+    <li><h3>City, province and phone</h3><p>Where you live in Canada and a number employers can call.</p></li>
+    <li><h3>A summary, not an objective</h3><p>Two or three lines on what you offer, and education explained for Canadian readers.</p></li>
+    <li><h3>Readable by ATS software</h3><p>One column, no tables or text boxes, contact details in the page itself, standard section headings.</p></li>
+  </ul>
+</section>
+
+<section class="landing-section band">
+  <div class="section-head center">
+    <h2>From your resume to a Canadian resume</h2>
+    <p>No starting over: Hirlumo works from the resume you already have.</p>
+  </div>
+  <ol class="how-steps">
+    <li><span class="step-number">1</span><h3>Upload your resume</h3><p>PDF or Word. Get your Canada-ready and ATS scores in seconds, free and without an account.</p></li>
+    <li><span class="step-number">2</span><h3>Fix it in one click</h3><p>See every suggested change, choose the ones you want, and get a Canadian resume in your own Word design.</p></li>
+    <li><span class="step-number">3</span><h3>Tailor it to each job</h3><p>Paste a job description or pick a job: see your match score, then get a version that puts the experience the employer asks for first.</p></li>
+  </ol>
+</section>
+
+<section class="landing-section">
+  <div class="section-head center">
+    <h2>Everything your resume needs for a job in Canada</h2>
+  </div>
+  <div class="benefit-grid landing-features">
+    <div class="benefit"><span class="category-icon">{{ icon("file") }}</span><h3>Canadian resume check</h3><p>A score for Canadian conventions and one for ATS readability, with what to change and why. Every finding has a documented source.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("sparkles") }}</span><h3>One-click Canadian format</h3><p>Changes are made inside your own Word file, keeping its fonts and design. A PDF becomes a clean one-column Word resume.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("target") }}</span><h3>Tailored to every job</h3><p>Your match score, strengths and gaps for a job, then your resume rewritten for it. Only what's already true is reworded.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("briefcase") }}</span><h3>Canadian job titles</h3><p>Add the Canadian name for a job title from another country, in brackets after yours and never more senior.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("refresh") }}</span><h3>Every version kept</h3><p>Each upload, edit and conversion is saved. Compare any two versions and go back with one click.</p></div>
+    <div class="benefit"><span class="category-icon">{{ icon("shield") }}</span><h3>Private by default</h3><p>Your resume is visible only to you and is never shared with employers.</p></div>
   </div>
 </section>
 
 <section class="landing-section">
   <div class="landing-check">
     <div>
-      <p class="eyebrow">Free · No sign-up</p>
-      <h2>Is your resume ready for Canada?</h2>
-      <p>Upload it and get two scores in seconds: how well it follows what Canadian employers expect, and how easily applicant tracking software can read it. With a free account, see exactly what to change and fix it in one click.</p>
+      <p class="eyebrow">Made for</p>
+      <h2>Newcomers, international students and career changers</h2>
+      <p>If your resume was written for another country, or you haven't applied for a job in a while, Hirlumo shows what Canadian employers will notice first and helps you fix it before you apply.</p>
     </div>
-    <a class="button primary pill large" href="/canadian-resume-check">{{ icon("file") }} Check my resume free</a>
+    <a class="button primary pill large" href="{{ '/canadian-resume-check' if resume_check else '/signup' }}">{{ icon("file") }} Check my resume free</a>
   </div>
 </section>
 
 <section class="landing-section">
   <div class="section-head">
-    <h2>Popular job categories</h2>
-    <p>Browse openings by field.</p>
+    <h2>Then find jobs to apply to</h2>
+    <p>Search jobs across Canada, see your match score for each one and apply with a tailored resume.</p>
   </div>
-  <div class="category-grid">
+  <form class="hero-search landing-search" action="/jobs" method="get" role="search">
+    <label class="hero-field">
+      {{ icon("search") }}
+      <span class="visually-hidden">Job title, keywords, or company</span>
+      <input type="text" name="q" placeholder="{{ 'Job title, or describe the job you want' if smart_search else 'Job title, keywords, or company' }}" autocomplete="off">
+    </label>
+    <span class="hero-divider" aria-hidden="true"></span>
+    {{ place_field("", none, radius_choices) }}
+    <button type="submit" class="primary pill">Find Jobs</button>
+  </form>
+  <div class="category-grid landing-categories">
     {% for c in categories %}
     <a class="category-card" href="/jobs?{{ {'q': c.query}|urlencode }}">
       <span class="category-icon">{{ icon(c.icon) }}</span>
@@ -53,78 +133,7 @@
     </a>
     {% endfor %}
   </div>
-</section>
-
-{% if recent %}
-<section class="landing-section">
-  <div class="section-head">
-    <h2>Recently posted jobs</h2>
-    <p>Fresh from company career sites in Canada.</p>
-  </div>
-  <div class="recent-grid">
-    {% for p in recent %}
-    <a class="recent-card" href="/jobs/posting/{{ p.ref }}">
-      <div class="recent-top">{{ avatar(p.company) }}<div><strong>{{ p.title }}</strong><span>{{ p.company }}</span></div></div>
-      <div class="chips">
-        {% if p.location %}<span class="chip">{{ icon("pin") }}{{ p.location|truncate(38) }}</span>{% endif %}
-        <span class="chip">{{ p.workplace_label }}</span>
-        {% if p.salary_text %}<span class="chip">{{ p.salary_text }}</span>{% endif %}
-      </div>
-      {% if p.date_posted %}<span class="recent-date">{{ p.date_posted|ago }}</span>{% endif %}
-    </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
-{% if companies %}
-<section class="landing-section">
-  <div class="section-head">
-    <h2>Companies hiring in Canada</h2>
-    <p>Jobs straight from their own career sites. <a href="/companies">See all companies</a></p>
-  </div>
-  <div class="company-grid">
-    {% for c in companies %}
-    <a class="company-card" href="/jobs?{{ {'q': c.name}|urlencode }}">
-      {{ avatar(c.name, "lg") }}
-      <strong>{{ c.name }}</strong>
-      <small>{{ c.count }} open role{{ "s" if c.count != 1 }}</small>
-    </a>
-    {% endfor %}
-  </div>
-</section>
-{% endif %}
-
-<section class="landing-section band">
-  <div class="section-head center">
-    <h2>How it works</h2>
-    <p>From search to application in three steps.</p>
-  </div>
-  <ol class="how-steps">
-    <li><span class="step-number">1</span><h3>Search once</h3><p>One search covers job boards and companies' own career sites across Canada.</p></li>
-    <li><span class="step-number">2</span><h3>See where you fit</h3><p>Compare any job with your experience: strengths, gaps and a match score.</p></li>
-    <li><span class="step-number">3</span><h3>Apply with confidence</h3><p>Get your resume tailored to the role in your own design, then apply on the employer's site.</p></li>
-  </ol>
-</section>
-
-<section class="landing-section">
-  <div class="section-head center">
-    <h2>Built for job seekers</h2>
-  </div>
-  <div class="benefit-grid">
-    <div class="benefit"><span class="category-icon">{{ icon("globe") }}</span><h3>More openings</h3><p>Roles from company career sites often never reach the big job boards.</p></div>
-    <div class="benefit"><span class="category-icon">{{ icon("file") }}</span><h3>Full job descriptions</h3><p>Read the whole posting, not a two-line preview.</p></div>
-    <div class="benefit"><span class="category-icon">{{ icon("bell") }}</span><h3>Alerts that matter</h3><p>Get notified when a job matching your criteria is posted.</p></div>
-    <div class="benefit"><span class="category-icon">{{ icon("shield") }}</span><h3>Private by default</h3><p>Your resume and applications are visible only to you.</p></div>
-  </div>
-</section>
-
-<section class="landing-section">
-  <div class="section-head">
-    <h2>Popular job searches in Canada</h2>
-    <p><a href="/job-search">Browse every role and city</a></p>
-  </div>
-  <div class="browse-links">
+  <div class="browse-links landing-browse">
     {% for slug, label in [("software-engineer-jobs-in-toronto", "Software Engineer jobs in Toronto"),
                            ("software-engineer-jobs-in-vancouver", "Software Engineer jobs in Vancouver"),
                            ("data-analyst-jobs-in-toronto", "Data Analyst jobs in Toronto"),
@@ -134,10 +143,11 @@
     <a href="/job-search/{{ slug }}"><strong>{{ label }}</strong></a>
     {% endfor %}
   </div>
+  <p class="muted"><a href="/job-search">Browse every role and city</a> · <a href="/companies">Companies hiring in Canada</a></p>
 </section>
 
 <section class="landing-section landing-faq">
-  <div class="section-head"><h2>Questions job seekers ask</h2></div>
+  <div class="section-head"><h2>Questions people ask</h2></div>
   {% for question, answer in landing_faq() %}
   <details{% if loop.first %} open{% endif %}><summary>{{ question }}</summary><p>{{ answer }}</p></details>
   {% endfor %}
@@ -145,9 +155,9 @@
 
 <section class="landing-cta">
   <div>
-    <h2>Ready to find your next role?</h2>
-    <p>Create a free account in under a minute.</p>
+    <h2>Get a resume Canadian employers want to read</h2>
+    <p>Check it free in seconds, then fix it with a free account.</p>
   </div>
-  <a class="button primary pill large" href="/signup">Get started</a>
+  <a class="button primary pill large" href="{{ '/canadian-resume-check' if resume_check else '/signup' }}">Check my resume free</a>
 </section>
 {% endblock %}

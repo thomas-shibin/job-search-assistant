@@ -150,9 +150,10 @@ def test_landing_page_names_the_site_and_answers_questions(site, monkeypatch):
     monkeypatch.setenv("GOOGLE_SITE_VERIFICATION", "abc123")
     html = site.http.get("/").text
     kinds = {item["@type"] for item in _ld(html)}
-    assert kinds == {"WebSite", "Organization", "FAQPage"}
+    assert kinds == {"WebSite", "Organization", "WebApplication", "FAQPage"}
     assert '<meta name="google-site-verification" content="abc123">' in html
     assert "Is Hirlumo free?" in html and "/job-search/remote-jobs" in html
+    assert "<title>Free Canadian Resume Checker" in html and "What is a Canadian resume format?" in html
     assert '<link rel="canonical" href="https://hirlumo.com/">' in html
 
 

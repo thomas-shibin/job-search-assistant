@@ -8,6 +8,8 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
 
 ### For anyone, no account needed
 
+- **Home page** (`/`, `landing.html`): leads with the free Canadian resume check (upload on
+  the page), the Canadian resume checklist and the resume features; job search follows.
 - **Job search for Canada.** Search by title and place, or type a sentence ("remote HR
   jobs in Toronto over 80k"); spelling is fixed and the sentence is read into filters.
   Radius search ("within 25 km of Victoria"). Signed-out visitors see jobs from company
@@ -179,6 +181,15 @@ And: Analyze match, Analyze & tailor, Tailor anyway and Re-tailor show the steps
 the full description, matching, strengths and gaps / rewriting and checking lines, building the files) for at least
 5 seconds and until the result is ready, with a "still working" note after 15 seconds; the result opens at its
 section. ("Analyze & tailor" now always redirects back to the job, with any reason on top.)
+And on the Canadian check: "Civil Status" (the Philippines' word for marital status) counts as a personal detail and
+"Character References" as a references heading; and a date or spelling change is no longer offered on a line another
+fix takes out (the date of birth was listed under "Write dates" while "Remove personal details" removed it).
+And: the home page leads with resumes, not job search: "Make Your Resume Ready for Canadian Employers", with the free
+check's upload right in the first screen, what a Canadian resume looks like (the checks the checker runs), the three
+steps from your resume to a Canadian one, the resume features, and then "Then find jobs to apply to" (search,
+categories, browse links; the recent-jobs and companies grids are gone). Resume Check comes first in the header, the
+phone menu (where it was missing) and the footer; the page title, description, FAQ (resume questions first) and a
+WebApplication entry for search engines use Canadian resume and ATS wording.
 
 ## Upcoming
 

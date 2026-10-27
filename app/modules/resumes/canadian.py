@@ -69,7 +69,8 @@ class ResumeDocument:
 _OWN_SECTIONS = {
     "personal": ("personal details", "personal information", "personal profile", "personal data",
                  "personal particulars", "personal info", "personal"),
-    "references": ("references", "referees", "reference", "professional references"),
+    "references": ("references", "referees", "reference", "professional references", "character references",
+                   "character reference"),
     "declaration": ("declaration", "self declaration", "self-declaration"),
     "objective": ("objective", "career objective", "job objective", "professional objective"),
     "education": ("education", "educational qualifications", "educational qualification",
@@ -168,7 +169,7 @@ _PERSONAL: list[tuple[str, re.Pattern]] = [(label, re.compile(pattern)) for labe
     ("date of birth", r"(?i:\bdate\s+of\s+birth\b|\bbirth\s*date\b|\bd\.?\s?o\.?\s?b\b|\bborn\s+(?:on|in)\b)"),
     ("age", r"(?i:\bage\s*[:\-–]\s*\d{2}\b|\b\d{2}\s+years\s+old\b)"),
     ("gender", r"(?i:\b(?:gender|sex)\s*[:\-–])"),
-    ("marital status", r"(?i:\bmarital\s+status\b|\bmarried\b|\bunmarried\b)"),
+    ("marital status", r"(?i:\b(?:marital|civil)\s+status\b|\bmarried\b|\bunmarried\b)"),
     ("nationality", r"(?i:\bnationality\s*[:\-–]|\bcitizenship\s*[:\-–](?!\s*canad))"),
     ("religion", r"(?i:\b(?:religion|caste)\s*[:\-–])"),
     ("family details", r"(?i:\b(?:father|mother|husband|wife|spouse|guardian)(?:['’]s)?\s+(?:name|occupation)\b"
@@ -465,6 +466,13 @@ def _listed(items: list[str]) -> str:
     return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
+def _leaving(lines: list[Line]) -> set[int]:
+    """Lines another fix takes out (personal details, declaration, references, high school):
+    rewriting their dates or spelling would be a change to something that's going anyway."""
+    leaving = {i for i, value in _personal_edits(lines)[0].items() if value is None}
+    return leaving | set(_declaration_edits(lines)) | set(_reference_edits(lines)[0]) | set(_high_school_edits(lines))
+
+
 def _examples(values: list[str]) -> list[str]:
     values = list(dict.fromkeys(values))
     return values[:MAX_EXAMPLES] + ([f"and {len(values) - MAX_EXAMPLES} more"] if len(values) > MAX_EXAMPLES else [])
@@ -518,8 +526,7 @@ def check(doc: ResumeDocument) -> list[Finding]:
             "results take room without telling employers anything new.",
             _examples([lines[i].text for i in edits]), fix_label="Remove high school", lines=sorted(edits)))
 
-    leaving = {i for i, value in _personal_edits(lines)[0].items() if value is None}
-    leaving |= set(_declaration_edits(lines)) | set(_reference_edits(lines)[0]) | set(_high_school_edits(lines))
+    leaving = _leaving(lines)
     names = month_style(lines)
     changed, unclear, dated = [], [], []
     for i, line in enumerate(lines):
@@ -711,6 +718,7 @@ def changes(doc: ResumeDocument) -> dict[str, list[Change]]:
     """Every change each fix would make, line by line: what the page shows
     before anything is changed, so the member can choose."""
     under = headings(doc)
+    leaving = _leaving(doc.lines)
     out: dict[str, list[Change]] = {}
     if doc.photos:
         out[PHOTO] = [Change(PHOTO, -1, "Your photo", None, TOP)]
@@ -718,6 +726,8 @@ def changes(doc: ResumeDocument) -> dict[str, list[Change]]:
         if key == PHOTO:
             continue
         edits = plan(doc, {key}).edits
+        if key in (DATES, SPELLING):  # as in check(): not on lines another fix takes out
+            edits = {i: new for i, new in edits.items() if i not in leaving}
         if edits:
             out[key] = [Change(key, i, doc.lines[i].text, new, under[i]) for i, new in sorted(edits.items())]
     return out

@@ -93,16 +93,20 @@ def _register(http, outbox, email="mia@example.com", next_path=SEARCH):
 
 # ---- signed out ----------------------------------------------------------------------
 
-def test_landing_page_is_public_and_shows_real_jobs(env):
+def test_landing_page_leads_with_the_resume_check_then_job_search(env):
     http, _, _ = env
     page = http.get("/")
     assert page.status_code == 200
     text = page.text
-    assert "Find Jobs in Canada That Fit You" in text
-    assert 'action="/jobs"' in text and 'name="q"' in text and 'name="l"' in text
+    assert "Make Your Resume Ready for Canadian Employers" in text
+    # The free check's upload is on the page itself, before the job search.
+    check = text.index('action="/canadian-resume-check"')
+    assert 'name="resume"' in text and "data-check-steps" in text
+    assert "What a Canadian resume looks like" in text and "Check my resume free" in text
+    assert check < text.index('action="/jobs"')
+    assert 'name="q"' in text and 'name="l"' in text
     assert "data-auth-search" not in text  # searching doesn't need an account
-    assert "Popular job categories" in text and "How it works" in text
-    assert "Senior Data Analyst" in text and "Acme" in text  # recently posted, from the real pool
+    assert "Then find jobs to apply to" in text and "Software Development" in text
     assert 'id="auth-dialog"' in text  # the sign-in dialog is there for signed-out visitors
     assert "Continue with Google" not in text  # not configured
     assert "I'm hiring" not in text and "For Employers" not in text  # employer accounts aren't open yet

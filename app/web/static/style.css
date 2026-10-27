@@ -1369,6 +1369,28 @@ form.check-fix-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .landing-check h2 { margin: 0 0 0.35rem; }
 .landing-check p { margin: 0; color: var(--text-2); max-width: 680px; }
 .landing-check ul { margin: 0.6rem 0 0; padding-left: 1.1rem; color: var(--text-2); }
+/* Landing hero: what Hirlumo does on the left, the free resume check's upload on the right. */
+.resume-hero-inner { max-width: 1180px; margin: 0 auto; padding: clamp(2.5rem, 7vw, 5rem) clamp(1rem, 3vw, 2rem) clamp(2.5rem, 6vw, 4rem); display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: clamp(1.5rem, 4vw, 3.5rem); align-items: center; }
+.resume-hero-text h1 { text-align: left; font-size: clamp(2rem, 4.2vw, 3rem); }
+.resume-hero-text .hero-sub { margin: 0 0 1.4rem; max-width: 600px; }
+.hero-points { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55rem; color: var(--text-2); }
+.hero-points li { display: flex; gap: 0.55rem; align-items: center; }
+.hero-points .icon { width: 18px; height: 18px; color: var(--success); flex: none; }
+.resume-hero-card { padding: clamp(1.25rem, 3vw, 1.75rem); box-shadow: 0 12px 40px rgba(16, 27, 56, 0.10); }
+.resume-hero-card h2 { margin: 0 0 0.25rem; font-size: 1.3rem; }
+.resume-hero-card > .muted { margin: 0 0 1rem; }
+.resume-hero-card form { flex-direction: column; align-items: stretch; }
+.resume-hero-card .check-drop { flex: none; }
+@media (max-width: 860px) { .resume-hero-inner { grid-template-columns: minmax(0, 1fr); } }
+.rule-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem; }
+.landing-features { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 900px) { .rule-grid, .landing-features { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .rule-grid, .landing-features { grid-template-columns: minmax(0, 1fr); } }
+.rule-grid li { padding: 1.1rem 1.2rem; border: 1px solid var(--border); border-left: 4px solid var(--primary); border-radius: 12px; background: var(--surface); }
+.rule-grid h3 { margin: 0 0 0.3rem; font-size: 1rem; }
+.rule-grid p { margin: 0; color: var(--text-2); font-size: 0.93rem; }
+.landing-search { margin: 0 0 1.25rem; max-width: none; }
+.landing-categories, .landing-browse { margin-bottom: 1rem; }
 
 /* Comparing resume versions (resume_compare.html) and choosing changes one by one (resume_canadian.html) */
 .compare-pick { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.75rem; }

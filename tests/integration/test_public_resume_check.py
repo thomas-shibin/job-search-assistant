@@ -259,6 +259,8 @@ def test_switched_off_by_an_admin(world, monkeypatch):
     monkeypatch.setattr(rbac, "feature_on", lambda session, key: key != "canadian_resume")
     assert http.get("/canadian-resume-check", follow_redirects=False).status_code == 303
     assert _check(http, data).status_code == 303
+    landing = http.get("/").text  # the landing page offers an account instead of an upload that would fail
+    assert 'action="/canadian-resume-check"' not in landing and "Create a free account" in landing
 
 
 def test_a_member_fixes_the_checked_resume_without_uploading_again(world):

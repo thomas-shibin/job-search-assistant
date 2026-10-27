@@ -51,8 +51,8 @@
         <a href="{{ href }}" class="{{ 'active' if active }}"{% if active %} aria-current="page"{% endif %}>{{ label }}</a>
       {% endmacro %}
       <nav class="site-nav" aria-label="Main">
-        {% if not signed_in or can_route("/jobs") %}{{ top_link("/jobs", "Find Jobs", "/jobs") }}{% endif %}
         {% if signed_in and can_route("/resume/canadian") %}{{ top_link("/resume/canadian", "Resume Check", "/resume/canadian") }}{% else %}{{ top_link("/canadian-resume-check", "Resume Check", "/canadian-resume-check") }}{% endif %}
+        {% if not signed_in or can_route("/jobs") %}{{ top_link("/jobs", "Find Jobs", "/jobs") }}{% endif %}
         {{ top_link("/companies", "Companies", "/companies") }}
         {{ top_link("/resources", "Career Resources", "/resources") }}
       </nav>
@@ -102,6 +102,7 @@
         <details class="mobile-menu" data-dropdown>
           <summary aria-label="Menu">{{ icon("menu") }}</summary>
           <div class="menu-panel">
+            {% if signed_in and can_route("/resume/canadian") %}<a href="/resume/canadian">Resume Check</a>{% else %}<a href="/canadian-resume-check">Resume Check</a>{% endif %}
             {% if not signed_in or can_route("/jobs") %}<a href="/jobs">Find Jobs</a>{% endif %}
             <a href="/companies">Companies</a>
             <a href="/resources">Career Resources</a>
@@ -132,10 +133,10 @@
     <div class="site-footer-inner">
       <div class="footer-brand">
         <a class="site-logo" href="/"><img class="site-logo-mark" src="{{ static_url("brand/mark.svg") }}" alt="" width="32" height="32"><span>Hirlumo</span></a>
-        <p>Job search for Canada: openings from job boards and company career sites, matched to your experience, with a resume tailored to every application.</p>
+        <p>Canadian resumes made simple: check your resume against what Canadian employers expect, fix it in one click and tailor it to every job, then find openings across Canada.</p>
       </div>
       <div class="footer-col"><h4>Job seekers</h4>
-        <a href="/jobs">Find jobs</a><a href="/job-search">Browse jobs by role and city</a><a href="/canadian-resume-check">Free Canadian resume check</a>
+        <a href="/canadian-resume-check">Free Canadian resume check</a><a href="/jobs">Find jobs</a><a href="/job-search">Browse jobs by role and city</a>
         <a href="/companies">Companies</a><a href="/resources">Career resources</a><a href="/plans">Plans</a>
         {% if signed_in %}{% if can_route("/profile") %}<a href="/profile">My profile</a>{% endif %}{% else %}<a href="/signup">Create an account</a>{% endif %}</div>
       <div class="footer-col"><h4>Company</h4>

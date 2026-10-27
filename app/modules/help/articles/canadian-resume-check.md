@@ -1,7 +1,7 @@
 ---
 title: The Canadian resume check
 summary: How your resume is checked against Canadian conventions and ATS readability, and how to fix it in one step.
-keywords: canadian, canada, format, convention, check, ats, applicant tracking system, readability, score, photo, date of birth, marital status, references, declaration, spelling, length, pages, convert, conversion, fix, must fix, should fix, tip, job title equivalent, free check, ready for canada
+keywords: canadian, canada, format, convention, check, ats, applicant tracking system, readability, score, photo, date of birth, marital status, civil status, references, character references, declaration, spelling, length, pages, convert, conversion, fix, must fix, should fix, tip, job title equivalent, free check, ready for canada
 pages: /resume/canadian, /canadian-resume-check
 order: 6
 ---

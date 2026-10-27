@@ -5,15 +5,17 @@ keywords: start, begin, new, account, sign up, signup, register, overview, intro
 pages: /, /welcome, /signup, /login
 order: 1
 ---
-Hirlumo helps you find jobs in Canada and apply with a resume that fits each one. It brings together openings from job boards and from companies' own careers sites, checks your resume against what Canadian employers expect, shows how well each job matches you, and writes a tailored copy of your resume for the jobs you choose.
+Hirlumo gets your resume ready for Canadian employers. It checks your resume against what Canadian employers expect and how applicant tracking software (ATS) reads it, fixes it in your own Word design, and writes a tailored copy for each job you apply to. It also finds jobs across Canada, from job boards and companies' own careers sites, and shows how well each one matches you.
 
 ## What can I do with Hirlumo?
 ?: what is hirlumo, what does this app do, features, how does it work
-- **Find jobs**: search by title and place, or type a sentence like "remote HR jobs in Toronto over 80k". See [Searching for jobs](/help/searching-for-jobs).
 - **Check your resume for Canada**: a free check of your resume against Canadian conventions and how applicant tracking software reads it, with one-step fixes. See [The Canadian resume check](/help/canadian-resume-check).
-- **See how well you match**: a match analysis for any job, with what you match and what's missing. See [Match analysis](/help/match-analysis).
 - **Tailor your resume**: your own resume, reworded for one job, in your own Word design. See [Tailored resumes and Quick Tailor](/help/tailored-resumes).
+- **See how well you match**: a match analysis for any job, with what you match and what's missing. See [Match analysis](/help/match-analysis).
+- **Find jobs**: search by title and place, or type a sentence like "remote HR jobs in Toronto over 80k". See [Searching for jobs](/help/searching-for-jobs).
 - **Keep track**: save jobs, track applications from applied to offer, and get job alerts by email or Telegram.
+
+You can check your resume straight from the home page, without an account: choose your resume file under **Check your resume free**.
 
 ## How do I create an account?
 1. Select **Sign Up** at the top of any page.

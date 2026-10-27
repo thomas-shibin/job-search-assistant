@@ -287,23 +287,32 @@ def job_posting(posting, request: Request | None = None) -> dict | None:
 
 
 # Shown on the landing page and given to search engines as FAQPage data. Plain
-# answers to what people search before signing up.
+# answers to what people search before signing up, resume questions first.
 FAQ = [
-    ("Is Hirlumo free?",
-     "Yes. Creating an account, searching jobs, saving them and setting up job alerts are free. You can browse "
-     "jobs from company career sites and check your resume for Canada without an account."),
-    ("Where do the jobs come from?",
-     "From job boards and straight from companies' own career sites across Canada. Roles on career sites often "
-     "never reach the big job boards, so one search finds openings you would otherwise miss."),
+    ("What is a Canadian resume format?",
+     "Canadian employers expect one or two pages, no photo, no personal details such as date of birth, marital "
+     "status or nationality, no signed declaration, and references given only when asked. Dates are written as "
+     "month and year, spelling is Canadian, and the layout is simple enough for applicant tracking software to "
+     "read. Hirlumo's free Canadian resume check scores your resume against these rules in seconds, with no "
+     "sign-up."),
+    ("Can Hirlumo convert my resume to the Canadian format?",
+     "Yes. With a free account, Hirlumo lists every change your resume needs, you choose the ones you want, and "
+     "it makes them inside your own Word file, keeping its fonts and design. A PDF becomes a Word resume in a "
+     "standard one-column layout. You can compare versions and undo a conversion at any time."),
+    ("What is an ATS, and can it read my resume?",
+     "An applicant tracking system (ATS) is the software many employers use to collect and search resumes. It "
+     "can misread tables, text boxes, columns and contact details placed in the page header. Hirlumo's check "
+     "gives your resume an ATS readability score and shows what to change."),
     ("How does the AI resume tailoring work?",
      "Hirlumo compares a job posting with your resume, shows your match score, strengths and gaps, then rewrites "
      "your resume so the experience the employer asks for comes first. It only rewords what is already true; it "
-     "never invents experience."),
-    ("What is a Canadian resume format?",
-     "Canadian employers expect one or two pages, newest roles first, measurable results, and no photo, date of "
-     "birth or marital status. Hirlumo's free Canadian resume check scores your resume against these rules, "
-     "and checks whether applicant tracking software can read it, in seconds with no sign-up. With a free "
-     "account Hirlumo fixes what it can for you."),
+     "never invents experience. Paste any job description, or pick a job from Hirlumo's search."),
+    ("Is Hirlumo free?",
+     "Yes. The Canadian resume check is free with no account. A free account adds the fixes, resume versions, "
+     "job search, saved jobs and alerts, and 10 AI resume actions such as match analyses and tailored resumes."),
+    ("Does Hirlumo also help me find jobs?",
+     "Yes. One search covers job boards and companies' own career sites across Canada, and you can see your "
+     "match score for each job and apply with a tailored resume on the employer's site."),
     ("Can I import my LinkedIn profile?",
      "Yes. Sign up with LinkedIn, then upload your LinkedIn profile PDF or data export to fill in your jobs, "
      "education and skills in one step."),
@@ -315,7 +324,8 @@ FAQ = [
 
 def site_data(request: Request) -> list[dict]:
     """For the landing page: the site's name (what Google shows for it), its
-    logo, and the questions people ask before signing up."""
+    logo, what it is (a free web app for Canadian resumes), and the questions
+    people ask before signing up."""
     base = site_url(request)
     return [
         {"@context": "https://schema.org", "@type": "WebSite", "name": "Hirlumo", "alternateName": "hirlumo.com",
@@ -324,6 +334,14 @@ def site_data(request: Request) -> list[dict]:
              "query-input": "required name=q"}},
         {"@context": "https://schema.org", "@type": "Organization", "name": "Hirlumo", "url": base + "/",
          "logo": base + "/static/brand/icon-512.png"},
+        {"@context": "https://schema.org", "@type": "WebApplication", "name": "Hirlumo", "url": base + "/",
+         "applicationCategory": "BusinessApplication", "operatingSystem": "Any (web browser)",
+         "description": "Free Canadian resume checker and converter: checks a resume against Canadian conventions "
+                        "and ATS readability, fixes it in the member's own Word design and tailors it to each job.",
+         "featureList": ["Canadian resume check", "ATS readability check", "Convert a resume to the Canadian format",
+                         "Canadian job titles", "Resume tailoring for a job description", "Match score for a job",
+                         "Resume versions and compare", "Job search across Canada"],
+         "offers": {"@type": "Offer", "price": "0", "priceCurrency": "CAD"}},
         {"@context": "https://schema.org", "@type": "FAQPage", "mainEntity": [
             {"@type": "Question", "name": q, "acceptedAnswer": {"@type": "Answer", "text": a}} for q, a in FAQ]},
     ]

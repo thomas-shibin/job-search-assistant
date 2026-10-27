@@ -67,6 +67,7 @@ def test_redate_matches_full_month_names_when_the_resume_uses_them():
     ("priya@example.com | DOB: 12/05/1995 | Pune, India", "priya@example.com | Pune, India"),
     ("Date of Birth: 12/05/1995", None),
     ("Marital Status: Married\tNationality: Indian", None),
+    ("Civil Status: Single", None),  # the Philippines' word for it
     ("Languages: English, Hindi", "Languages: English, Hindi"),
     ("Citizenship: Canadian", "Citizenship: Canadian"),  # saying you can work here is fine
     ("Expected salary: 12 LPA", None),
@@ -122,6 +123,8 @@ def test_references_listed_or_on_request():
     assert next(f for f in canadian.check(listed) if f.key == "references").level == canadian.SHOULD
     assert next(f for f in canadian.check(on_request) if f.key == "references").level == canadian.TIP
     assert canadian.plan(on_request, {canadian.REFERENCES}).edits == {2: None}
+    character = doc("Maria", ("references", "Character References"), ("references", "R. Dela Cruz, +63 917 555 0123"))
+    assert next(f for f in canadian.check(character) if f.key == "references").level == canadian.SHOULD
 
 
 def test_high_school_goes_only_when_a_degree_stays():
@@ -161,3 +164,11 @@ def test_title_suggestions_never_sound_more_senior(original, suggestion, ok):
 def test_clean_title():
     assert clean_title("  HR Generalist (Canada).  ") == "HR Generalist Canada"
     assert len(clean_title("x" * 200)) == 60
+
+
+def test_dates_on_a_line_that_is_taken_out_are_not_offered_as_a_change():
+    resume = doc("Maria Santos", ("experience", "Work Experience"), ("experience", "Accountant, SGV | 16/06/2015 - 15/12/2018"),
+                 ("personal", "Personal Information"), ("personal", "Date of Birth: 14/08/1992"))
+    offered = canadian.changes(resume)
+    assert [c.line for c in offered[canadian.DATES]] == [2]
+    assert [c.line for c in offered[canadian.PERSONAL]] == [3, 4]  # the heading goes with its only line
