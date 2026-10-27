@@ -194,10 +194,13 @@ step "Checking the image"
 # No source, secrets, databases, resumes or docs inside; then a start like production's.
 docker run --rm --entrypoint sh "$REPO:$VERSION" -c '
   bad=$(find /app \( -name "*.py" -o -name ".env*" -o -name "*.db" -o -name "config.yaml" -o -name "*.key" \
-         -o -name docs -o -name tests \) -print | head -5)
+         -o -name docs -o -name tests -o -name "*.map" -o -name node_modules \) -print | head -5)
   [ -z "$bad" ] || { echo "Not allowed in the image: $bad"; exit 1; }
   [ -z "$(find /app/data /app/config -mindepth 1 -print -quit)" ] || { echo "data/ or config/ is not empty"; exit 1; }
-  echo "No source, secrets or data inside."' || die "The image failed its checks; nothing was pushed."
+  for f in $(find /app/app/web/static -name "*.js" -o -name "*.css"); do
+    [ "$(wc -l < "$f")" -le 1 ] || { echo "Not minified: $f"; exit 1; }
+  done
+  echo "No source, secrets or data inside; browser files minified."' || die "The image failed its checks; nothing was pushed."
 smoke=$(mktemp -d); mkdir -p "$smoke/data" "$smoke/config"
 name="hirlumo-release-check-$$"
 docker run -d --name "$name" --read-only --tmpfs /tmp:size=512m,mode=1777 --cap-drop ALL \

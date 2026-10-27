@@ -526,7 +526,8 @@ def serve(
     telegram_listener = start_telegram_command_listener(config_path)
 
     try:
-        uvicorn.run("main:app", host=host, port=port)
+        # No "server: uvicorn" header: it tells a visitor what the site runs on.
+        uvicorn.run("main:app", host=host, port=port, server_header=False)
     finally:
         telegram_listener.stop()
         background_scheduler.shutdown(wait=False)

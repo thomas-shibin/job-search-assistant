@@ -154,7 +154,7 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
   folder only ([BACKUPS.md](BACKUPS.md)).
 - Search-engine setup: sitemap, robots, structured data ([REACHING_PEOPLE.md](REACHING_PEOPLE.md)).
 - **Releases as a compiled image** (not used yet): `scripts/release.sh` builds an image with no
-  source code, pushes it to a private registry on the server (127.0.0.1 only, through SSH), backs up
+  source code and minified, obfuscated browser scripts and styles (no comments, no source maps), pushes it to a private registry on the server (127.0.0.1 only, through SSH), backs up
   the database, brings the version up and waits until healthy; `--rollback` to go back (INSTALL.md).
 - **CI on GitHub** (not deployed yet: needs a push): tests, lint, security analysis (bandit, CodeQL),
   package vulnerabilities, secret scan, Docker build + start + image scan on every push; Dependabot
@@ -190,6 +190,8 @@ steps from your resume to a Canadian one, the resume features, and then "Then fi
 categories, browse links; the recent-jobs and companies grids are gone). Resume Check comes first in the header, the
 phone menu (where it was missing) and the footer; the page title, description, FAQ (resume questions first) and a
 WebApplication entry for search engines use Canadian resume and ATS wording.
+And: releases serve the browser scripts minified and obfuscated and the styles minified (no comments, no source
+maps), and the server no longer names itself in a "server:" header.
 
 ## Upcoming
 

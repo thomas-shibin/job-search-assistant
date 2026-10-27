@@ -1,6 +1,7 @@
 # Two images from one file:
 #   release (the default)  what production runs: the code as compiled bytecode
 #                          only -- no .py source, no docstrings or comments --
+#                          and the browser files minified and obfuscated;
 #                          pushed to the private registry by scripts/release.sh
 #   dev                    the source as-is, for this computer
 #                          (docker-compose.dev.yml: target dev)
@@ -65,6 +66,21 @@ RUN python -m compileall -q -b -o 2 -j 0 app alembic cli.py main.py \
     && test -z "$(find . -name '*.py' -not -path './data/*' -print -quit)"
 
 
+# ---- browser files: minified and obfuscated --------------------------------------
+# app.js and tagpicker.js lose their comments and readable names, style.css its
+# comments and whitespace (deploy/web-build/build.mjs). Tools pinned by the
+# lockfile; install scripts don't run. Like the bytecode, this stops casual
+# reading, not a determined one: whatever a browser runs can be downloaded.
+FROM node:22.12.0-slim AS web
+WORKDIR /build
+COPY deploy/web-build/package.json deploy/web-build/package-lock.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund
+COPY deploy/web-build/build.mjs ./
+COPY app/web/static ./static
+RUN node build.mjs static out \
+    && for f in $(find out -name '*.js'); do node --check "$f"; done
+
+
 # ---- dev: the source ---------------------------------------------------------------
 FROM base AS dev
 COPY cli.py main.py alembic.ini ./
@@ -82,6 +98,7 @@ FROM base AS release
 COPY --from=compile /app/app ./app
 COPY --from=compile /app/alembic ./alembic
 COPY --from=compile /app/cli.pyc /app/main.pyc /app/alembic.ini ./
+COPY --from=web /build/out ./app/web/static
 ARG VERSION=dev
 LABEL org.opencontainers.image.title="hirlumo" org.opencontainers.image.version="${VERSION}"
 ENV HIRLUMO_VERSION=${VERSION}

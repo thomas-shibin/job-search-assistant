@@ -260,8 +260,8 @@ starting on an empty database. To look at the files: `sudo ls /srv/hirlumo/data`
 ### Releases: a compiled image through the server's private registry
 
 New versions reach the server as a **Docker image with no source code** in it: the
-Python is compiled to bytecode, without comments or docstrings (Dockerfile, `release`
-stage). They go through a private registry on the server, which listens on the server's
+Python is compiled to bytecode, without comments or docstrings, and the browser files
+are minified and obfuscated (Dockerfile, `release` and `web` stages). They go through a private registry on the server, which listens on the server's
 own `127.0.0.1:5000` only. Your computer pushes to it through an SSH tunnel, so your SSH
 login is the only way in, and there are no registry passwords or certificates. The
 server keeps no code: only `docker-compose.yml`, `.env.prod` and the data.
@@ -291,8 +291,11 @@ port there, and `LOCAL_REGISTRY_PORT` the tunnel's end on your computer, if 5000
 A rollback runs the older code on the database the newer version may have migrated. That's
 fine for added tables and columns, the usual case; otherwise restore the `pre-<version>`
 copy. Bytecode hides the source from casual reading, not from a determined reverse
-engineer. Templates, styles, scripts and help articles stay readable, since the site
-serves them.
+engineer. The browser files (`app.js`, `tagpicker.js`, `style.css`, the logo SVGs) lose
+their comments and readable names and come with no source maps
+(`deploy/web-build/build.mjs`): hard to read, but anything a browser runs can still be
+downloaded, so keep secrets and business rules on the server. Your computer's dev site
+keeps the readable files.
 
 Once a release runs well, the old code on the server can go (keep `docker-compose.yml`,
 `deploy/`, `scripts/move-data.sh`, `.env.prod` and the data):

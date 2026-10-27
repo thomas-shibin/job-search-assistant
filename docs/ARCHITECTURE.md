@@ -201,7 +201,10 @@ folders and an in-memory `/tmp`.
   on an empty database.
 - **Releasing.** `scripts/release.sh`, run on the developer's computer, runs the tests,
   builds the Dockerfile's `release` stage (bytecode only: `compileall -b -o 2`, every
-  `.py` removed, Alembic `sourceless = true`), checks it, and pushes it through an SSH
+  `.py` removed, Alembic `sourceless = true`; the browser files from the `web` stage:
+  `deploy/web-build/build.mjs` runs terser, javascript-obfuscator and clean-css, with
+  versions pinned by its lockfile and no source maps), checks it (also: every `.js` and
+  `.css` is one line), and pushes it through an SSH
   tunnel to a registry bound to the server's 127.0.0.1 (`deploy/registry/`). The server
   pulls it, backs up the database, pins `APP_IMAGE` in `.env.prod` and starts it with
   `--no-build`. The `dev` stage is the source, for docker-compose.dev.yml. The older

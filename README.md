@@ -129,7 +129,8 @@ On this computer both use the same `data/` folder; run one at a time. Compose ex
 `HIRLUMO_CONFIG_DIR` in `.env.prod`, set by `sudo ./scripts/move-data.sh`), so copying
 in a new version can't replace it, and the app refuses to start if that folder is
 missing. Release a new version from this computer with `./scripts/release.sh`: it runs
-the tests, builds an image with the code compiled (no source), pushes it to the private
+the tests, builds an image with the code compiled (no source) and the browser files
+minified and obfuscated, pushes it to the private
 registry on the server through SSH, backs up the database, brings the version up there
 and waits until it's healthy; `--rollback <version>` goes back. See [INSTALL.md](INSTALL.md)
 section 8, "Releases".

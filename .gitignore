@@ -38,3 +38,6 @@ data/*.db-wal
 data/*.db-shm
 data/backups/
 data/mail_outbox/
+
+# Browser-file build tools (deploy/web-build), installed inside the image build
+node_modules/

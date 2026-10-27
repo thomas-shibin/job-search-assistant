@@ -1,0 +1,14 @@
+{
+  "name": "hirlumo-web-build",
+  "private": true,
+  "description": "Minifies and obfuscates the browser files for the release image (Dockerfile, web stage). Not used in development.",
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "devDependencies": {
+    "clean-css": "5.3.3",
+    "javascript-obfuscator": "4.1.1",
+    "terser": "5.37.0"
+  }
+}
