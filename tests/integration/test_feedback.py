@@ -155,7 +155,7 @@ def test_a_member_sends_a_message_from_their_account(world):
                                                                                   "mia@example.com")
         assert saved.topic == "limits" and saved.emailed and saved.handled_at is None
     mail = outbox[0]
-    assert mail["To"] == "hirlumo@gmail.com" and mail["Reply-To"] == "Mia Member <mia@example.com>"
+    assert mail["To"] == "hello@hirlumo.com" and mail["Reply-To"] == "Mia Member <mia@example.com>"
     assert "More searches" in mail["Subject"] and "30 jobs a week" in mail.get_content()
     assert "Higher limits" in mail.get_content()
 
@@ -179,7 +179,7 @@ def test_visitors_are_asked_to_sign_in_or_email(world):
     http, _, _ = world
     _signed_in["id"] = None
     page = http.get("/contact").text
-    assert "/login?next=/contact" in page and "mailto:hirlumo@gmail.com" in page and "Sending as" not in page
+    assert "/login?next=/contact" in page and "mailto:hello@hirlumo.com" in page and "Sending as" not in page
     assert "/contact" in http.get("/plans").text  # in the footer
 
 

@@ -324,6 +324,15 @@ def test_the_data_deletion_page_explains_how_for_anyone(world):
     assert 'href="/data-deletion"' in http.get("/privacy").text
 
 
+def test_public_pages_give_the_hirlumo_contact_address_not_the_sending_one(world, monkeypatch):
+    http, _, _ = world
+    monkeypatch.setenv("SMTP_FROM", "Hirlumo <no-reply@hirlumo.com>")
+    for path in ("/contact", "/data-deletion", "/privacy", "/terms", "/plans"):
+        page = http.get(path).text
+        assert "mailto:hello@hirlumo.com" in page or "hello@hirlumo.com" in page, path
+        assert "no-reply@" not in page and "hirlumo@gmail.com" not in page, path
+
+
 def test_a_member_can_say_no_thanks_and_the_checked_file_is_deleted(world):
     http, factory, data = world
     _check(http, data)

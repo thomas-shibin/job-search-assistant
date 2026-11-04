@@ -27,6 +27,8 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 
+from app.modules.usage.plans import CONTACT_EMAIL
+
 ARTICLES_DIR = Path(__file__).resolve().parent / "articles"
 
 
@@ -80,7 +82,7 @@ def values(platform) -> dict[str, str]:
         "searches_per_hour": str(platform.member_searches_per_hour),
         "guest_searches_per_hour": str(platform.guest_searches_per_hour),
         "max_search_pages": str(platform.max_search_pages),
-        "contact_email": "hirlumo@gmail.com",
+        "contact_email": CONTACT_EMAIL,
     }
 
 

@@ -51,7 +51,7 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
   across pages for the browser session.
 - **Contact us** (`/contact`, footer and account menu): a signed-in member picks a
   topic and writes a title and message; their name and email come from the account.
-  Each message is emailed to hirlumo@gmail.com with the member as Reply-To (so you
+  Each message is emailed to hello@hirlumo.com (forwarded to the team's Gmail by Cloudflare Email Routing) with the member as Reply-To (so you
   answer by replying) and kept for the admin page. At most 5 messages an hour per
   account. Visitors are asked to sign in, or shown the email address.
 
@@ -117,7 +117,7 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
     stored (key in `config/free_plan.key`), and they and the counts outlive a deleted
     account, so deleting and signing up again doesn't reset them.
   - Shown on the results page, next to resume actions, and on /plans. Limit messages,
-    the beta notice and /plans give hirlumo@gmail.com for feedback and higher limits
+    the beta notice and /plans give hello@hirlumo.com for feedback and higher limits
     (`usage/plans.py` `CONTACT_EMAIL`).
 
 ### For administrators
@@ -192,6 +192,9 @@ phone menu (where it was missing) and the footer; the page title, description, F
 WebApplication entry for search engines use Canadian resume and ATS wording.
 And: releases serve the browser scripts minified and obfuscated and the styles minified (no comments, no source
 maps), and the server no longer names itself in a "server:" header.
+And: the public email address is hello@hirlumo.com (`usage/plans.py` `CONTACT_EMAIL`) everywhere: Contact us (and where
+its messages are sent), /plans, limit messages, help articles, the data-deletion page (which showed the sending address
+before), and new Contact sections on the privacy policy and terms.
 
 ## Upcoming
 

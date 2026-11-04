@@ -11,8 +11,10 @@ from dataclasses import dataclass, field
 
 from app.core.config.schema import PlatformConfig
 
-# Where members ask for higher limits and send feedback (shown on /plans and in limit messages).
-CONTACT_EMAIL = "hirlumo@gmail.com"
+# Hirlumo's public email address: the Contact us page, /plans, limit messages, the legal
+# pages and help articles show it, and Contact us messages are sent to it. Cloudflare Email
+# Routing forwards it to the team's inbox. Not the sending address (SMTP_FROM).
+CONTACT_EMAIL = "hello@hirlumo.com"
 
 
 @dataclass

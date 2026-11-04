@@ -9,7 +9,6 @@ real: category counts and the companies page come from the job pool
 from __future__ import annotations
 
 import time
-from email.utils import parseaddr
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -17,7 +16,6 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.database.session import get_session
-from app.integrations.email import EmailSettings
 from app.modules.access import rbac
 from app.modules.auth.deps import current_user, member_session, require_member
 from app.modules.auth.models import User
@@ -99,7 +97,7 @@ def resources_page(request: Request, user: User | None = Depends(current_user)):
 
 @router.get("/terms")
 def terms_page(request: Request, user: User | None = Depends(current_user)):
-    return templates.TemplateResponse(request, "legal/terms.html", {})
+    return templates.TemplateResponse(request, "legal/terms.html", {"contact": plan_catalog.CONTACT_EMAIL})
 
 
 @router.get("/plans")
@@ -131,16 +129,14 @@ def access_denied_page(request: Request, reason: str = "forbidden", user: User |
 
 @router.get("/privacy")
 def privacy_page(request: Request, user: User | None = Depends(current_user)):
-    return templates.TemplateResponse(request, "legal/privacy.html", {})
+    return templates.TemplateResponse(request, "legal/privacy.html", {"contact": plan_catalog.CONTACT_EMAIL})
 
 
 @router.get("/data-deletion")
 def data_deletion_page(request: Request, user: User | None = Depends(current_user)):
     """How to delete your data -- Facebook Login asks every app for this page."""
-    address = parseaddr(EmailSettings().smtp_from or "")[1]
-    contact = address if address and not address.endswith("@localhost") else None
-    return templates.TemplateResponse(request, "legal/data_deletion.html",
-                                      {"contact": contact, "hold_minutes": public_check.HOLD_SECONDS // 60})
+    return templates.TemplateResponse(request, "legal/data_deletion.html", {
+        "contact": plan_catalog.CONTACT_EMAIL, "hold_minutes": public_check.HOLD_SECONDS // 60})
 
 
 # ---- the optional profile step after signing in ----------------------------------------

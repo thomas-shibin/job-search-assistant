@@ -325,7 +325,7 @@ def test_ten_job_board_searches_then_company_sites_only(world, monkeypatch):
     page = http.get("/jobs?titles=Nurse")
     assert calls[-1]["job_board"] is False  # still searched, company careers sites only
     assert "used the 10 job-board searches included in the free plan" in page.text
-    assert "hirlumo@gmail.com" in page.text and "0 of 10" in page.text
+    assert "hello@hirlumo.com" in page.text and "0 of 10" in page.text
     http.get("/jobs?titles=Role9&page=2")  # more of a search already counted still reaches the boards
     assert calls[-1]["job_board"] is True
     assert _standing_of(factory, MEMBER, free_plan.SEARCH).used == 10
@@ -357,13 +357,13 @@ def test_limit_messages_and_plans_page_give_the_contact_email(world):
     _spend(factory, MEMBER, 10)
     text = http.get("/plans").text
     assert "Job-board searches" in text and "Resume actions" in text and "10 of 10 used" in text
-    assert 'mailto:hirlumo@gmail.com?subject=Hirlumo%20limits' in text
+    assert 'mailto:hello@hirlumo.com?subject=Hirlumo%20limits' in text
     signed_in["id"] = None
     text = http.get("/plans").text
-    assert "Job-board results" in text and "mailto:hirlumo@gmail.com?subject=Hirlumo%20feedback" in text
+    assert "Job-board results" in text and "mailto:hello@hirlumo.com?subject=Hirlumo%20feedback" in text
     assert "an hour" not in text.split("Job-board results")[1].split("</li>")[0]
     with tenant_session(factory, MEMBER) as s:
-        with pytest.raises(quota.LimitReached, match="hirlumo@gmail.com"):
+        with pytest.raises(quota.LimitReached, match="hello@hirlumo.com"):
             quota.check_ai(s, _user(factory, MEMBER))
 
 
