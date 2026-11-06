@@ -101,3 +101,10 @@ def test_transition_records_reason_and_actor(session):
     assert history.actor == "tester"
     assert history.from_status == JobStatus.RESUME_GENERATED
     assert history.to_status == JobStatus.READY_FOR_REVIEW
+
+
+@pytest.mark.parametrize("status", [JobStatus.DISCOVERED, JobStatus.ANALYZED, JobStatus.QUALIFIED])
+def test_a_job_without_a_tailored_resume_can_be_marked_applied(session, status):
+    job = _job(session, status)  # e.g. found by a job alert; the member applied with their own resume
+    mark_applied(session, job)
+    assert job.status == JobStatus.APPLIED

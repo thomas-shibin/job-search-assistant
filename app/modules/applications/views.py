@@ -16,7 +16,11 @@ from app.modules.usage import quota
 from app.web.templating import templates
 
 # (url path segment, state_machine function name, human label) offered per status
+_APPLY_WITHOUT_TAILORING = [("mark-applied", "mark_applied", "Mark Applied"), ("skip", "skip", "Skip")]
 ACTIONS_BY_STATUS: dict[JobStatus, list[tuple[str, str, str]]] = {
+    JobStatus.DISCOVERED: _APPLY_WITHOUT_TAILORING,
+    JobStatus.ANALYZED: _APPLY_WITHOUT_TAILORING,
+    JobStatus.QUALIFIED: _APPLY_WITHOUT_TAILORING,
     JobStatus.READY_FOR_REVIEW: [("approve", "approve", "Approve"), ("skip", "skip", "Skip")],
     JobStatus.APPROVED: [
         ("open-application", "mark_application_opened", "Open Application"),

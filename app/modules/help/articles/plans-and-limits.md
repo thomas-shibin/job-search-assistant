@@ -18,7 +18,7 @@ Limited:
 ## What counts as a job-board search?
 A new search that brings in job-board results counts once. These **don't** count: going to the next page of a search (up to {{ max_search_pages }} pages), changing filters, running the same search again within the hour, results Hirlumo already had, and searches where the job boards didn't answer. Each scheduled job-alert check that brings in job-board ads counts as one.
 
-After {{ free_searches_total }}, your searches still work: they show company careers-site jobs only, and alerts stop checking the job boards.
+After {{ free_searches_total }}, your searches still work: they show company careers-site jobs only, and alerts stop checking the job boards but keep checking careers-site jobs.
 
 ## What is a resume action?
 ?: resume action meaning, what counts as an action

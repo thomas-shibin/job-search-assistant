@@ -267,3 +267,109 @@ def test_watches_run_their_own_searches_alongside_the_job_search(session, monkey
     assert by_where["Toronto, ON"]["filters"] == {"max_days_old": "30"}  # scans skip old ads too
     assert by_where["Vancouver, BC"]["what_or"] == "Java"
     assert by_where["Vancouver, BC"]["filters"] == {"salary_min": "90000", "contract": "1", "max_days_old": "30"}
+
+
+def _pool_posting(session, external_id, title, location, first_seen):
+    from datetime import datetime, timezone
+
+    from app.modules.jobs.pool.models import PoolCompany, PoolJob
+
+    company = session.query(PoolCompany).first()
+    if company is None:
+        company = PoolCompany(provider="greenhouse", board="acme", name="Acme", last_status="ok")
+        session.add(company)
+        session.flush()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    session.add(PoolJob(company_id=company.id, provider="greenhouse", external_id=external_id, company="Acme",
+                        title=title, location=location, country="ca", description=f"{title}, posting {external_id}.",
+                        url=f"https://example.com/{external_id}", date_posted=now, first_seen_at=first_seen,
+                        last_seen_at=now))
+    session.commit()
+
+
+def test_watches_alert_on_new_careers_site_jobs_without_a_job_board(session):
+    """The job pool is checked on every scan for free: no Adzuna keys, still alerts."""
+    from datetime import datetime, timedelta, timezone
+
+    import app.workers.run as run_module
+    from app.core.config.schema import Watch
+    from app.modules.alerts.models import WatchlistAlert
+
+    _seed_candidate(session)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    _pool_posting(session, "1", "Senior Accountant", "Calgary, AB", now - timedelta(hours=2))
+    _pool_posting(session, "2", "Software Engineer", "Calgary, AB", now - timedelta(hours=2))  # another title
+    _pool_posting(session, "3", "Accountant", "Toronto, ON", now - timedelta(hours=2))  # another place
+    _pool_posting(session, "4", "Staff Accountant", "Calgary, AB", now - timedelta(days=3))  # within the first week
+    _pool_posting(session, "7", "Lead Accountant", "Calgary, AB", now - timedelta(days=8))  # older than a week
+
+    config = _config([])
+    config.watchlist.enabled = True
+    config.watchlist.email_alerts = "instant"
+    config.watchlist.watches = [Watch(name="Calgary accounting", titles=["Accountant"], locations=["Calgary, AB"])]
+
+    run_module.run_once(session, config)
+
+    alerts = session.query(WatchlistAlert).all()
+    assert sorted((a.job_title, a.status, a.channel) for a in alerts) == [
+        ("Senior Accountant", "pending", "email"), ("Staff Accountant", "pending", "email")]
+    # non-matches never become the member's
+    assert sorted(j.title for j in session.query(Job)) == ["Senior Accountant", "Staff Accountant"]
+    pool_result = session.query(SourceRunResult).filter_by(source_name="pool").one()
+    assert (pool_result.jobs_discovered, pool_result.jobs_new) == (2, 2)
+
+    # The next scan looks back only to this one: a posting from before it isn't news, a new one is.
+    session.query(SchedulerRun).update({SchedulerRun.started_at: now - timedelta(minutes=15)})
+    session.commit()
+    _pool_posting(session, "5", "Accountant II", "Calgary, AB", now - timedelta(hours=1))
+    _pool_posting(session, "6", "Junior Accountant", "Calgary, AB", now)
+    run_module.run_once(session, config)
+    assert [a.job_title for a in session.query(WatchlistAlert).order_by(WatchlistAlert.id)][2:] == ["Junior Accountant"]
+
+
+def test_a_watch_added_since_the_last_scan_starts_with_the_past_week(session):
+    from datetime import datetime, timedelta, timezone
+
+    import app.workers.run as run_module
+    from app.core.config.models import WatchlistEntry
+    from app.core.config.schema import Watch
+    from app.modules.alerts.models import WatchlistAlert
+
+    _seed_candidate(session)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    session.add(SchedulerRun(status="COMPLETED", started_at=now - timedelta(minutes=15)))
+    session.add_all([WatchlistEntry(name="Old watch", titles=["Accountant"], created_at=now - timedelta(days=2)),
+                     WatchlistEntry(name="New watch", titles=["Bookkeeper"], created_at=now - timedelta(minutes=5))])
+    session.commit()
+    _pool_posting(session, "1", "Accountant", "Calgary, AB", now - timedelta(days=2))
+    _pool_posting(session, "2", "Bookkeeper", "Calgary, AB", now - timedelta(days=2))
+    config = _config([])
+    config.watchlist.enabled = True
+    config.watchlist.email_alerts = "instant"
+    config.watchlist.watches = [Watch(name="Old watch", titles=["Accountant"]),
+                                Watch(name="New watch", titles=["Bookkeeper"])]
+
+    run_module.run_once(session, config)
+
+    # The old watch already had its look at the accountant job; the new one gets the week's bookkeeper job.
+    assert [a.job_title for a in session.query(WatchlistAlert)] == ["Bookkeeper"]
+
+
+def test_pool_alerts_still_apply_the_minimum_match_score(session):
+    from datetime import datetime, timezone
+
+    import app.workers.run as run_module
+    from app.core.config.schema import Watch
+    from app.modules.alerts.models import WatchlistAlert
+
+    _seed_candidate(session)
+    _pool_posting(session, "1", "Senior Accountant", "Calgary, AB", datetime.now(timezone.utc).replace(tzinfo=None))
+    config = _config([])
+    config.watchlist.enabled = True
+    config.watchlist.email_alerts = "instant"
+    config.watchlist.watches = [Watch(name="Strict", titles=["Accountant"], min_score=100)]
+
+    run_module.run_once(session, config)
+
+    assert session.query(Job).count() == 1  # fetched (the score needs the job) ...
+    assert session.query(WatchlistAlert).count() == 0  # ... but scored below 100: no alert

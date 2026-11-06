@@ -9,11 +9,13 @@ from __future__ import annotations
 import logging
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from sqlalchemy.orm import Session
 
-from app.core.config.schema import AppConfig, SearchProfile
+from app.core.config.models import WatchlistEntry
+from app.core.config.schema import AppConfig, SearchProfile, Watch
 from app.core.config.store import load_app_config
 from app.core.logging import log_event
 from app.core.tenancy import system_session, tenant_of, tenant_session
@@ -31,13 +33,15 @@ from app.modules.access import rbac
 from app.modules.alerts.base import NotificationProvider
 from app.modules.alerts.email_alerts import send_due
 from app.modules.alerts.service import maybe_notify_qualified_job
-from app.modules.alerts.watchlist import WatchlistAlerter, build_watchlist_alerter
+from app.modules.alerts.watchlist import WatchlistAlerter, build_watchlist_alerter, watch_matches
 from app.modules.applications.retention import purge_old_jobs, was_deleted
 from app.modules.auth.models import Role, User
 from app.modules.auth.service import purge_expired
 from app.modules.jobs.catalog.geo import province_of
 from app.modules.jobs.catalog.store import location_paths
+from app.modules.jobs.ingestion.normalize import normalize_raw_job
 from app.modules.jobs.ingestion.pipeline import ingest_raw_job
+from app.modules.jobs.pool import service as pool
 from app.modules.jobs.search import QuerySpec, queries_per_scan, scan_slice, scan_specs, search_jobs
 from app.modules.matching.pipeline import NoActiveCandidateProfileError, analyze_job
 from app.modules.resumes.pipeline import generate_resume_bundle
@@ -115,6 +119,57 @@ class ScheduledSearchSource:
 
 # Backwards-compatible name.
 GlobalSearchSource = ScheduledSearchSource
+
+# A watch's first scan looks this far back in the job pool, so a new watch starts with the
+# past week's matches; after that, each scan looks back to the previous one.
+POOL_NEW_WATCH_LOOKBACK = timedelta(days=7)
+
+
+class PoolWatchSource:
+    """Company careers-site jobs (the shared job pool) that are new for one of the
+    member's watches: first seen by the pool since the previous scan, or within
+    POOL_NEW_WATCH_LOOKBACK for a watch added since then. Reading the pool costs
+    nothing, so these alerts go on after the free plan's job-board searches run
+    out. Only jobs that fit a watch become the member's own; the alerter then
+    checks every filter again, including the minimum match score, which needs the
+    job's score and is skipped here."""
+    name = "pool"
+
+    def __init__(self, session: Session, windows: list[tuple[Watch, datetime]], country: str | None) -> None:
+        self._session = session
+        self._windows = [(watch.model_copy(update={"min_score": None}), since) for watch, since in windows]
+        self._country = country
+
+    def discover_jobs(self, search_profile: SearchProfile | None) -> list[RawJob]:
+        if not self._windows:
+            return []
+        jobs = []
+        for row in pool.new_postings(self._session, min(since for _, since in self._windows), self._country):
+            raw = pool.to_raw_job(row)
+            job = SimpleNamespace(**normalize_raw_job(raw))
+            province = province_of(self._session, job.location)
+            if any(row.first_seen_at >= since and watch_matches(watch, job, None, province)
+                   for watch, since in self._windows):
+                jobs.append(raw)
+        return jobs
+
+
+def _pool_windows(session: Session, scheduler_run: SchedulerRun, watches: list[Watch]) -> list[tuple[Watch, datetime]]:
+    """Each watch with where its look into the job pool starts (naive UTC, like the
+    pool's timestamps): the previous scan's start, or a week back for a watch
+    added since then (or the member's first scan)."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    floor = now - POOL_NEW_WATCH_LOOKBACK
+    row = (session.query(SchedulerRun.started_at).filter(SchedulerRun.id < scheduler_run.id)
+           .order_by(SchedulerRun.id.desc()).first())
+    previous = row[0] if row else None
+    added = dict(session.query(WatchlistEntry.name, WatchlistEntry.created_at).order_by(WatchlistEntry.id.desc()))
+    windows = []
+    for watch in watches:
+        created = added.get(watch.name)
+        is_new = previous is None or (created is not None and created > previous)
+        windows.append((watch, floor if is_new else max(previous, floor)))
+    return windows
 
 
 def _scheduled_search_source(
@@ -341,6 +396,14 @@ def _run(session: Session, config: AppConfig, *, desktop_notifications: bool = T
                 session, scheduler_run, source_name, source, search_profile, config,
                 ai_provider, notification_provider, watchlist_alerter, summary, tailor=tailor,
             )
+
+    if watchlist_alerter is not None:  # free: careers-site jobs new since the last scan
+        pool_source = PoolWatchSource(session, _pool_windows(session, scheduler_run, config.watchlist.watches),
+                                      config.search.country)
+        _run_source(
+            session, scheduler_run, "pool", pool_source, None, config,
+            ai_provider, notification_provider, watchlist_alerter, summary, tailor=tailor,
+        )
 
     global_source = _scheduled_search_source(config, adzuna_settings, location_paths(session))
     if global_source is not None and member is not None and not _boards_left(session, member, config):

@@ -10,6 +10,9 @@ On [Applications](/applications) (account menu). It lists every job you've analy
 
 ## How do I mark a job as applied?
 Open the job's page and use the buttons under **Next steps**. They change with the job's stage:
+- A job you haven't tailored a resume for (from a search or a job alert): **Mark Applied** once you've applied with your own resume, or **Skip**.
+
+With a tailored resume:
 1. A tailored resume ready for review: **Approve** or **Skip**.
 2. Approved: **Open Application** opens the posting so you can apply.
 3. After opening it: **Mark Applied**.

@@ -1,7 +1,7 @@
 ---
 title: Job alerts
 summary: Watches that tell you about new matching jobs by email or Telegram, and how often.
-keywords: alert, alerts, watch, watchlist, notification, notify, email alert, telegram, daily, weekly, summary, digest, unsubscribe, pause, new jobs, automatic, scan
+keywords: alert, alerts, watch, watchlist, notification, notify, email alert, telegram, daily, weekly, summary, digest, unsubscribe, pause, new jobs, automatic, scan, careers site, company jobs
 pages: /watchlist
 order: 9
 ---
@@ -31,5 +31,9 @@ In the **Watches** list, select **Pause** (and later **Resume**), **Edit** or **
 
 **Recent alerts** on the page lists every decision: sent, waiting for your next email, or skipped, and why.
 
+## Where do alerts find jobs?
+?: which jobs do alerts check, alert sources, careers sites
+Every check looks at the jobs posted on company careers sites since the last check, and at the job boards while your free plan's job-board searches last. A new watch starts with the matching careers-site jobs from the past week.
+
 ## Do alerts use my free plan searches?
-Yes. Each scheduled check that brings in job-board ads counts as one of your {{ free_searches_total }} job-board searches. Once they're used, alerts stop checking the job boards. See [Plans and limits](/help/plans-and-limits).
+Checking company careers-site jobs is free and never runs out. Each scheduled check that brings in job-board ads counts as one of your {{ free_searches_total }} job-board searches. Once they're used, alerts stop checking the job boards and keep checking careers-site jobs. See [Plans and limits](/help/plans-and-limits).

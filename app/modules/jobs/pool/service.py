@@ -414,6 +414,18 @@ def fresh_jobs(session: Session):
         *fresh_conditions(session))
 
 
+def new_postings(session: Session, since: datetime, country: str | None = None, *,
+                 limit: int = 2000) -> list[PoolJob]:
+    """Current postings the pool first saw at or after `since` (naive UTC), newest
+    first, one per company, title and place: what a scheduled scan checks against
+    a member's watches (job alerts; app/workers/run.py `PoolWatchSource`)."""
+    query = fresh_jobs(session).filter(PoolJob.first_seen_at >= since)
+    if country := (country or "").strip().lower():
+        query = query.filter(PoolJob.country == country)
+    rows = query.order_by(PoolJob.first_seen_at.desc(), PoolJob.id.desc()).limit(limit).all()
+    return dedupe.unique_by(rows, _row_key)
+
+
 def is_fresh(session: Session, job_id: int) -> bool:
     return fresh_jobs(session).filter(PoolJob.id == job_id).first() is not None
 

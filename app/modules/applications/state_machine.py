@@ -30,6 +30,11 @@ _TERMINAL_STATUSES = frozenset({JobStatus.SKIPPED, JobStatus.REJECTED, JobStatus
 _ALWAYS_AVAILABLE = frozenset({JobStatus.SKIPPED, JobStatus.ARCHIVED})
 
 _STAGE_TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
+    # A job with no tailored resume (found by a search or a job alert) can be marked
+    # applied straight away: the member applied with their own resume.
+    JobStatus.DISCOVERED: frozenset({JobStatus.APPLIED}),
+    JobStatus.ANALYZED: frozenset({JobStatus.APPLIED}),
+    JobStatus.QUALIFIED: frozenset({JobStatus.APPLIED}),
     JobStatus.RESUME_GENERATED: frozenset({JobStatus.READY_FOR_REVIEW}),
     JobStatus.READY_FOR_REVIEW: frozenset({JobStatus.APPROVED}),
     JobStatus.APPROVED: frozenset({JobStatus.APPLICATION_OPENED}),

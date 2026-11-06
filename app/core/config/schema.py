@@ -179,9 +179,10 @@ class Watch(BaseModel):
     Each list is "any of" ("Toronto or Vancouver"); every filter you fill in
     must hold. Titles/companies match partial text, keywords whole words in the
     title or description, locations by city ("Victoria, BC" matches Adzuna's
-    "Victoria, Capital") or province ("Ontario"). Unless `search` is off, the
-    scheduled scan also runs the watch's own Adzuna search, so it finds jobs
-    your main job search doesn't cover.
+    "Victoria, Capital") or province ("Ontario"). Every scheduled scan checks
+    the job pool's new careers-site jobs against it; unless `search` is off, it
+    also runs the watch's own Adzuna search, so it finds jobs your main job
+    search doesn't cover.
     """
 
     name: str

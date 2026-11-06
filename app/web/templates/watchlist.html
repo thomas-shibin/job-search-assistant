@@ -18,14 +18,14 @@
       {% endfor %}
       <div class="settings-field">
         <label>Alert when match score is at least
-          <span class="input-suffix"><input type="number" name="min_score" min="0" max="100" value="{{ (e.min_score if e.min_score is not none else '') if e else 80 }}" placeholder="any"><span>/ 100</span></span>
+          <span class="input-suffix"><input type="number" name="min_score" min="0" max="100" value="{{ (e.min_score if e.min_score is not none else '') if e else '' }}" placeholder="any"><span>/ 100</span></span>
         </label>
         <small class="muted">Your keyword match score for the job. Empty = alert on every match.</small>
       </div>
       <div class="settings-field">
         <input type="hidden" name="search" value="false">
         <label class="check"><input type="checkbox" name="search" value="true" {% if not e or e.search %}checked{% endif %}> Search for these jobs on every scan</label>
-        <small class="muted">Runs this watch's own job search, so it also finds jobs your main job search doesn't cover. Counts toward your automatic searches.</small>
+        <small class="muted">Runs this watch's own job-board search, so it also finds jobs your main job search doesn't cover. Counts toward your job-board searches. New company careers-site jobs are checked either way, for free.</small>
       </div>
       <div class="settings-field">
         <label class="check"><input type="checkbox" name="enabled" value="true" {% if not e or e.enabled %}checked{% endif %}> Active</label>

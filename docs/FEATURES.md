@@ -69,7 +69,8 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
 - **Job board results** alongside company-site jobs, with a second board as a fallback
   when the first can't answer.
 - **Saved jobs** and **application tracking** (saved, applied, interview, offer,
-  rejected, archived), with each job's files kept together.
+  rejected, archived), with each job's files kept together. A job with no tailored resume
+  (from a search or an alert) can be marked applied straight away.
 - **Match score and gap analysis** against the member's resume: a reproducible keyword
   score, and an AI fit assessment on request.
 - **Tailored resumes** for a job, in the member's own Word design, where every rewritten
@@ -98,7 +99,9 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
 - **Profile** (experience, education, preferences), filled by hand or imported from a
   LinkedIn PDF or data export.
 - **Job alerts**: saved searches ("watches") scanned on a schedule, sent by email (after
-  every scan, daily or weekly, with one-click unsubscribe) or Telegram.
+  every scan, daily or weekly, with one-click unsubscribe) or Telegram. Every scan checks
+  the company careers-site jobs that are new since the last scan (free, no limit), plus the
+  job boards while the free plan's searches last.
 - **Hourly limits** on searches and AI actions, shown before they're used.
 - **Free plan**: lifetime allowances per person, set in Admin → Platform settings and per
   user:
@@ -106,7 +109,7 @@ and pricing in [GO_LIVE_PLAN.md](GO_LIVE_PLAN.md)._
     paging, repeats within the hour, cached answers and failed searches don't count).
     Each scheduled job-alert scan that reaches a job board counts as one too. After that,
     searches still run on company careers-site jobs only, with a note, and alert scans
-    skip the job boards.
+    skip the job boards (they still check careers-site jobs).
   - **10 resume actions** in total (match analyses, tailored resumes, Quick Tailor,
     Canadian job titles, and the search box asking the analysis service to read a search
     its rules can't; answers from cache don't count), plus the hourly limit. Members'
@@ -192,6 +195,15 @@ phone menu (where it was missing) and the footer; the page title, description, F
 WebApplication entry for search engines use Canadian resume and ATS wording.
 And: releases serve the browser scripts minified and obfuscated and the styles minified (no comments, no source
 maps), and the server no longer names itself in a "server:" header.
+And: job alerts check company careers-site jobs: every scan looks at the jobs the job pool first saw since the
+member's previous scan (a week back for a watch added since then, so a new watch starts with the past week's
+matches) and alerts on those that fit a watch, for free (before, scans
+only searched the job boards, so a free member's alerts stopped once their 10 job-board searches were spent,
+within about 2.5 hours at one scan every 15 minutes; `run.py` `PoolWatchSource`).
+And: a new watch has no minimum match score unless the member sets one (it was 80; a member's scans score with
+rules only, which put most jobs near 60, so a watch left at the default almost never alerted).
+And: a job with no tailored resume (found by a search or a job alert) offers **Mark Applied** and **Skip** under Next
+steps (before, it had no next steps, so a job you applied to with your own resume couldn't be tracked as applied).
 And: the public email address is hello@hirlumo.com (`usage/plans.py` `CONTACT_EMAIL`) everywhere: Contact us (and where
 its messages are sent), /plans, limit messages, help articles, the data-deletion page (which showed the sending address
 before), and new Contact sections on the privacy policy and terms.
